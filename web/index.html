@@ -23,6 +23,19 @@
   </div>
 </div>
 
+<div class="modal" id="sitModal" hidden role="dialog" aria-modal="true" aria-labelledby="sitTitle">
+  <div class="modal-in sit-modal frame">
+    <div class="frame-h"><span id="sitTitle">&gt; SITREP</span><button type="button" class="btn" id="sitClose" aria-label="Zamknij">✕</button></div>
+    <div class="sit-meta" id="sitMeta"></div>
+    <pre class="sit-out" id="sitOut" aria-live="polite"></pre>
+    <div class="sit-foot">
+      <button class="btn" id="sitCopy">KOPIUJ</button>
+      <button class="btn" id="sitSpeak">CZYTAJ</button>
+      <button class="btn" id="sitPrint">DRUKUJ</button>
+      <button class="btn" id="sitAgain">PONÓW</button>
+    </div>
+  </div>
+</div>
 <div class="modal" id="settings" hidden role="dialog" aria-modal="true" aria-labelledby="setTitle">
   <form class="modal-in frame" id="setForm" autocomplete="off">
     <div class="frame-h"><span id="setTitle">&gt; KONFIGURACJA OPERATORA</span><button type="button" class="btn" id="setClose" aria-label="Zamknij">✕</button></div>
@@ -217,7 +230,7 @@
       <div class="frame-h"><span>&gt; SITREP</span><em>raport na żądanie</em></div>
       <div class="sitrep">
         <div class="q-row small-row"><input id="sitIn" list="sitList" placeholder="Region lub temat, np. Bliski Wschód"><datalist id="sitList"></datalist><button class="btn" id="sitGo">GENERUJ</button></div>
-        <pre class="sit-out" id="sitOut" hidden></pre>
+        <p class="sit-last" id="sitLast" hidden><button class="btn" id="sitReopen">OSTATNI RAPORT</button></p>
       </div>
     </section>
     <section class="frame">
