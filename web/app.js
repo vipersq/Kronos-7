@@ -858,12 +858,45 @@ async function loadState(keepSel) {
   if (!ARCH) { S = CURRENT; if (!keepSel) selected = null; fillArchive(); renderAll(); } else fillArchive();
 }
 
+/* ------------------------------------------------------------ OPERATOR */
+let SET = null;
+const opCall = () => (SET && SET.callsign) || "";
+function renderOp() { $("#opName").textContent = opCall() || "NIEZNANY"; }
+async function loadSettings() { try { SET = await api("/api/settings"); } catch (e) { SET = { callsign: "", configured: false }; } renderOp(); return SET; }
+async function saveSettings(body) {
+  try { const r = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then(x => x.json());
+    if (r.settings) { SET = r.settings; renderOp(); } return r; } catch (e) { return { ok: false, error: "Brak połączenia z serwerem." }; }
+}
+let lastFocus = null;
+async function openSettings() {
+  beep(900); lastFocus = document.activeElement; await loadSettings();
+  $("#setCall").value = SET.callsign || ""; $("#setName").value = SET.name || "";
+  const t = A(SET.refresh_times); ["#setT1", "#setT2", "#setT3"].forEach((s2, i) => $(s2).value = t[i] || "");
+  $("#setModel").innerHTML = [`<option value="auto">AUTOMATYCZNIE (zalecany: ${esc(SET.recommended || "?")})</option>`].concat(A(SET.installed).map(m => `<option value="${esc(m)}">${esc(m)}</option>`)).join("");
+  $("#setModel").value = A(SET.installed).includes(SET.model) ? SET.model : "auto";
+  $("#setPull").checked = !!SET.auto_pull; $("#setMsg").textContent = "";
+  $("#settings").hidden = false; $("#setCall").focus();
+}
+function closeSettings() { $("#settings").hidden = true; if (lastFocus) lastFocus.focus(); }
+$("#setBtn").addEventListener("click", openSettings);
+$("#setClose").addEventListener("click", closeSettings);
+$("#settings").addEventListener("click", e => { if (e.target.id === "settings") closeSettings(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#settings").hidden) closeSettings(); });
+$("#setForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const r = await saveSettings({ callsign: $("#setCall").value, name: $("#setName").value, model: $("#setModel").value, auto_pull: $("#setPull").checked,
+    refresh_times: ["#setT1", "#setT2", "#setT3"].map(s2 => $(s2).value).filter(Boolean) });
+  if (r.ok) { beep(1400, .08); $("#setMsg").textContent = "Zapisano."; pollStatus(); setTimeout(closeSettings, 600); }
+  else { beep(300, .2, "sawtooth"); $("#setMsg").textContent = r.error || "Nie udało się zapisać."; }
+});
+
 /* ------------------------------------------------------------ START */
 function boot(done) {
+  const needSetup = !(SET && SET.configured);
   let seen = false; try { seen = sessionStorage.getItem("k7-boot") === "1"; } catch (e) { seen = true; }
-  if (seen || reduce) return done();
+  if (!needSetup && (seen || reduce)) return done();
   const B = $("#boot"); B.hidden = false; const e = STATUS ? STATUS.engine : null, C = CURRENT || {};
-  const lines = ["KRONOS-7 PLANETARY INTELLIGENCE · v3.1", "TEST PAMIĘCI ........ OK",
+  const lines = ["KRONOS-7 PLANETARY INTELLIGENCE · v3.2", "TEST PAMIĘCI ........ OK",
     "PROCESOR GRAFICZNY .. " + (e ? e.hardware.gpu_name + (e.hardware.vram_gb ? " / " + e.hardware.vram_gb + " GB" : "") : "?"),
     "RDZEŃ ANALITYCZNY ... " + (e && e.model ? e.model.toUpperCase() : "NIEAKTYWNY"),
     "BAZA KONFLIKTÓW ..... " + A(C.conflicts).length + " WĘZŁÓW", "FRONTY .............. " + A(C.fronts).length + " TEATRÓW",
@@ -871,15 +904,22 @@ function boot(done) {
     "ŁĄCZE ORBITALNE ..... " + (A(C.tle).length + A((C.feeds || {}).celestrak).length) + " OBIEKTÓW", ""];
   let i = 0, stop = false; const T2 = $("#bootText"), Lg = $("#bootLogin");
   const finish = () => { if (stop) return; stop = true; B.hidden = true; try { sessionStorage.setItem("k7-boot", "1"); } catch (e) {} done(); };
-  $("#bootSkip").addEventListener("click", finish);
-  document.addEventListener("keydown", function k(ev) { if (ev.key === "Escape") { finish(); document.removeEventListener("keydown", k); } });
-  (function line() {
-    if (stop) return;
-    if (i < lines.length) { T2.textContent += lines[i++] + "\n"; setTimeout(line, 150); return; }
-    const id = "M6OER"; let j = 0; Lg.innerHTML = 'IDENTYFIKATOR OPERATORA: <span id="lg"></span><span class="cursor"></span>';
-    (function type() { if (stop) return; if (j < id.length) { $("#lg").textContent += id[j++]; setTimeout(type, 120); return; }
-      setTimeout(() => { if (stop) return; Lg.innerHTML = "IDENTYFIKATOR OPERATORA: M6OER<br>DOSTĘP PRZYZNANY · WITAJ, OPERATORZE"; setTimeout(finish, 700); }, 300); })();
-  })();
+  const greet = () => { const n = SET && (SET.name || SET.callsign); Lg.innerHTML = `IDENTYFIKATOR OPERATORA: ${esc(opCall())}<br>DOSTĘP PRZYZNANY · WITAJ${n ? ", " + esc(n.toUpperCase()) : ", OPERATORZE"}`; setTimeout(finish, 900); };
+  if (!needSetup) {
+    $("#bootSkip").addEventListener("click", finish);
+    document.addEventListener("keydown", function k(ev) { if (ev.key === "Escape") { finish(); document.removeEventListener("keydown", k); } });
+  } else $("#bootSkip").hidden = true;
+  const login = () => {
+    if (needSetup) {
+      Lg.textContent = "BRAK ZAREJESTROWANEGO OPERATORA."; const f = $("#bootSetup"); f.hidden = false; $("#bootCall").focus();
+      f.addEventListener("submit", async ev => { ev.preventDefault(); const r = await saveSettings({ callsign: $("#bootCall").value });
+        if (r.ok) { f.hidden = true; beep(1400, .08); greet(); } else { beep(300, .2, "sawtooth"); $("#bootMsg").textContent = r.error || "Nie udało się zapisać."; } });
+      return;
+    }
+    const id = opCall(); let j = 0; Lg.innerHTML = 'IDENTYFIKATOR OPERATORA: <span id="lg"></span><span class="cursor"></span>';
+    (function type() { if (stop) return; if (j < id.length) { $("#lg").textContent += id[j++]; setTimeout(type, 110); return; } setTimeout(() => { if (!stop) greet(); }, 300); })();
+  };
+  (function line() { if (stop) return; if (i < lines.length && !reduce) { T2.textContent += lines[i++] + "\n"; setTimeout(line, 150); return; } if (reduce) T2.textContent = lines.join("\n"); login(); })();
 }
 
 /* odczyt ma wysokość mapy (na szerokim ekranie) */
@@ -888,6 +928,7 @@ if (window.ResizeObserver) new ResizeObserver(() => { const h = $("#map").getBou
 (async function init() {
   setMode(mode);
   try { STATUS = await api("/api/status"); } catch (e) {}
+  await loadSettings();
   await loadState();
   renderSys(); renderSrc();
   if (mode === "flat") setTheater(theater || "world", false);

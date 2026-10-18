@@ -30,7 +30,7 @@ rem ---------------------------------------------------------------- dodatki
 :deps
 if exist "data\.deps_ok" goto ollama
 echo  Instaluje dodatki: pycountry (polskie nazwy krajow) i h3 (mapa zaklocen GPS)...
-%PY% -m pip install --user --quiet --disable-pip-version-check pycountry h3 && echo ok> "data\.deps_ok"
+%PY% -m pip install --user --quiet --disable-pip-version-check -r requirements.txt && echo ok> "data\.deps_ok"
 
 rem ---------------------------------------------------------------- Ollama
 :ollama

@@ -1,10 +1,40 @@
-# KRONOS-7 · planetarny system wywiadowczy (v3.1)
+# KRONOS-7 · planetarny system wywiadowczy
 
-Lokalny terminal w stylu komputerów pokładowych z filmów science fiction. Pokazuje **co, gdzie i dlaczego** dzieje się na świecie. Dane online pobiera sam, a analizę robi model AI działający na Twoim komputerze.
+Lokalny terminal w stylu komputerów pokładowych z filmów science fiction. Pokazuje **co, gdzie i dlaczego** dzieje się na świecie. Dane online pobiera sam, a analizę robi model AI działający na Twoim komputerze (Ollama lub LM Studio), bez chmury i bez kluczy API.
+
+> **English:** KRONOS-7 is a local, retro sci-fi styled world-intelligence dashboard. It pulls news and open data feeds (shipping, outages, disasters, markets, satellites…), and a local LLM (auto-selected for your GPU via Ollama) clusters, rates and explains events in Polish. Run `start.bat` on Windows or `./start.sh` on Linux/macOS, then open http://127.0.0.1:7707. On first launch you set your operator callsign.
+
+![Terminal](docs/screen-main.png)
+
+## Szybki start
+
+```
+git clone https://github.com/vipersq/Kronos-7.git
+cd Kronos-7
+start.bat            (Windows)
+./start.sh           (Linux / macOS, wymaga python3 i ollama)
+```
+
+Albo pobierz ZIP (zielony przycisk **Code → Download ZIP**), rozpakuj i uruchom `start.bat`.
+
+## Operator
+
+Przy pierwszym uruchomieniu terminal pyta o **identyfikator operatora**: znak wywoławczy, pseudonim albo inicjały (1–20 znaków).
+
+![Pierwsze uruchomienie](docs/screen-setup.png)
+
+Później zmienisz go przyciskiem **OPERATOR** w nagłówku. Tam ustawisz też:
+
+- jak system ma się do Ciebie zwracać (np. imię, używane w powitaniu i briefingu);
+- do 3 godzin automatycznej analizy (domyślnie 05:50 i 17:50);
+- model AI: automatyczny dobór albo jeden z zainstalowanych;
+- czy pobierać zalecany model automatycznie.
+
+Ustawienia trafiają do `data/settings.json`. Ten plik nie jest w repozytorium, więc `git pull` ich nie nadpisze. Ustawienia z tego pliku mają pierwszeństwo przed `config.json`.
 
 ## Instalacja (Windows)
 
-Rozpakuj folder `kronos7` w dowolnym miejscu i uruchom **`start.bat`**. Skrypt sam:
+Uruchom **`start.bat`**. Skrypt sam:
 
 1. sprawdzi Pythona, a jeśli go nie ma, zapyta o zgodę i zainstaluje Pythona 3.12 (przez winget);
 2. doinstaluje dodatki pycountry i h3;
@@ -58,7 +88,7 @@ Ustawienia są w `config.json`:
 
 Każdy moduł dostaje bieżącą listę i świeże wiadomości, a zwraca tylko zmiany. Scalaniem i usuwaniem starych wpisów zajmuje się kod, nie model.
 
-Dane startowe w paczce to odczyt z 18.10.2026, 14:33. Pierwsza analiza na Twoim komputerze zacznie od nich.
+Dane startowe w repozytorium (`data/seed.json`) to odczyt z 18.10.2026, 14:33. Pierwsza analiza na Twoim komputerze zacznie od nich.
 
 ## Funkcje terminala
 
@@ -73,13 +103,15 @@ Dane startowe w paczce to odczyt z 18.10.2026, 14:33. Pierwsza analiza na Twoim 
 
 ## Pliki
 
-- `data/state.json` – bieżący odczyt
-- `data/archive/` – kopie każdego odczytu (ostatnie 120)
-
-Na start dołączony jest odczyt z 18.10.2026, żeby terminal nie był pusty przed pierwszą analizą.
+- `data/seed.json` – dane startowe z repozytorium (odczyt z 18.10.2026), żeby terminal nie był pusty przed pierwszą analizą
+- `data/state.json` – Twój bieżący odczyt (lokalny, poza gitem)
+- `data/archive/` – kopie każdego odczytu, ostatnie 120 (lokalne)
+- `data/settings.json` – ustawienia operatora (lokalne)
 
 ## Uwagi
 
 - Wszystkie oceny (poziom napięcia, scenariusze, stan szlaków, łańcuch przyczyn) to hipotezy modelu AI, a nie oficjalne wskaźniki. Mniejsze modele częściej się mylą.
 - Serwer nasłuchuje tylko na tym komputerze (127.0.0.1).
 - Test bez AI: ustaw zmienną `KRONOS_MOCK=1`, a program użyje atrapy modelu.
+- Biblioteki i mapy dołączone w `web/vendor/` mają własne licencje, opisane w [THIRD_PARTY.md](THIRD_PARTY.md).
+- Treści z kanałów RSS i serwisów danych należą do ich wydawców. Program tylko je pobiera i streszcza na Twoim komputerze.
