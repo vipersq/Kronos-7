@@ -411,7 +411,7 @@ function bindDetail() {
   D.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => go(b.dataset.go)));
   D.querySelectorAll("[data-open]").forEach(b => b.addEventListener("click", () => openRef(b.dataset.open)));
   D.querySelectorAll("[data-chain]").forEach(b => b.addEventListener("click", () => chainFocusFor(b.dataset.chain)));
-  D.querySelectorAll("[data-sit]").forEach(b => b.addEventListener("click", () => { $("#sitIn").value = b.dataset.sit; sitrep(); $("#sitIn").scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" }); }));
+  D.querySelectorAll("[data-sit]").forEach(b => b.addEventListener("click", () => { $("#sitIn").value = b.dataset.sit; sitrep(); }));
 }
 function pick(id, silent) {
   if (!silent) beep(980, .04);
@@ -785,12 +785,12 @@ $("#refreshBtn").addEventListener("click", async () => { beep(1100); await api("
 const HINTS = ["Dlaczego Ormuz jest zamknięty?", "Co się zmieniło na froncie w Ukrainie?", "Jak wojna z Iranem wpływa na ceny w Europie?", "Co się dzieje na wschodniej flance NATO?", "Które konflikty eskalują i dlaczego?"];
 $("#qHints").innerHTML = HINTS.map(h => `<button>${esc(h)}</button>`).join("");
 $("#qHints").querySelectorAll("button").forEach(b => b.addEventListener("click", () => { $("#q").value = b.textContent; ask(); }));
-async function streamTo(url, body, el, onDone) {
+async function streamTo(url, body, el, onDone, signal) {
   el.hidden = false; el.textContent = "> PRZETWARZANIE…"; let text = "";
-  try { const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  try { const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal });
     const rd = r.body.getReader(), dec = new TextDecoder();
     for (;;) { const { done, value } = await rd.read(); if (done) break; text += dec.decode(value, { stream: true }); el.textContent = text.replace(/\n?REF:.*$/s, "") || "> PRZETWARZANIE…"; }
-  } catch (e) { el.textContent = "Brak połączenia z serwerem KRONOS-7."; return; }
+  } catch (e) { if (e.name === "AbortError") return; el.textContent = "Brak połączenia z serwerem KRONOS-7."; return; }
   el.textContent = text.replace(/\n?REF:.*$/s, "").trim(); beep(1400, .05); if (onDone) onDone(text);
 }
 function ask() {
@@ -802,8 +802,42 @@ function ask() {
 }
 $("#qGo").addEventListener("click", ask);
 $("#q").addEventListener("keydown", e => { if (e.key === "Enter") ask(); else if (e.key.length === 1) beep(1600 + Math.random() * 400, .015, "square", .02); });
-function sitrep() { const r = $("#sitIn").value.trim() || "Świat"; beep(1000, .06); streamTo("/api/sitrep", { region: r }, $("#sitOut")); }
+/* SITREP w oknie: strumień, kopiuj, czytaj, drukuj */
+let sitCtl = null, sitBusy = false, sitFocus = null, sitText = "";
+function sitOpen() { sitFocus = document.activeElement; $("#sitModal").hidden = false; $("#sitClose").focus(); }
+function sitClose() { if (sitCtl) sitCtl.abort(); sitCtl = null; sitBusy = false; if ("speechSynthesis" in window) speechSynthesis.cancel(); $("#sitModal").hidden = true; if (sitFocus) sitFocus.focus(); }
+function sitButtons() { ["#sitCopy", "#sitSpeak", "#sitPrint", "#sitAgain"].forEach(b => $(b).disabled = sitBusy); }
+function sitrep() {
+  const r = $("#sitIn").value.trim() || "Świat"; beep(1000, .06);
+  if (sitCtl) sitCtl.abort(); sitCtl = new AbortController(); sitBusy = true; sitText = "";
+  const t = new Date(), op = opCall();
+  $("#sitTitle").textContent = "> SITREP · " + r.toUpperCase();
+  $("#sitMeta").textContent = `${t.toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" })}${op ? " · dla " + op : ""} · rdzeń: ${(STATUS && STATUS.engine && STATUS.engine.model) || "brak AI"}`;
+  sitButtons(); if ($("#sitModal").hidden) sitOpen();
+  streamTo("/api/sitrep", { region: r }, $("#sitOut"), text => {
+    sitText = text.replace(/\n?REF:.*$/s, "").trim(); sitBusy = false; sitButtons(); sitCtl = null;
+    $("#sitLast").hidden = false; }, sitCtl.signal)
+    .finally(() => { if (sitBusy && !$("#sitModal").hidden) { sitBusy = false; sitButtons(); } });
+}
 $("#sitGo").addEventListener("click", sitrep);
+$("#sitClose").addEventListener("click", sitClose);
+$("#sitAgain").addEventListener("click", sitrep);
+$("#sitReopen").addEventListener("click", () => { beep(900); sitOpen(); });
+$("#sitModal").addEventListener("click", e => { if (e.target.id === "sitModal") sitClose(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#sitModal").hidden) sitClose(); });
+$("#sitCopy").addEventListener("click", async () => {
+  const txt = $("#sitTitle").textContent.replace(/^> /, "") + "\n" + $("#sitMeta").textContent + "\n\n" + $("#sitOut").textContent;
+  try { await navigator.clipboard.writeText(txt); $("#sitCopy").textContent = "SKOPIOWANO"; } catch (e) { $("#sitCopy").textContent = "BŁĄD SCHOWKA"; }
+  beep(1400, .05); setTimeout(() => $("#sitCopy").textContent = "KOPIUJ", 1500);
+});
+$("#sitSpeak").addEventListener("click", () => {
+  if (!("speechSynthesis" in window)) return;
+  if (speechSynthesis.speaking) { speechSynthesis.cancel(); return; }
+  const u = new SpeechSynthesisUtterance($("#sitOut").textContent), v = plVoice(); u.lang = "pl-PL"; if (v) u.voice = v; u.rate = .95; u.pitch = .85;
+  u.onstart = () => $("#sitSpeak").textContent = "STOP"; u.onend = u.onerror = () => $("#sitSpeak").textContent = "CZYTAJ";
+  speechSynthesis.cancel(); speechSynthesis.speak(u);
+});
+$("#sitPrint").addEventListener("click", () => { document.body.classList.add("print-sit"); window.print(); setTimeout(() => document.body.classList.remove("print-sit"), 500); });
 $("#sitIn").addEventListener("keydown", e => { if (e.key === "Enter") sitrep(); });
 
 /* ------------------------------------------------------------ BRIEFING GŁOSOWY */
