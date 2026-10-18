@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KRONOS-7 Planetary Intel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="boot" id="boot" hidden>
+  <div class="boot-in">
+    <pre id="bootText"></pre>
+    <div class="login" id="bootLogin"></div>
+    <button class="btn" id="bootSkip">POMIŃ ▸</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <header class="head">
+    <div class="head-top">
+      <h1 class="brand glow">KRONOS-7<small>PLANETARNY SYSTEM WYWIADOWCZY · OPERATOR M6OER</small></h1>
+      <div class="clocks glow">
+        <div><span>UTC</span><b id="utc">--:--:--</b></div>
+        <div><span>LOKALNY</span><b id="loc">--:--</b></div>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="btn" id="refreshBtn">ODŚWIEŻ ANALIZĘ</button>
+      <button class="btn" id="speakBtn" aria-pressed="false">ODCZYTAJ BRIEFING</button>
+      <button class="btn warn" id="alertBtn" aria-pressed="false">PRIORYTET JEDEN</button>
+      <button class="btn" id="audioBtn" aria-pressed="false">AUDIO</button>
+      <button class="btn" id="screenBtn" aria-pressed="false">TRYB EKRANU</button>
+      <button class="btn" id="compactBtn" aria-pressed="false">KOMPAKT</button>
+      <label for="day">ARCHIWUM</label><select id="day"></select>
+    </div>
+    <div class="jobbar" id="jobbar" hidden><i id="jobfill"></i><span id="jobtext"></span></div>
+    <div class="rail" id="rail"></div>
+  </header>
+
+  <div class="banner" id="banner">PRIORYTET JEDEN</div>
+  <div class="archbar" id="archbar" hidden>TRYB ARCHIWUM · <span id="archname"></span> · <button class="linkbtn" id="archBack">WRÓĆ DO BIEŻĄCEGO</button></div>
+
+  <section class="frame news-strip" id="changes" aria-label="Co nowego"></section>
+
+  <section class="query" aria-label="Zapytanie do systemu">
+    <div class="q-row"><span>&gt;</span><input id="q" placeholder="ZAPYTAJ SYSTEM… np. DLACZEGO ORMUZ JEST ZAMKNIĘTY" autocomplete="off"><button class="btn" id="qGo">WYŚLIJ</button></div>
+    <div class="q-hints" id="qHints"></div>
+    <div class="q-out" id="qOut" hidden></div>
+  </section>
+
+  <section class="frame mainview" data-slide="map" aria-label="Widok główny">
+    <div class="frame-h">
+      <div class="views">
+        <button class="btn" data-view="map" aria-pressed="true">MAPA</button>
+        <button class="btn" data-view="chain" aria-pressed="false">ŁAŃCUCH PRZYCZYN</button>
+        <button class="btn" id="projBtn" aria-pressed="false">GLOBUS 3D</button>
+      </div>
+      <em id="theaterName">ŚWIAT</em>
+    </div>
+    <div class="maptools" id="maptools">
+      <div class="theaters" id="theaters"></div>
+      <div class="zoombar"><button class="btn" id="zin" aria-label="Przybliż">+</button><button class="btn" id="zout" aria-label="Oddal">−</button><button class="btn" id="zreset" aria-label="Cały świat">◎</button><span id="zoomlvl">×1</span></div>
+      <div class="layers" id="layers"></div>
+    </div>
+    <div class="mapgrid">
+      <div class="mapbox" id="mapbox">
+        <svg id="map" viewBox="0 0 960 480" role="img" aria-label="Mapa sytuacyjna świata"></svg>
+        <svg id="chain" viewBox="0 0 960 560" role="img" aria-label="Graf przyczyn i skutków" hidden></svg>
+        <div class="chain-empty" id="chainEmpty" hidden>Łańcuch przyczyn pojawi się po pierwszej analizie lokalnego AI.</div>
+      </div>
+      <div class="detail" id="detail" aria-live="polite"></div>
+    </div>
+    <div class="legend" id="legendMap">
+      <span><i style="background:var(--red)"></i>nowy / eskalacja</span>
+      <span><i style="background:var(--amber)"></i>trwający</span>
+      <span><i style="background:var(--violet)"></i>kruchy rozejm</span>
+      <span><i class="ln"></i>linia frontu</span><span><i class="ln dash"></i>przebieg sprzed zmiany</span>
+      <span>✕ uderzenie (czerwone: Rosja, cyjan: Ukraina)</span>
+      <span>◯ żegluga / zakłócenie</span>
+      <span>▲ trzęsienie · ◆ wulkan · ● cyklon</span>
+      <span>➤ samolot wojskowy (ADS-B)</span>
+      <span>AT obiekt jądrowy</span>
+    </div>
+    <div class="legend" id="legendChain" hidden>
+      <span><i style="background:var(--red)"></i>konflikt</span><span><i style="background:var(--amber)"></i>zdarzenie</span>
+      <span><i style="background:var(--cyan)"></i>rynek</span><span><i style="background:var(--violet)"></i>polityka</span>
+      <span><i style="background:var(--khaki)"></i>społeczeństwo</span><span><i style="background:var(--phos)"></i>natura</span>
+      <span>kliknij węzeł: przyczyny i skutki · przeciągaj, by układać</span>
+    </div>
+  </section>
+
+  <div class="grid">
+    <section class="frame keep" data-slide="feed" aria-label="Depesze">
+      <div class="frame-h"><span>&gt; STRUMIEŃ DEPESZ</span><em id="count">--</em></div>
+      <div class="tools" id="tabs"></div>
+      <div class="tools"><input id="search" type="search" placeholder="Szukaj w depeszach…" aria-label="Szukaj w depeszach"><button class="btn" id="unreadBtn" aria-pressed="false">NIEPRZECZYTANE</button><button class="btn" id="credBtn" aria-pressed="false">TYLKO A–B / 1–3</button></div>
+      <ul class="feed" id="feed"></ul>
+    </section>
+
+    <aside class="side">
+      <section class="frame keep" data-slide="panels">
+        <div class="frame-h"><span>&gt; BAROMETR RYNKOWY</span><em id="mkTime">na żywo</em></div>
+        <div class="markets" id="markets"></div>
+        <div class="note" id="mktNote"></div>
+      </section>
+      <section class="frame cap" data-slide="panels">
+        <div class="frame-h"><span>&gt; ŻEGLUGA</span><em id="shipCount"></em></div>
+        <ul class="rows" id="ship"></ul>
+      </section>
+      <section class="frame" data-slide="panels">
+        <div class="frame-h"><span>&gt; TREND NAPIĘCIA</span><em id="trendNote"></em></div>
+        <div class="trend"><svg id="trend" viewBox="0 0 320 110" aria-label="Poziom napięcia w czasie"></svg></div>
+      </section>
+      <section class="frame cap" data-slide="panels2">
+        <div class="frame-h"><span>&gt; KALENDARZ</span><em id="calCount"></em></div>
+        <div class="tools" id="calTabs"></div>
+        <ul class="rows" id="cal"></ul>
+      </section>
+      <section class="frame cap" data-slide="panels2">
+        <div class="frame-h"><span>&gt; REJESTR KONFLIKTÓW</span><em id="regCount"></em></div>
+        <ul class="rows" id="reg"></ul>
+      </section>
+    </aside>
+  </div>
+
+  <div class="intel">
+    <section class="frame cap" data-slide="war">
+      <div class="frame-h"><span>&gt; FRONTY</span><em id="frCount"></em></div>
+      <div id="fronts"></div>
+    </section>
+    <section class="frame" data-slide="war">
+      <div class="frame-h"><span>&gt; NOC NAD UKRAINĄ</span><em id="awCount"></em></div>
+      <div class="aw" id="airwar"></div>
+    </section>
+    <section class="frame cap" data-slide="war">
+      <div class="frame-h"><span>&gt; UDERZENIA DALEKIEGO ZASIĘGU</span><em>7 dni</em></div>
+      <ul class="rows" id="strikes"></ul>
+    </section>
+    <section class="frame cap" data-slide="war2">
+      <div class="frame-h"><span>&gt; RUCHY SIŁ</span><em id="forceCount"></em></div>
+      <ul class="rows" id="forces"></ul>
+    </section>
+    <section class="frame cap" data-slide="war2">
+      <div class="frame-h"><span>&gt; WSCHODNIA FLANKA NATO</span><em id="efCount"></em></div>
+      <ul class="rows" id="ef"></ul>
+    </section>
+    <section class="frame cap" data-slide="war2">
+      <div class="frame-h"><span>&gt; NIEBO</span><em id="airT"></em></div>
+      <ul class="rows" id="sky"></ul>
+    </section>
+    <section class="frame cap" data-slide="watch">
+      <div class="frame-h"><span>&gt; PROGNOZY</span><em>Polymarket</em></div>
+      <div id="pm"></div>
+    </section>
+    <section class="frame cap" data-slide="watch">
+      <div class="frame-h"><span>&gt; OBIEKTY JĄDROWE</span><em id="nkCount"></em></div>
+      <ul class="rows" id="nuke"></ul>
+    </section>
+    <section class="frame cap" data-slide="watch">
+      <div class="frame-h"><span>&gt; SANKCJE</span><em id="sancCount"></em></div>
+      <ul class="rows" id="sanc"></ul>
+    </section>
+    <section class="frame cap" data-slide="watch2">
+      <div class="frame-h"><span>&gt; HUMANITARNE I ZDROWIE</span><em id="humCount"></em></div>
+      <ul class="rows" id="hum"></ul>
+    </section>
+    <section class="frame cap" data-slide="watch2">
+      <div class="frame-h"><span>&gt; CYBER</span><em>CISA KEV · 14 dni</em></div>
+      <ul class="rows" id="kev"></ul>
+    </section>
+    <section class="frame cap" data-slide="watch2">
+      <div class="frame-h"><span>&gt; SIEĆ</span><em>IODA · 48 h</em></div>
+      <ul class="rows" id="net"></ul>
+    </section>
+    <section class="frame cap">
+      <div class="frame-h"><span>&gt; OSTRZEŻENIA PODRÓŻNE</span><em>USA · UK</em></div>
+      <ul class="rows" id="trv"></ul>
+    </section>
+    <section class="frame cap">
+      <div class="frame-h"><span>&gt; ZAGROŻENIA NATURALNE</span><em id="hazCount"></em></div>
+      <ul class="rows" id="haz"></ul>
+    </section>
+    <section class="frame cap">
+      <div class="frame-h"><span>&gt; STARTY RAKIET</span><em>Launch Library 2</em></div>
+      <ul class="rows" id="launch"></ul>
+    </section>
+    <section class="frame">
+      <div class="frame-h"><span>&gt; SITREP</span><em>raport na żądanie</em></div>
+      <div class="sitrep">
+        <div class="q-row small-row"><input id="sitIn" list="sitList" placeholder="Region lub temat, np. Bliski Wschód"><datalist id="sitList"></datalist><button class="btn" id="sitGo">GENERUJ</button></div>
+        <pre class="sit-out" id="sitOut" hidden></pre>
+      </div>
+    </section>
+    <section class="frame">
+      <div class="frame-h"><span>&gt; ORBITY</span><em id="satTime">SGP4</em></div>
+      <table class="sats"><thead><tr><th>Obiekt</th><th>Szer.</th><th>Dł.</th><th>Wys. km</th></tr></thead><tbody id="sats"></tbody></table>
+    </section>
+    <section class="frame">
+      <div class="frame-h"><span>&gt; STATUS SYSTEMU</span><em id="sysState"></em></div>
+      <div class="sys" id="sys"></div>
+    </section>
+    <section class="frame cap span2">
+      <div class="frame-h"><span>&gt; ŹRÓDŁA I FEEDY</span><em id="srcCount"></em></div>
+      <ul class="rows" id="srcs"></ul>
+    </section>
+  </div>
+
+  <p class="foot" id="foot"></p>
+</div>
+
+<div class="ticker" aria-hidden="true"><span class="ticker-in" id="ticker"></span></div>
+
+<script src="vendor/d3.min.js"></script>
+<script src="vendor/topojson-client.min.js"></script>
+<script src="vendor/satellite.min.js"></script>
+<script src="vendor/land.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
