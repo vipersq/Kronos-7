@@ -14,6 +14,27 @@ from kronos import analyst, collector, llm  # noqa: E402
 DATA = ROOT / "data"; ARCH = DATA / "archive"; WEB = ROOT / "web"
 ARCH.mkdir(parents=True, exist_ok=True)
 CFG = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
+SETTINGS_FILE = DATA / "settings.json"     # ustawienia operatora (poza gitem)
+TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+CALL_RE = re.compile(r"^[A-Za-z0-9ĄĆĘŁŃÓŚŹŻąćęłńóśźż/_.\- ]{1,20}$")
+
+
+def load_settings():
+    try:
+        return json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def apply_settings(st):
+    CFG["operator"] = {"callsign": st.get("callsign", ""), "name": st.get("name", "")}
+    if st.get("refresh_times"): CFG["refresh_times"] = st["refresh_times"]
+    if st.get("model"): CFG["ai"]["model"] = st["model"]
+    if "auto_pull" in st: CFG["ai"]["auto_pull"] = bool(st["auto_pull"])
+
+
+SETTINGS = load_settings()
+apply_settings(SETTINGS)
 
 LOG = deque(maxlen=300)
 def log(msg):
@@ -28,10 +49,10 @@ MARKETS = {"at": 0, "data": None}
 
 
 def load_state():
-    p = DATA / "state.json"
-    if p.exists():
-        try: return json.loads(p.read_text(encoding="utf-8"))
-        except Exception: log("state.json uszkodzony – start od zera")
+    for p in (DATA / "state.json", DATA / "seed.json"):     # seed.json: dane startowe z repozytorium
+        if p.exists():
+            try: return json.loads(p.read_text(encoding="utf-8"))
+            except Exception: log(f"{p.name} uszkodzony – pomijam")
     return {}
 
 
@@ -150,6 +171,44 @@ def get_markets(force=False):
     return MARKETS["data"] or {"items": [], "fetched": None}
 
 
+def settings_view():
+    st = ENGINE.status()
+    return {"callsign": CFG["operator"]["callsign"], "name": CFG["operator"]["name"],
+            "refresh_times": CFG.get("refresh_times", []), "model": CFG["ai"].get("model", "auto"),
+            "auto_pull": CFG["ai"].get("auto_pull", True), "installed": [m["name"] for m in st["installed"]],
+            "recommended": st["recommended"], "configured": bool(CFG["operator"]["callsign"])}
+
+
+def save_settings(body):
+    global SETTINGS
+    new = dict(SETTINGS)
+    if "callsign" in body:
+        c = str(body["callsign"]).strip().upper()
+        if not CALL_RE.match(c):
+            return False, "Identyfikator: 1–20 znaków, litery, cyfry oraz / - _ ."
+        new["callsign"] = c
+    if "name" in body:
+        new["name"] = str(body["name"]).strip()[:40]
+    if "refresh_times" in body:
+        t = [x for x in body["refresh_times"] if x]
+        if len(t) > 4 or not all(TIME_RE.match(x) for x in t):
+            return False, "Godziny briefingów w formacie GG:MM, najwyżej 4."
+        new["refresh_times"] = sorted(set(t))
+    if "model" in body:
+        m = str(body["model"]).strip()
+        if m != "auto" and m not in [x["name"] for x in ENGINE.installed] and ENGINE.backend != "lmstudio":
+            return False, f"Model {m} nie jest zainstalowany."
+        new["model"] = m
+    if "auto_pull" in body:
+        new["auto_pull"] = bool(body["auto_pull"])
+    SETTINGS = new
+    SETTINGS_FILE.write_text(json.dumps(new, ensure_ascii=False, indent=2), encoding="utf-8")
+    apply_settings(new)
+    ENGINE._choose()
+    log(f"Ustawienia zapisane (operator: {new.get('callsign') or '—'}).")
+    return True, None
+
+
 class H(BaseHTTPRequestHandler):
     server_version = "KRONOS7/3"
 
@@ -196,9 +255,11 @@ class H(BaseHTTPRequestHandler):
             return self._json(st)
         if p == "/api/status":
             ns = next_slot()
-            return self._json({"engine": ENGINE.status(), "job": JOB, "log": list(LOG)[-60:],
+            return self._json({"engine": ENGINE.status(), "job": JOB, "log": list(LOG)[-60:], "operator": CFG.get("operator"),
                                "stamp": STATE.get("stamp"), "next": ns.isoformat() if ns else None,
                                "sources": STATE.get("sources_report", [])})
+        if p == "/api/settings":
+            return self._json(settings_view())
         if p == "/api/markets":
             return self._json(get_markets("force" in self.path))
         m = re.match(r"^/api/archive/([\w\-]+)$", p)
@@ -224,6 +285,9 @@ class H(BaseHTTPRequestHandler):
 
     def do_POST(self):
         p = self.path.split("?")[0]
+        if p == "/api/settings":
+            ok, msg = save_settings(self._body())
+            return self._json({"ok": ok, "error": msg, "settings": settings_view()}, 200 if ok else 400)
         if p == "/api/refresh":
             return self._json({"started": run_refresh(), "job": JOB})
         if p == "/api/model/pull":
@@ -234,7 +298,8 @@ class H(BaseHTTPRequestHandler):
         if p == "/api/ask":
             q = (self._body().get("q") or "").strip()[:500]
             with STATE_LOCK: st = STATE
-            user = "DANE:\n" + analyst.context_for(st, q, ENGINE.ctx * 2) + "\n\nZAPYTANIE OPERATORA: " + q
+            op = CFG["operator"].get("name") or CFG["operator"].get("callsign") or "operator"
+            user = "DANE:\n" + analyst.context_for(st, q, ENGINE.ctx * 2) + f"\n\nZAPYTANIE OPERATORA ({op}): " + q
             return self._stream(ENGINE.chat_stream(analyst.ASK_SYS, user))
         if p == "/api/sitrep":
             region = (self._body().get("region") or "").strip()[:120]
@@ -247,7 +312,7 @@ class H(BaseHTTPRequestHandler):
 def main():
     port = int(os.environ.get("KRONOS_PORT", CFG.get("port", 7707)))
     st = ENGINE.status()
-    log("KRONOS-7 v3.1 · start")
+    log("KRONOS-7 v3.2 · start")
     log(f"Sprzęt: {st['hardware']['gpu_name']} · VRAM {st['hardware']['vram_gb']} GB · RAM {st['hardware']['ram_gb']} GB")
     log(f"AI: {st['backend'] or 'brak (zainstaluj Ollamę)'} · model: {st['model'] or '—'} · zalecany: {st['recommended']}")
     log(st["reason"])

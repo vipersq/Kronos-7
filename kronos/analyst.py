@@ -426,6 +426,7 @@ Jeśli nie ma takich wydarzeń, zwróć pustą listę.
                   "note": {"type": "string"}, "briefing": {"type": "string"}, "changes": {"type": "string"}, "markets": {"type": "string"}},
                   "required": ["level", "label", "note", "briefing", "changes", "markets"]}
         mk = "\n".join(f"- {m['label']}: {m.get('price')} ({m.get('change_pct', 0):+.1f}% / 5 dni)" for m in (st.get("markets_snapshot") or {}).get("items", []) if m.get("price"))
+        op = (self.cfg.get("operator") or {}).get("name") or (self.cfg.get("operator") or {}).get("callsign") or ""
         conf = "\n".join(f"- {c['name']}: {c.get('trend')} — {c.get('latest','')}" for c in st["conflicts"])
         crit = "\n".join(f"- {i['h']} ({i['p']})" for i in st["items"] if i["p"] in ("crit", "high"))[:3000]
         haz = "\n".join(f"- {h.get('name_pl', h['name'])} {h['mag']}" for h in st["hazards"][:10])
@@ -438,7 +439,7 @@ Jeśli nie ma takich wydarzeń, zwróć pustą listę.
         chg = st["changes"]
         prompt = f"""Oceń globalny poziom napięcia i przygotuj briefing.
 level: 1 (spokój) do 5 (kryzys globalny). label: jedno słowo (NISKI, UMIARKOWANY, PODWYŻSZONY, WYSOKI, KRYTYCZNY). note: główne ogniska, do 60 znaków.
-briefing: 120–170 słów po polsku do odczytania na głos przez komputer pokładowy; zacznij od "Raport KRONOS-7."; najważniejsze sprawy: co, gdzie, dlaczego. Bez list i skrótów trudnych do przeczytania.
+briefing: 120–170 słów po polsku do odczytania na głos przez komputer pokładowy; zacznij od "Raport KRONOS-7{(" dla operatora " + op) if op else ""}."; najważniejsze sprawy: co, gdzie, dlaczego. Bez list i skrótów trudnych do przeczytania.
 changes: 1–2 zdania, co zmieniło się od poprzedniego odczytu.
 markets: 1–2 zdania, co i DLACZEGO poruszyło rynkami (ropa, gaz, złoto, złoty, akcje), w powiązaniu z wydarzeniami.
 

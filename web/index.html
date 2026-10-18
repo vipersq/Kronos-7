@@ -14,14 +14,39 @@
   <div class="boot-in">
     <pre id="bootText"></pre>
     <div class="login" id="bootLogin"></div>
+    <form class="boot-setup" id="bootSetup" hidden autocomplete="off">
+      <label for="bootCall">PODAJ IDENTYFIKATOR OPERATORA:</label>
+      <div class="q-row"><span>&gt;</span><input id="bootCall" maxlength="20" placeholder="ZNAK, PSEUDONIM LUB INICJAŁY"><button class="btn" type="submit">ZATWIERDŹ</button></div>
+      <p class="set-msg" id="bootMsg"></p>
+    </form>
     <button class="btn" id="bootSkip">POMIŃ ▸</button>
   </div>
+</div>
+
+<div class="modal" id="settings" hidden role="dialog" aria-modal="true" aria-labelledby="setTitle">
+  <form class="modal-in frame" id="setForm" autocomplete="off">
+    <div class="frame-h"><span id="setTitle">&gt; KONFIGURACJA OPERATORA</span><button type="button" class="btn" id="setClose" aria-label="Zamknij">✕</button></div>
+    <div class="set-body">
+      <label for="setCall">Identyfikator operatora <small>znak wywoławczy, pseudonim lub inicjały; 1–20 znaków</small></label>
+      <input id="setCall" maxlength="20" required placeholder="np. SP1ABC">
+      <label for="setName">Jak system ma się do Ciebie zwracać <small>opcjonalnie, np. imię</small></label>
+      <input id="setName" maxlength="40" placeholder="np. Jan">
+      <fieldset><legend>Godziny automatycznej analizy</legend>
+        <input id="setT1" type="time" aria-label="Pierwsza analiza"><input id="setT2" type="time" aria-label="Druga analiza"><input id="setT3" type="time" aria-label="Trzecia analiza">
+      </fieldset>
+      <label for="setModel">Model AI</label>
+      <select id="setModel"></select>
+      <label class="chk"><input id="setPull" type="checkbox"> Automatycznie pobieraj zalecany model</label>
+      <p class="set-msg" id="setMsg" aria-live="polite"></p>
+    </div>
+    <div class="set-foot"><button type="submit" class="btn" id="setSave">ZAPISZ</button></div>
+  </form>
 </div>
 
 <div class="wrap">
   <header class="head">
     <div class="head-top">
-      <h1 class="brand glow">KRONOS-7<small>PLANETARNY SYSTEM WYWIADOWCZY · OPERATOR M6OER</small></h1>
+      <h1 class="brand glow">KRONOS-7<small>PLANETARNY SYSTEM WYWIADOWCZY · OPERATOR <span id="opName">—</span></small></h1>
       <div class="clocks glow">
         <div><span>UTC</span><b id="utc">--:--:--</b></div>
         <div><span>LOKALNY</span><b id="loc">--:--</b></div>
@@ -34,6 +59,7 @@
       <button class="btn" id="audioBtn" aria-pressed="false">AUDIO</button>
       <button class="btn" id="screenBtn" aria-pressed="false">TRYB EKRANU</button>
       <button class="btn" id="compactBtn" aria-pressed="false">KOMPAKT</button>
+      <button class="btn" id="setBtn">OPERATOR</button>
       <label for="day">ARCHIWUM</label><select id="day"></select>
     </div>
     <div class="jobbar" id="jobbar" hidden><i id="jobfill"></i><span id="jobtext"></span></div>

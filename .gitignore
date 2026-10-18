@@ -1,0 +1,11 @@
+# dane lokalne operatora
+data/state.json
+data/state.tmp
+data/archive/
+data/settings.json
+data/.deps_ok
+data/.no_ollama
+# Python
+__pycache__/
+*.pyc
+.venv/
