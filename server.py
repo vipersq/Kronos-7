@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """KRONOS-7 — lokalny serwer planetarnego systemu wywiadowczego.
 Uruchom:  python server.py   (potem przeglądarka: http://127.0.0.1:7707)"""
-import json, mimetypes, os, re, sys, threading, time, traceback, webbrowser
+import json, mimetypes, os, re, sys, threading, time, traceback, urllib.parse, webbrowser
 from collections import deque
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-from kronos import analyst, collector, live_air, live_sea, llm  # noqa: E402
+from kronos import analyst, collector, live_air, live_sea, llm, sats  # noqa: E402
 
 DATA = ROOT / "data"; ARCH = DATA / "archive"; WEB = ROOT / "web"
 ARCH.mkdir(parents=True, exist_ok=True)
@@ -71,6 +71,7 @@ STATE = load_state()
 ENGINE = llm.Engine(CFG, log)
 AIR = live_air.LiveAir(CFG, log)
 SEA = live_sea.LiveSea(CFG, log)
+SATS = sats.Catalog(DATA, log)
 
 
 def progress(step, pct):
@@ -284,6 +285,18 @@ class H(BaseHTTPRequestHandler):
         if p == "/api/air":
             m = re.search(r"since=(\d+)", self.path)
             return self._json(AIR.snapshot(int(m.group(1)) if m else 0))
+        if p == "/api/sats/groups":
+            ok = SATS.ensure()
+            return self._json({"ok": ok, "err": SATS.err, "groups": SATS.list_groups()})
+        m = re.match(r"^/api/sats/group/(\w+)$", p)
+        if m:
+            return self._json({"id": m.group(1), "sats": SATS.group(m.group(1))})
+        if p == "/api/sats/search":
+            q = urllib.parse.unquote_plus((re.search(r"q=([^&]*)", self.path) or [None, ""])[1])
+            return self._json({"results": SATS.search(q)})
+        if p == "/api/sats/tle":
+            ids = [int(x) for x in re.findall(r"\d+", (re.search(r"ids=([^&]*)", self.path) or [None, ""])[1])][:200]
+            return self._json({"sats": SATS.tles(ids)})
         if p == "/api/sea":
             m = re.search(r"since=(\d+)", self.path)
             return self._json(SEA.snapshot(int(m.group(1)) if m else 0))
@@ -339,7 +352,7 @@ class H(BaseHTTPRequestHandler):
 def main():
     port = int(os.environ.get("KRONOS_PORT", CFG.get("port", 7707)))
     st = ENGINE.status()
-    log("KRONOS-7 v3.4 · start")
+    log("KRONOS-7 v3.5 · start")
     log(f"Sprzęt: {st['hardware']['gpu_name']} · VRAM {st['hardware']['vram_gb']} GB · RAM {st['hardware']['ram_gb']} GB")
     log(f"AI: {st['backend'] or 'brak (zainstaluj Ollamę)'} · model: {st['model'] or '—'} · zalecany: {st['recommended']}")
     log(st["reason"])

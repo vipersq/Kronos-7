@@ -36,6 +36,41 @@
     </div>
   </div>
 </div>
+<div class="modal" id="layoutModal" hidden role="dialog" aria-modal="true" aria-labelledby="layTitle">
+  <div class="modal-in frame">
+    <div class="frame-h"><span id="layTitle">&gt; UKŁAD EKRANU</span><button type="button" class="btn" id="layClose" aria-label="Zamknij">✕</button></div>
+    <div class="set-body">
+      <label>Szerokość</label>
+      <div class="seg" id="layWidth"><button class="btn" data-w="full">PEŁNA</button><button class="btn" data-w="center">WYŚRODKOWANA</button><button class="btn" data-w="narrow">WĄSKA</button></div>
+      <label for="layScale">Wielkość tekstu i przycisków <small id="layScaleV"></small></label>
+      <input id="layScale" type="range" min="60" max="170" step="5">
+      <label for="layMap">Wysokość mapy <small id="layMapV"></small></label>
+      <input id="layMap" type="range" min="25" max="100" step="5">
+      <label class="chk"><input id="layAuto" type="checkbox"> Mapa: wysokość automatyczna (dopasowana do okna)</label>
+      <div class="set-foot" style="padding:8px 0 0;justify-content:space-between"><button class="btn" id="layReset" type="button">DOMYŚLNE</button><button class="btn" id="layFs" type="button">PEŁNY EKRAN (F11)</button></div>
+    </div>
+  </div>
+</div>
+<div class="modal" id="satModal" hidden role="dialog" aria-modal="true" aria-labelledby="satTitle">
+  <div class="modal-in sit-modal frame">
+    <div class="frame-h"><span id="satTitle">&gt; SATELITY NA MAPIE</span><button type="button" class="btn" id="satClose" aria-label="Zamknij">✕</button></div>
+    <div class="sat-body">
+      <div class="sat-col">
+        <p class="sat-h">GRUPY · cała grupa jako punkty na mapie</p>
+        <label class="chk"><input type="checkbox" id="satBase"> Podstawowe: ISS, Tiangong, krótkofalarskie (z trasami)</label>
+        <div id="satGroups"><p class="empty">Ładowanie katalogu CelesTrak…</p></div>
+      </div>
+      <div class="sat-col">
+        <p class="sat-h">WYSZUKAJ I PRZYPNIJ · przypięte mają nazwę i trasę orbity</p>
+        <input id="satQ" type="search" placeholder="np. ISS, YAOGAN, USA 245, COSMOS, numer NORAD" autocomplete="off">
+        <ul class="rows" id="satRes"></ul>
+        <p class="sat-h">PRZYPIĘTE</p>
+        <ul class="rows" id="satPins"></ul>
+      </div>
+    </div>
+    <p class="hint sat-note">Dane: CelesTrak, odświeżane co 12 h. Grupa „wojskowe” obejmuje satelity, których orbity są publiczne albo wyznaczone przez obserwatorów (m.in. USA, Kosmos, Yaogan, SAR-Lupe). Satelity całkowicie niejawne trafiają do „niezidentyfikowanych” bez nazw albo nie ma ich wcale.</p>
+  </div>
+</div>
 <div class="modal" id="settings" hidden role="dialog" aria-modal="true" aria-labelledby="setTitle">
   <form class="modal-in frame" id="setForm" autocomplete="off">
     <div class="frame-h"><span id="setTitle">&gt; KONFIGURACJA OPERATORA</span><button type="button" class="btn" id="setClose" aria-label="Zamknij">✕</button></div>
@@ -78,6 +113,9 @@
       <button class="btn" id="audioBtn" aria-pressed="false">AUDIO</button>
       <button class="btn" id="screenBtn" aria-pressed="false">TRYB EKRANU</button>
       <button class="btn" id="compactBtn" aria-pressed="false">KOMPAKT</button>
+      <button class="btn" id="layoutBtn">EKRAN</button>
+      <button class="btn" id="fsBtn" aria-pressed="false">PEŁNY EKRAN</button>
+      <button class="btn" id="satBtn">SATELITY</button>
       <button class="btn" id="setBtn">OPERATOR</button>
       <label for="day">ARCHIWUM</label><select id="day"></select>
     </div>
@@ -247,6 +285,7 @@
     </section>
     <section class="frame">
       <div class="frame-h"><span>&gt; ORBITY</span><em id="satTime">SGP4</em></div>
+      <div class="sat-sum"><span id="satSum">Podstawowe satelity</span><button class="btn" id="satBtn2">WYBÓR SATELITÓW</button></div>
       <table class="sats"><thead><tr><th>Obiekt</th><th>Szer.</th><th>Dł.</th><th>Wys. km</th></tr></thead><tbody id="sats"></tbody></table>
     </section>
     <section class="frame">

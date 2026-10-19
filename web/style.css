@@ -1,6 +1,7 @@
 /* KRONOS-7 v3 — CRT intel console. Układ: nagłówek z szyną stanu, pasek zmian, linia zapytań, widok główny (mapa/graf + odczyt), depesze obok stosu paneli. Jeden ciemny wygląd z wyboru. */
 :root{
-  --u:clamp(1px,.0625vw,1.7px);   /* jednostka skalująca: 1 px przy 1600 px szerokości, rośnie na większych ekranach */
+  --scale:1;
+  --u:calc(clamp(1px,.0625vw,1.7px) * var(--scale));   /* jednostka skalująca: 1 px przy 1600 px szerokości, rośnie na większych ekranach */
   --void:#030806; --panel:#06120c;
   --phos:#7dffa8; --phos-dim:#3c9a62; --phos-faint:#1b4a30; --text:#b9f5cf;
   --amber:#ffb547; --red:#ff5a4a; --cyan:#6fe4ff; --violet:#c99bff; --khaki:#f0e68c; --white:#f2fff6;
@@ -18,7 +19,7 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:60;bac
 body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:59;background:radial-gradient(ellipse at center,transparent 50%,rgba(0,0,0,.7) 100%)}
 body.alert::before{background:radial-gradient(ellipse at center,transparent 45%,rgba(120,0,0,.55) 100%);animation:redpulse 1.6s ease-in-out infinite}
 @keyframes redpulse{50%{opacity:.45}}
-.wrap{max-width:none;margin:0 auto;display:grid;gap:14px;position:relative;z-index:1}
+.wrap{max-width:var(--wrapmax,none);margin:0 auto;display:grid;gap:14px;position:relative;z-index:1}
 .glow{text-shadow:0 0 6px color-mix(in srgb,var(--phos) 55%,transparent),0 0 14px color-mix(in srgb,var(--phos) 18%,transparent)}
 a{color:var(--cyan);text-decoration:none;border-bottom:1px dotted var(--cyan)}
 a:hover,a:focus-visible{color:var(--void);background:var(--cyan);outline:none}
@@ -89,7 +90,7 @@ body.alert .banner{display:block;animation:blink 1s steps(1) infinite}
 /* mapa i graf */
 .mapgrid{display:grid;grid-template-columns:minmax(0,1fr) clamp(300px,22vw,560px);align-items:stretch}
 @media (max-width:1060px){.mapgrid{grid-template-columns:minmax(0,1fr)}}
-.mapbox{position:relative;border-right:1px solid var(--phos-faint);min-width:0;background:var(--ocean);height:clamp(260px,min(74vh,64vw),1800px)}
+.mapbox{position:relative;border-right:1px solid var(--phos-faint);min-width:0;background:var(--ocean);height:var(--maph,clamp(260px,min(74vh,64vw),1800px))}
 @media (max-width:1060px){.mapbox{border-right:0;border-bottom:1px solid var(--phos-faint)}}
 #map,#chain{display:block;width:100%;height:100%;max-width:100%}
 #map.globe{cursor:grab}#map.globe:active{cursor:grabbing}
@@ -121,7 +122,7 @@ body.alert .banner{display:block;animation:blink 1s steps(1) infinite}
 .legend i{display:inline-block;width:9px;height:9px;margin-right:5px;vertical-align:0}
 
 /* odczyt */
-.detail{padding:12px 14px;display:grid;gap:10px;align-content:start;min-width:0;max-height:clamp(260px,min(74vh,64vw),1800px);overflow:auto}
+.detail{padding:12px 14px;display:grid;gap:10px;align-content:start;min-width:0;max-height:var(--maph,clamp(260px,min(74vh,64vw),1800px));overflow:auto}
 @media (max-width:1060px){.detail{max-height:none}}
 .detail h2{margin:0;font-family:var(--f-display);font-weight:400;font-size:calc(28*var(--u));line-height:1;text-wrap:balance}
 .dl{display:grid;gap:8px;margin:0}
@@ -353,3 +354,19 @@ button.stat:hover{background:color-mix(in srgb,var(--phos) 6%,var(--void))}
 .set-row{display:flex;gap:6px}.set-row input{flex:1}
 #map .mk.ship .core{stroke:var(--void);stroke-width:.6}
 #map .shtrail{fill:none;stroke-width:.9;opacity:.5;vector-effect:non-scaling-stroke;stroke-dasharray:2 2}
+
+/* ---- v3.5: układ ekranu i satelity ---- */
+.seg{display:flex;gap:4px;flex-wrap:wrap}
+.seg .btn[aria-pressed=true]{background:var(--phos);color:var(--void)}
+.sat-sum{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px dashed var(--phos-faint);font-size:calc(12*var(--u));color:var(--phos-dim)}
+.sat-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:14px;padding:12px 16px;overflow:auto;flex:1}
+@media (max-width:700px){.sat-body{grid-template-columns:minmax(0,1fr)}}
+.sat-col{display:grid;gap:6px;align-content:start;min-width:0}
+.sat-h{margin:6px 0 0;font-size:calc(11*var(--u));letter-spacing:.14em;color:var(--phos-dim)}
+.sat-col .chk{display:flex;gap:8px;align-items:center;font-size:calc(12.5*var(--u));color:var(--text)}
+.sat-col .chk i{width:10px;height:10px;border-radius:50%;flex:none}
+.sat-col .chk em{margin-left:auto;font-style:normal;color:var(--phos-dim)}
+#satQ{background:var(--void);border:1px solid var(--phos-faint);color:var(--phos);font-family:var(--f-display);font-size:calc(18*var(--u));padding:3px 8px;width:100%}
+#satRes,#satPins{max-height:32vh;overflow:auto}
+.sat-note{padding:0 16px 12px;margin:0}
+#map .satcloud{fill:none;stroke-linecap:round;vector-effect:non-scaling-stroke;pointer-events:none}

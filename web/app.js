@@ -1,4 +1,4 @@
-/* KRONOS-7 v3.4 — interfejs terminala. Dane: lokalny serwer (/api/*). */
+/* KRONOS-7 v3.5 — interfejs terminala. Dane: lokalny serwer (/api/*). */
 (function () {
 "use strict";
 const $ = s => document.querySelector(s);
@@ -46,6 +46,9 @@ const L = (u, n) => u ? `<a href="${esc(u)}" target="_blank" rel="noopener">${es
 function dd(rows) { return `<dl class="dl">${rows.filter(r => r && r[1] != null && r[1] !== "").map(r => `<dt>${r[0]}</dt><dd>${r[2] ? r[1] : esc(r[1])}</dd>`).join("")}</dl>`; }
 
 const AIR = { ok: false, d: null, mk: {}, skew: 0, lastEv: 0, first: true, at: 0 };
+const SATSEL = Object.assign({ base: true, groups: [], pins: [] }, store.get("satsel", {}));
+let SATPIN = [];                      // [nazwa, norad, l1, l2] przypiętych
+const SATG = {};                      // grupa -> { recs:[{name,norad,rec,l1}], el:path, pts:[] }
 const SEA = { ok: false, d: null, mk: {}, skew: 0, lastEv: 0, first: true, trail: null };
 let S = {}, CURRENT = null, ARCH = false, STATUS = null, MK = null, selected = null;
 const F = () => S.feeds || {};
@@ -158,6 +161,7 @@ function redraw() {
   dots.forEach(d => { const vis = visible(d.lon, d.lat), p = vis && proj([d.lon, d.lat]);
     if (!p) { d.el.style.display = "none"; return; } d.el.style.display = ""; d.el.setAttribute("cx", p[0].toFixed(2)); d.el.setAttribute("cy", p[1].toFixed(2)); });
   placeMarkers(); zoomClasses();
+  if (SATSEL.groups.length && (mode === "globe" || !redraw.cloudT || Date.now() - redraw.cloudT > 400)) { redraw.cloudT = Date.now(); satCloud(); }
 }
 function zoomClasses() { placeLive(true); placeSea(); const k = mode === "globe" ? 1 : T.k; svg.classed("z3", k >= 3).classed("z6", k >= 6); $("#zoomlvl").textContent = mode === "globe" ? "3D" : "×" + (k < 10 ? k.toFixed(1) : Math.round(k)); }
 function loadHi() {
@@ -249,7 +253,7 @@ function gdot(layer, lat, lon, r, style, id) { const c = G[layer].append("circle
   if (id) c.attr("data-id", id).style("cursor", "pointer").on("click", () => go(id)); dots.push({ el: c.node(), lon, lat }); return c; }
 
 function buildMap() {
-  DRAW_ORDER.filter(k => k !== "night" && k !== "airlive" && k !== "vessel").forEach(k => G[k].selectAll("*").remove()); markers = []; dots = []; geoPaths = [];
+  DRAW_ORDER.filter(k => k !== "night" && k !== "airlive" && k !== "vessel").forEach(k => G[k].selectAll(":scope > :not(.satcloud)").remove()); markers = []; dots = []; geoPaths = [];
   const f = F(), ch = S.changes || {}, nm = ch.new_mods || {};
   const isNew = (k, id) => A(nm[k]).includes(id);
   if (f.gpsjam && f.gpsjam.pts) f.gpsjam.pts.forEach(d => gdot("gps", d[0], d[1], .55, { fill: d[2] >= .3 ? "var(--red)" : "var(--amber)", opacity: .15 + d[2] * .45, "pointer-events": "none" }));
@@ -299,11 +303,14 @@ function buildMap() {
 
 /* satelity */
 let satrecs = [], satMarkers = [], satPaths = [];
-function initSats() { satrecs = []; A(S.tle).concat(A(F().celestrak)).forEach(t => { try { satrecs.push({ name: t[0], rec: satellite.twoline2satrec(t[1], t[2]) }); } catch (e) {} }); }
+function initSats() { satrecs = [];
+  (SATSEL.base ? A(S.tle).concat(A(F().celestrak)) : []).concat(SATPIN.map(p => [p[0], p[2], p[3], p[1]])).forEach(t => {
+    if (satrecs.some(x => x.name === t[0])) return;
+    try { satrecs.push({ name: t[0], rec: satellite.twoline2satrec(t[1], t[2]), norad: t[3] || +t[1].slice(2, 7) }); } catch (e) {} }); }
 function satAt(rec, date) { const pv = satellite.propagate(rec, date); if (!pv || !pv.position) return null;
   const gd = satellite.eciToGeodetic(pv.position, satellite.gstime(date)); return { lat: satellite.degreesLat(gd.latitude), lon: satellite.degreesLong(gd.longitude), alt: gd.height }; }
 function drawSats(noRedraw) {
-  G.sat.selectAll("*").remove();
+  G.sat.selectAll(":scope > :not(.satcloud)").remove();
   markers = markers.filter(m => !satMarkers.includes(m)); geoPaths = geoPaths.filter(g => !satPaths.includes(g)); satMarkers = []; satPaths = [];
   const now = new Date(), rows = [];
   satrecs.forEach((s, i) => {
@@ -455,6 +462,115 @@ function renderSea() {
   if (hot.length) h += `<li class="hd">Jednostki wojskowe i straży</li>` + hot.map(r => `<li><button data-go="vs:${r.mmsi}"><span class="t">${esc(r.flag_e || "")} ${esc(r.name || r.mmsi)}</span>${chip(SCN[r.cat], SCOL[r.cat])}<span class="sub">${esc(r.flag || "")} · ${esc(r.zone || fmtLL(r.lat, r.lon))} · ${agoTxt(Math.round((now - r.ts) / 1000))}</span></button></li>`).join("");
   rowsInto("#sea", h);
 }
+
+/* ------------------------------------------------------------ WYBÓR SATELITÓW (katalog CelesTrak) */
+let SATCAT = null;
+const GCOL = { stations: "var(--white)", military: "var(--red)", analyst: "var(--violet)", gnss: "var(--amber)", weather: "var(--cyan)", earth: "var(--khaki)",
+  comms: "#9fd3ff", amateur: "var(--phos)", science: "#ffd6a8", starlink: "#5e8f74", oneweb: "#6f88a8", kuiper: "#a88f6f", china_mega: "#c76f6f", iridium: "#8a8a8a", all: "#4c6a58" };
+const saveSatSel = () => store.set("satsel", SATSEL);
+async function loadSatGroup(id) {
+  if (SATG[id] && SATG[id].recs) return SATG[id];
+  const d = await api("/api/sats/group/" + id), recs = [];
+  A(d.sats).forEach(t => { try { recs.push({ name: t[0], norad: t[1], l1: t[2], rec: satellite.twoline2satrec(t[2], t[3]) }); } catch (e) {} });
+  const el = G.sat.insert("path", ":first-child").attr("class", "satcloud").style("stroke", GCOL[id] || "var(--phos-dim)")
+    .style("stroke-width", id === "all" || id === "starlink" ? 2.2 : 3.4).node();
+  return SATG[id] = { recs, el, pts: [] };
+}
+async function loadPins() {
+  if (!SATSEL.pins.length) { SATPIN = []; return; }
+  try { SATPIN = A((await api("/api/sats/tle?ids=" + SATSEL.pins.join(","))).sats); } catch (e) {}
+}
+function satCloud() {
+  const now = new Date(), gmst = satellite.gstime(now); let n = 0;
+  Object.entries(SATG).forEach(([id, g]) => {
+    if (!g.el) return; const on = SATSEL.groups.includes(id); g.el.style.display = on ? "" : "none"; if (!on) { g.pts = []; return; }
+    let d = ""; g.pts = [];
+    g.recs.forEach(r => { const pv = satellite.propagate(r.rec, now); if (!pv || !pv.position) return;
+      const gd = satellite.eciToGeodetic(pv.position, gmst), lat = satellite.degreesLat(gd.latitude), lon = satellite.degreesLong(gd.longitude);
+      r.last = { lat, lon, alt: gd.height }; if (!visible(lon, lat)) return; const p = proj([lon, lat]); if (!p) return;
+      d += `M${p[0].toFixed(1)},${p[1].toFixed(1)}h0`; g.pts.push([p[0], p[1], r]); n++; });
+    g.el.setAttribute("d", d);
+  });
+  return n;
+}
+function renderSatSum() {
+  const g = SATSEL.groups.map(id => (SATCAT && (SATCAT.groups.find(x => x.id === id) || {}).label || id).split(" (")[0]);
+  const n = Object.entries(SATG).filter(([id]) => SATSEL.groups.includes(id)).reduce((a, [, x]) => a + x.recs.length, 0);
+  $("#satSum").textContent = (SATSEL.base ? "Podstawowe" : "") + (g.length ? (SATSEL.base ? " + " : "") + g.join(", ") + ` (${n})` : "") + (SATPIN.length ? ` · przypięte: ${SATPIN.length}` : "") || "Brak satelitów na mapie";
+}
+async function applySats() {
+  for (const id of SATSEL.groups) { try { await loadSatGroup(id); } catch (e) {} }
+  await loadPins(); initSats(); drawSats(); satCloud(); renderSatSum();
+}
+/* klik w punkt z chmury satelitów */
+svg.on("click.satcloud", ev => {
+  if (ev.target.closest && ev.target.closest(".mk")) return; if (!SATSEL.groups.length) return;
+  const [x, y] = d3.pointer(ev, root.node()), k = mode === "globe" ? 1 : T.k, lim = 7 / k; let best = null, bd = lim * lim;
+  Object.values(SATG).forEach(g => g.pts.forEach(p => { const dd = (p[0] - x) ** 2 + (p[1] - y) ** 2; if (dd < bd) { bd = dd; best = p[2]; } }));
+  if (best) { ev.stopPropagation(); SATCLICK = best; pick("sc:" + best.norad); }
+});
+let SATCLICK = null;
+function satInfo(r) {
+  const l1 = r.l1 || "", l2 = r.rec, mm = r.rec.no * 1440 / (2 * Math.PI), per = 1440 / mm, inc = r.rec.inclo * 180 / Math.PI, alt = r.last ? Math.round(r.last.alt) : null;
+  const yy = +l1.slice(9, 11), year = isNaN(yy) ? null : (yy < 57 ? 2000 + yy : 1900 + yy);
+  const orbit = alt == null ? "" : alt > 34000 && alt < 37000 ? "geostacjonarna (GEO)" : alt > 2000 && alt < 34000 ? "średnia (MEO)" : r.rec.ecco > .25 ? "eliptyczna (HEO)" : "niska (LEO)";
+  return { per, inc, alt, year, orbit };
+}
+async function openSatModal() {
+  $("#satModal").hidden = false; $("#satBase").checked = SATSEL.base; $("#satQ").focus(); renderPins();
+  try { SATCAT = await api("/api/sats/groups"); } catch (e) { SATCAT = null; }
+  $("#satGroups").innerHTML = SATCAT && SATCAT.groups.some(g => g.n) ? SATCAT.groups.map(g => `<label class="chk"><input type="checkbox" data-sg="${g.id}"${SATSEL.groups.includes(g.id) ? " checked" : ""}><i style="background:${GCOL[g.id]}"></i>${esc(g.label)}<em>${g.n}</em></label>`).join("")
+    : `<p class="empty">Nie udało się pobrać katalogu z CelesTrak${SATCAT && SATCAT.err ? " (" + esc(SATCAT.err) + ")" : ""}. Spróbuj później.</p>`;
+  $("#satGroups").querySelectorAll("[data-sg]").forEach(c => c.addEventListener("change", async () => {
+    const id = c.dataset.sg; SATSEL.groups = SATSEL.groups.filter(x => x !== id); if (c.checked) SATSEL.groups.push(id); saveSatSel();
+    if (c.checked && (id === "all" || id === "starlink")) $("#satSum").textContent = "Wczytywanie " + id + "…";
+    await applySats(); ensureLayer("sat");
+  }));
+}
+function renderPins() {
+  $("#satPins").innerHTML = SATPIN.length ? SATPIN.map(p => `<li><button data-unpin="${p[1]}"><span class="t">${esc(p[0])}</span><span class="dim">ODEPNIJ</span><span class="sub">NORAD ${p[1]}</span></button></li>`).join("") : '<li class="empty">Nic nie przypięto.</li>';
+  $("#satPins").querySelectorAll("[data-unpin]").forEach(b => b.addEventListener("click", async () => { SATSEL.pins = SATSEL.pins.filter(x => x !== +b.dataset.unpin); saveSatSel(); await applySats(); renderPins(); }));
+}
+let satQT = null;
+$("#satQ").addEventListener("input", () => { clearTimeout(satQT); satQT = setTimeout(async () => {
+  const q = $("#satQ").value.trim(); if (q.length < 2) { $("#satRes").innerHTML = ""; return; }
+  $("#satRes").innerHTML = '<li class="empty">Szukam…</li>';
+  let r = []; try { r = A((await api("/api/sats/search?q=" + encodeURIComponent(q))).results); } catch (e) {}
+  const lab = id => (SATCAT && (SATCAT.groups.find(x => x.id === id) || {}).label || id).split(" (")[0].split(" i ")[0];
+  $("#satRes").innerHTML = r.length ? r.map(x => `<li><button data-pin="${x.id}"><span class="t">${esc(x.name)}</span><span class="${SATSEL.pins.includes(x.id) ? "dim" : ""}">${SATSEL.pins.includes(x.id) ? "PRZYPIĘTY" : "PRZYPNIJ"}</span><span class="sub">NORAD ${x.id}${x.groups.length ? " · " + x.groups.map(lab).join(", ") : ""}</span></button></li>`).join("") : '<li class="empty">Brak wyników.</li>';
+  $("#satRes").querySelectorAll("[data-pin]").forEach(b => b.addEventListener("click", async () => {
+    const id = +b.dataset.pin; if (!SATSEL.pins.includes(id)) { SATSEL.pins.push(id); saveSatSel(); } b.querySelector("span:nth-child(2)").textContent = "PRZYPIĘTY";
+    await applySats(); renderPins(); ensureLayer("sat"); }));
+}, 250); });
+$("#satBase").addEventListener("change", async () => { SATSEL.base = $("#satBase").checked; saveSatSel(); await applySats(); });
+[$("#satBtn"), $("#satBtn2")].forEach(b => b.addEventListener("click", openSatModal));
+$("#satClose").addEventListener("click", () => { $("#satModal").hidden = true; });
+$("#satModal").addEventListener("click", e => { if (e.target.id === "satModal") $("#satModal").hidden = true; });
+
+/* ------------------------------------------------------------ UKŁAD EKRANU */
+const LAY = Object.assign({ w: "full", scale: 100, map: 74, auto: true }, store.get("layout", {}));
+function applyLayout() {
+  const R = document.documentElement.style;
+  R.setProperty("--scale", LAY.scale / 100);
+  R.setProperty("--wrapmax", LAY.w === "center" ? "1500px" : LAY.w === "narrow" ? "1100px" : "none");
+  if (LAY.auto) R.removeProperty("--maph"); else R.setProperty("--maph", `max(220px, ${LAY.map}vh)`);
+  $$("#layWidth [data-w]").forEach(b => b.setAttribute("aria-pressed", b.dataset.w === LAY.w));
+  $("#layScale").value = LAY.scale; $("#layScaleV").textContent = LAY.scale + "%"; $("#layMap").value = LAY.map; $("#layMapV").textContent = LAY.auto ? "automatyczna" : LAY.map + "% wysokości okna";
+  $("#layMap").disabled = LAY.auto; $("#layAuto").checked = LAY.auto; store.set("layout", LAY);
+}
+$$("#layWidth [data-w]").forEach(b => b.addEventListener("click", () => { LAY.w = b.dataset.w; applyLayout(); }));
+$("#layScale").addEventListener("input", e => { LAY.scale = +e.target.value; applyLayout(); });
+$("#layMap").addEventListener("input", e => { LAY.map = +e.target.value; applyLayout(); });
+$("#layAuto").addEventListener("change", e => { LAY.auto = e.target.checked; applyLayout(); });
+$("#layReset").addEventListener("click", () => { Object.assign(LAY, { w: "full", scale: 100, map: 74, auto: true }); applyLayout(); });
+$("#layoutBtn").addEventListener("click", () => { $("#layoutModal").hidden = false; $("#layClose").focus(); });
+$("#layClose").addEventListener("click", () => { $("#layoutModal").hidden = true; });
+$("#layoutModal").addEventListener("click", e => { if (e.target.id === "layoutModal") $("#layoutModal").hidden = true; });
+function toggleFs() { if (document.fullscreenElement) document.exitFullscreen(); else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {}); }
+$("#fsBtn").addEventListener("click", toggleFs); $("#layFs").addEventListener("click", toggleFs);
+document.addEventListener("fullscreenchange", () => $("#fsBtn").setAttribute("aria-pressed", !!document.fullscreenElement));
+document.addEventListener("keydown", e => { if (e.key === "Escape") { $("#layoutModal").hidden = true; $("#satModal").hidden = true; } });
+applyLayout();
 
 /* ------------------------------------------------------------ ŁAŃCUCH PRZYCZYN */
 const csvg = d3.select("#chain"), CW = 960, CH = 560;
@@ -647,6 +763,15 @@ function pick(id, silent) {
     const s = satrecs[+key]; if (!s) return; const p = s.last || {};
     h = `${chip("OBIEKT ORBITALNY", "var(--cyan)")}<h2 class="glow">${esc(s.name)}</h2>` + dd([["POZYCJA", p.lat != null ? fmtLL(p.lat, p.lon) : "–"], ["WYSOKOŚĆ", p.alt ? Math.round(p.alt) + " km" : "–"],
       ["TOR", "Linia przerywana: najbliższe ok. 95 minut lotu."], ["DANE", "TLE (AMSAT, CelesTrak), propagacja SGP4 na żywo."]]);
+  } else if (t === "sc") {
+    let r = null; Object.values(SATG).some(g => (r = g.recs.find(x => String(x.norad) === key))); if (!r && SATCLICK && String(SATCLICK.norad) === key) r = SATCLICK;
+    if (!r) return; const inf = satInfo(r), grp = Object.entries(SATG).filter(([, g]) => g.recs.some(x => x.norad === r.norad)).map(([id]) => (SATCAT && (SATCAT.groups.find(x => x.id === id) || {}).label || id).split(" (")[0]);
+    h = chip("SATELITA", GCOL[Object.keys(SATG).find(id => SATG[id].recs.includes(r))] || "var(--cyan)") + `<h2 class="glow">${esc(r.name)}</h2>` + dd([
+      ["GRUPA", grp.join(", ")], ["POZYCJA", r.last ? fmtLL(r.last.lat, r.last.lon) : null], ["WYSOKOŚĆ", inf.alt != null ? inf.alt + " km" : null], ["ORBITA", inf.orbit],
+      ["OKRES OBIEGU", inf.per ? Math.round(inf.per) + " min" : null], ["INKLINACJA", inf.inc.toFixed(1) + "°"], ["ROK STARTU", inf.year], ["NORAD", r.norad],
+      ["SZCZEGÓŁY", L("https://www.n2yo.com/satellite/?s=" + r.norad, "n2yo.com"), 1]]) +
+      `<div class="dbtns"><button class="btn" id="pinSc">PRZYPNIJ (TRASA I NAZWA)</button></div>`;
+    setTimeout(() => { const b = $("#pinSc"); if (b) b.addEventListener("click", async () => { if (!SATSEL.pins.includes(r.norad)) { SATSEL.pins.push(r.norad); saveSatSel(); await applySats(); } b.textContent = "PRZYPIĘTY"; }); });
   } else if (t === "vs") { const r = A(SEA.d && SEA.d.ships).find(x => String(x.mmsi) === key);
     if (!r) h = chip("AIS", "var(--cyan)") + `<h2 class="glow">MMSI ${esc(key)}</h2><p class="hint">Statek przestał nadawać albo wypłynął poza zasięg odbiorników.</p>`;
     else { const now = Date.now() + SEA.skew, p = seaPos(r, now), age = Math.round((now - r.ts) / 1000), NAV = ["w drodze (silnik)", "na kotwicy", "bez napędu", "ograniczona manewrowość", "ograniczony zanurzeniem", "zacumowany", "na mieliźnie", "połów", "w drodze (żagle)"];
@@ -1143,7 +1268,7 @@ function boot(done) {
   let seen = false; try { seen = sessionStorage.getItem("k7-boot") === "1"; } catch (e) { seen = true; }
   if (!needSetup && (seen || reduce)) return done();
   const B = $("#boot"); B.hidden = false; const e = STATUS ? STATUS.engine : null, C = CURRENT || {};
-  const lines = ["KRONOS-7 PLANETARY INTELLIGENCE · v3.4", "TEST PAMIĘCI ........ OK",
+  const lines = ["KRONOS-7 PLANETARY INTELLIGENCE · v3.5", "TEST PAMIĘCI ........ OK",
     "PROCESOR GRAFICZNY .. " + (e ? e.hardware.gpu_name + (e.hardware.vram_gb ? " / " + e.hardware.vram_gb + " GB" : "") : "?"),
     "RDZEŃ ANALITYCZNY ... " + (e && e.model ? e.model.toUpperCase() : "NIEAKTYWNY"),
     "BAZA KONFLIKTÓW ..... " + A(C.conflicts).length + " WĘZŁÓW", "FRONTY .............. " + A(C.fronts).length + " TEATRÓW",
@@ -1183,7 +1308,8 @@ if (window.ResizeObserver) new ResizeObserver(() => { const h = $("#map").getBou
   if (mode === "flat") setTheater(theater || "world", false);
   loadMarkets(); setInterval(loadMarkets, 5 * 60 * 1000);
   pollStatus();
-  setInterval(() => { if (satrecs.length) drawSats(); if (selected && selected.startsWith("s:")) pick(selected, true); }, 5000);
+  setInterval(() => { if (satrecs.length) drawSats(); satCloud(); if (selected && (selected.startsWith("s:") || selected.startsWith("sc:"))) pick(selected, true); }, 5000);
+  applySats();
   setInterval(() => { updNight(); if (nightGeo) { pNight.attr("d", path(nightGeo)); pTwi.attr("d", path(nightGeo)); } }, 60000);
   boot(() => {});
 })();

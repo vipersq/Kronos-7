@@ -120,7 +120,18 @@ Dane startowe w repozytorium (`data/seed.json`) to odczyt z 18.10.2026, 14:33. P
 
 ## Funkcje terminala
 
-- Układ dopasowuje się do ekranu (od telefonu po 4K), mapa wypełnia dostępną wysokość okna.
+- Układ dopasowuje się do ekranu (od telefonu po 4K). Przycisk **EKRAN** pozwala ustawić:
+  - szerokość: pełna, wyśrodkowana albo wąska;
+  - wielkość tekstu i przycisków (60–170%);
+  - wysokość mapy.
+
+  **PEŁNY EKRAN** ukrywa pasek przeglądarki.
+- **SATELITY**: wybór grup z katalogu CelesTrak (około 16 000 aktywnych). Grupy to m.in.:
+  - wojskowe i rozpoznawcze (USA, Kosmos, Yaogan, SAR-Lupe i inne), obiekty niezidentyfikowane;
+  - nawigacyjne (GPS, GLONASS, Galileo, BeiDou), meteorologiczne, obserwacji Ziemi;
+  - Starlink, OneWeb, Kuiper, Qianfan.
+
+  Grupy pojawiają się na mapie jako punkty, które można kliknąć. Wyszukiwarka pozwala przypiąć dowolnego satelitę: dostaje wtedy nazwę i trasę orbity. Katalog jest pobierany raz na 12 godzin.
 - Mapa 2D z powiększaniem (kółko myszy, teatry działań: Ukraina, Morze Czarne, flanka NATO, Bliski Wschód, Ormuz, Jemen, Lewant, Sudan, Kongo, Mjanma, Tajwan, Zachodni Pacyfik) albo globus 3D. Przy zbliżeniu włącza się dokładniejsza linia brzegowa.
 - 19 warstw: konflikty, fronty, natarcia, uderzenia, siły, żegluga, natura, orbity, lotnictwo, flanka, atom, przestrzeń, GNSS, pożary, sieć, humanitarne, cyber, depesze, noc.
 - **Łańcuch przyczyn:** kliknij węzeł, a zobaczysz ścieżkę przyczyn i skutków.
