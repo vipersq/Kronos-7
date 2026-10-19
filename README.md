@@ -126,6 +126,10 @@ Dane startowe w repozytorium (`data/seed.json`) to odczyt z 18.10.2026, 14:33. P
   - wysokość mapy.
 
   **PEŁNY EKRAN** ukrywa pasek przeglądarki.
+- **Odpinanie paneli:** przycisk ⧉ w nagłówku każdego panelu (mapa, depesze, rynki, niebo, statki, status itd.) otwiera go w osobnym oknie, które przeciągasz na inny monitor.
+  - W Chrome i Edge, po zgodzie na „zarządzanie oknami”, okno otwiera się od razu na drugim ekranie, na całą jego powierzchnię.
+  - Kliknięcie w depeszę albo pozycję w panelu przybliża mapę także w odpiętym oknie.
+  - Przyciski **PRZYPNIJ** (w głównym oknie) albo **PRZYPNIJ Z POWROTEM** (w odpiętym) wracają panel na miejsce.
 - **SATELITY**: wybór grup z katalogu CelesTrak (około 16 000 aktywnych). Grupy to m.in.:
   - wojskowe i rozpoznawcze (USA, Kosmos, Yaogan, SAR-Lupe i inne), obiekty niezidentyfikowane;
   - nawigacyjne (GPS, GLONASS, Galileo, BeiDou), meteorologiczne, obserwacji Ziemi;

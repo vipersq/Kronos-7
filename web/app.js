@@ -1,4 +1,4 @@
-/* KRONOS-7 v3.5 — interfejs terminala. Dane: lokalny serwer (/api/*). */
+/* KRONOS-7 v3.6 — interfejs terminala. Dane: lokalny serwer (/api/*). */
 (function () {
 "use strict";
 const $ = s => document.querySelector(s);
@@ -6,6 +6,8 @@ const $$ = s => Array.from(document.querySelectorAll(s));
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const A = a => Array.isArray(a) ? a : [];
+const SOLO = new URLSearchParams(location.search).get("panel") || "";   // okno z jednym odpiętym panelem
+const BC = "BroadcastChannel" in window ? new BroadcastChannel("kronos7") : null;
 const store = {
   get(k, d) { try { const v = localStorage.getItem("k7-" + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem("k7-" + k, JSON.stringify(v)); } catch (e) {} }
@@ -55,7 +57,7 @@ const F = () => S.feeds || {};
 
 /* ------------------------------------------------------------ dźwięk, alarm, kompakt, zegary */
 /* Dźwięk: silnik w sound.js (K7Sound). Tu tylko włączanie, ustawienia i wywołania. */
-let actx = null, SE = null, audioOn = store.get("audio", false), klaxon = null, humH = null, burbleT = null;
+let actx = null, SE = null, audioOn = SOLO ? false : store.get("audio", false), klaxon = null, humH = null, burbleT = null;
 const SND = Object.assign({ vol: .7, hum: true, chatter: true }, store.get("sound", {}));
 function eng() {
   if (!audioOn || !window.K7Sound) return null;
@@ -572,6 +574,64 @@ document.addEventListener("fullscreenchange", () => $("#fsBtn").setAttribute("ar
 document.addEventListener("keydown", e => { if (e.key === "Escape") { $("#layoutModal").hidden = true; $("#satModal").hidden = true; } });
 applyLayout();
 
+/* ------------------------------------------------------------ ODPINANE PANELE (osobne okna, np. na drugi monitor) */
+const slug = t => t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ł/g, "l").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+const PANELS = { status: $("#rail") }, DETACHED = new Set(), ALIVE = {}, WINS = {};
+$$(".wrap section.frame").forEach(sec => {
+  const h = sec.querySelector(":scope > .frame-h"); if (!h) return;
+  const main = sec.classList.contains("mainview"), name = main ? "MAPA" : ((h.querySelector("span") || {}).textContent || "").replace(/^>\s*/, "").trim(); if (!name) return;
+  const id = sec.dataset.panel || (main ? "mapa" : slug(name)); if (PANELS[id]) return;
+  sec.dataset.panel = id; sec.dataset.pname = name; PANELS[id] = sec;
+  if (!SOLO) h.insertAdjacentHTML("beforeend", `<button class="btn detach" data-detach="${id}" title="Odepnij do osobnego okna (np. na drugi monitor)">⧉</button>`);
+});
+const mapHidden = () => SOLO ? SOLO !== "mapa" : DETACHED.has("mapa");
+function markDetached(id, on) {
+  const sec = PANELS[id]; if (!sec || DETACHED.has(id) === on) return;
+  on ? DETACHED.add(id) : DETACHED.delete(id); sec.classList.toggle("detached", on);
+  const h = sec.querySelector(":scope > .frame-h");
+  if (h) { h.querySelectorAll(".reattach").forEach(b => b.remove());
+    if (on) h.insertAdjacentHTML("beforeend", `<button class="btn reattach" data-show="${id}">POKAŻ OKNO</button><button class="btn reattach" data-attach="${id}">PRZYPNIJ</button>`); }
+  if (id === "mapa" && !on) setTimeout(() => { sizeMap(); redraw(); }, 50);
+}
+async function detach(id) {
+  const sec = PANELS[id]; if (!sec) return; sfx("click");
+  const r = sec.getBoundingClientRect();
+  let feat = `popup=yes,width=${Math.round(Math.max(520, r.width))},height=${Math.round(Math.min(screen.availHeight - 60, Math.max(380, id === "mapa" ? innerHeight * .9 : r.height + 50)))}`;
+  try { if ("getScreenDetails" in window) { const sd = await window.getScreenDetails(), o = sd.screens.find(x => x !== sd.currentScreen);
+    if (o) feat = `popup=yes,left=${o.availLeft},top=${o.availTop},width=${o.availWidth},height=${o.availHeight}`; } } catch (e) {}
+  const w = window.open("/?panel=" + encodeURIComponent(id), "kronos7-" + id, feat);
+  if (!w) { $("#foot").textContent = "Przeglądarka zablokowała nowe okno. Kliknij ⧉ jeszcze raz albo zezwól na wyskakujące okna dla 127.0.0.1."; $("#foot").scrollIntoView({ block: "center" }); return; }
+  WINS[id] = w; ALIVE[id] = Date.now(); markDetached(id, true);
+}
+document.addEventListener("click", e => {
+  const d = e.target.closest("[data-detach]"), a = e.target.closest("[data-attach]"), sh = e.target.closest("[data-show]");
+  if (d) { e.stopPropagation(); detach(d.dataset.detach); }
+  else if (a) { e.stopPropagation(); if (BC) BC.postMessage({ t: "close", id: a.dataset.attach }); try { WINS[a.dataset.attach] && WINS[a.dataset.attach].close(); } catch (er) {} markDetached(a.dataset.attach, false); }
+  else if (sh) { e.stopPropagation(); const w = WINS[sh.dataset.show]; if (w && !w.closed) w.focus(); else if (BC) BC.postMessage({ t: "focus", id: sh.dataset.show }); }
+  else if (!SOLO && e.target.closest(".rail.detached")) { if (BC) BC.postMessage({ t: "close", id: "status" }); markDetached("status", false); }
+});
+if (BC) BC.onmessage = ev => {
+  const m = ev.data || {};
+  if (m.t === "go" && !mapHidden()) { go.remote = true; try { go(m.id); } finally { go.remote = false; } return; }
+  if (SOLO) { if (m.id === SOLO && m.t === "close") window.close(); if (m.id === SOLO && m.t === "focus") window.focus(); return; }
+  if (m.t === "hello") { ALIVE[m.id] = Date.now(); markDetached(m.id, true); }
+  if (m.t === "bye") { delete ALIVE[m.id]; markDetached(m.id, false); }
+};
+if (!SOLO) setInterval(() => { DETACHED.forEach(id => { if (Date.now() - (ALIVE[id] || 0) > 8000 && !(WINS[id] && !WINS[id].closed)) markDetached(id, false); }); }, 3000);
+if (SOLO) {
+  const sec = PANELS[SOLO];
+  if (sec) {
+    document.body.classList.add("solo"); sec.classList.add("solo-target"); document.body.appendChild(sec);
+    document.title = "KRONOS-7 · " + (sec.dataset.pname || SOLO);
+    document.body.insertAdjacentHTML("afterbegin", `<div class="solo-bar"><span>KRONOS-7 · <b>${esc(sec.dataset.pname || SOLO)}</b></span><span><span id="soloClock"></span> <button class="btn" id="soloFs">PEŁNY EKRAN</button> <button class="btn" id="soloBack">PRZYPNIJ Z POWROTEM</button></span></div>`);
+    setInterval(() => { $("#soloClock").textContent = new Date().toISOString().slice(11, 19) + " UTC  "; }, 1000);
+    $("#soloBack").addEventListener("click", () => { if (BC) BC.postMessage({ t: "bye", id: SOLO }); window.close(); });
+    $("#soloFs").addEventListener("click", () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => {}));
+    const hello = () => BC && BC.postMessage({ t: "hello", id: SOLO }); hello(); setInterval(hello, 2000);
+    addEventListener("pagehide", () => BC && BC.postMessage({ t: "bye", id: SOLO }));
+  }
+}
+
 /* ------------------------------------------------------------ ŁAŃCUCH PRZYCZYN */
 const csvg = d3.select("#chain"), CW = 960, CH = 560;
 csvg.append("defs").append("marker").attr("id", "arr").attr("viewBox", "0 -4 8 8").attr("refX", 8).attr("refY", 0)
@@ -657,6 +717,7 @@ function itemLL(i) { if (i.lat != null && i.lon != null) return [i.lat, i.lon]; 
 function openRef(ref) { if (A(S.conflicts).some(c => c.id === ref)) return go("c:" + ref); if (A(S.items).some(i => i.id === ref)) return go("n:" + ref); }
 const frontOf = cid => A(S.fronts).filter(f => f.conflict === cid);
 function go(id) {
+  if (!go.remote && BC && mapHidden()) BC.postMessage({ t: "go", id });   // mapa jest w innym oknie – tam też pokaż
   const parts = id.split(":"), t = parts[0], key = parts[1];
   const fly = (lat, lon, s, layer) => { ensureLayer(layer); setView("map"); flyTo(lat, lon, s); };
   if (t === "f") { const f = A(S.fronts).find(x => x.id === key); if (f) { ensureLayer("front"); setView("map"); const th = THEATERS.find(x => x[0] === f.theater); if (th) setTheater(th[0], true); else flyPts([].concat(...A(f.line))); } }
@@ -901,7 +962,7 @@ function renderRail() {
     ["Noc nad Ukrainą", last ? ((last.drones || 0) + (last.missiles || 0)) + " celów" : "–", last ? "drony i rakiety · " + fd(last.d) : "", "amber", last ? "aw:" + (aw.length - 1) : null],
     ["Natura", A(S.hazards).length + A(F().gdacs).length, `${A(S.hazards).filter(h => h.kind === "quake").length} wstrząsów ≥M5.5 · ${A(F().gdacs).length} alertów GDACS`, "amber", null],
     ["Odczyt · AI", isNaN(d) ? "--" : d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" }) + " " + d.toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" }), (ARCH ? "archiwum · " : "") + (S.model ? "AI: " + S.model : S.seed ? "dane startowe" : "bez analizy AI"), "", null]];
-  $("#rail").innerHTML = cells.map(c => `<${c[4] ? `button class="stat" data-go="${c[4]}"` : 'div class="stat"'}><span class="k">${esc(c[0])}</span><span class="v ${c[3]}">${esc(c[1])}</span><span class="n" title="${esc(c[2])}">${esc(c[2])}</span></${c[4] ? "button" : "div"}>`).join("");
+  $("#rail").innerHTML = cells.map(c => `<${c[4] ? `button class="stat" data-go="${c[4]}"` : 'div class="stat"'}><span class="k">${esc(c[0])}</span><span class="v ${c[3]}">${esc(c[1])}</span><span class="n" title="${esc(c[2])}">${esc(c[2])}</span></${c[4] ? "button" : "div"}>`).join("") + (SOLO ? "" : '<button class="btn detach" data-detach="status" title="Odepnij do osobnego okna (np. na drugi monitor)">⧉</button>');
   $("#rail").querySelectorAll("[data-go]").forEach(x => x.addEventListener("click", () => { go(x.dataset.go); if (!/^(mk|aw)/.test(x.dataset.go)) scrollMap(); }));
   $("#banner").textContent = `PRIORYTET JEDEN · ${A(S.items).filter(i => i.p === "crit").length} ZDARZENIA KRYTYCZNE · ` + C.filter(c => c.trend === "esc").map(c => c.name.toUpperCase()).join(" / ");
   $("#ticker").textContent = A(S.items).map(x => "■ " + (SEC[x.s] || "") + " // " + x.h.toUpperCase()).join("   ") + "   ■ KONIEC TRANSMISJI";
@@ -1264,11 +1325,12 @@ $("#setForm").addEventListener("submit", async e => {
 
 /* ------------------------------------------------------------ START */
 function boot(done) {
+  if (SOLO) return done();
   const needSetup = !(SET && SET.configured);
   let seen = false; try { seen = sessionStorage.getItem("k7-boot") === "1"; } catch (e) { seen = true; }
   if (!needSetup && (seen || reduce)) return done();
   const B = $("#boot"); B.hidden = false; const e = STATUS ? STATUS.engine : null, C = CURRENT || {};
-  const lines = ["KRONOS-7 PLANETARY INTELLIGENCE · v3.5", "TEST PAMIĘCI ........ OK",
+  const lines = ["KRONOS-7 PLANETARY INTELLIGENCE · v3.6", "TEST PAMIĘCI ........ OK",
     "PROCESOR GRAFICZNY .. " + (e ? e.hardware.gpu_name + (e.hardware.vram_gb ? " / " + e.hardware.vram_gb + " GB" : "") : "?"),
     "RDZEŃ ANALITYCZNY ... " + (e && e.model ? e.model.toUpperCase() : "NIEAKTYWNY"),
     "BAZA KONFLIKTÓW ..... " + A(C.conflicts).length + " WĘZŁÓW", "FRONTY .............. " + A(C.fronts).length + " TEATRÓW",
@@ -1295,7 +1357,7 @@ function boot(done) {
 }
 
 /* odczyt ma wysokość mapy (na szerokim ekranie) */
-if (window.ResizeObserver) new ResizeObserver(() => { const h = $("#map").getBoundingClientRect().height; $("#detail").style.maxHeight = innerWidth > 1060 && h > 200 ? Math.round(h) + "px" : ""; }).observe($("#mapbox"));
+if (window.ResizeObserver) new ResizeObserver(() => { const h = $("#map").getBoundingClientRect().height; $("#detail").style.maxHeight = !SOLO && innerWidth > 1060 && h > 200 ? Math.round(h) + "px" : ""; }).observe($("#mapbox"));
 
 (async function init() {
   sizeMap(); setMode(mode);
