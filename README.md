@@ -97,6 +97,7 @@ Dane startowe w repozytorium (`data/seed.json`) to odczyt z 18.10.2026, 14:33. P
 - **Łańcuch przyczyn:** kliknij węzeł, a zobaczysz ścieżkę przyczyn i skutków.
 - **Co nowego:** nowe depesze, zmiany statusu konfliktów i nowe zagrożenia od poprzedniego odczytu.
 - **Trend napięcia** i **archiwum** wszystkich odczytów (rozwijana lista ARCHIWUM).
+- **Dźwięk terminala** (przycisk AUDIO): sygnały, terkot drukowanego tekstu, „liczenie” rdzenia podczas pracy AI, szum tła, sygnał końca analizy i alarm przy wzroście poziomu napięcia. Wszystko generowane na żywo w przeglądarce, bez plików audio. Głośność i szum tła ustawisz w oknie OPERATOR.
 - **Briefing głosowy:** potrzebny jest polski głos w Windows (Ustawienia → Czas i język → Mowa → dodaj głos „Polski”).
 - **Tryb ekranu:** pełny ekran z pokazem slajdów co 20 sekund, np. na XENEON EDGE. Wyjście klawiszem Esc.
 - Zapytania do systemu, SITREP dla regionu, filtr „tylko A–B / 1–3”, oznaczanie przeczytanych i obserwowanych.

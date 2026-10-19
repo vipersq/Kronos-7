@@ -307,7 +307,7 @@ button.stat:hover{background:color-mix(in srgb,var(--phos) 6%,var(--void))}
 .set-body{display:grid;gap:6px;padding:14px}
 .set-body label,.set-body legend{font-size:11px;letter-spacing:.14em;color:var(--phos-dim);text-transform:uppercase;margin-top:6px}
 .set-body label small{display:block;text-transform:none;letter-spacing:0;font-size:11px;color:var(--phos-faint)}
-.set-body input:not([type=checkbox]),.set-body select{background:var(--void);border:1px solid var(--phos-faint);color:var(--phos);font-family:var(--f-display);font-size:20px;padding:3px 8px;width:100%;min-width:0}
+.set-body input:not([type=checkbox]):not([type=range]),.set-body select{background:var(--void);border:1px solid var(--phos-faint);color:var(--phos);font-family:var(--f-display);font-size:20px;padding:3px 8px;width:100%;min-width:0}
 .set-body input:focus,.set-body select:focus{outline:2px solid var(--amber);outline-offset:0}
 .set-body fieldset{border:0;padding:0;margin:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
 .set-body fieldset legend{grid-column:1/-1;padding:0;margin-bottom:4px}
@@ -333,3 +333,4 @@ button.stat:hover{background:color-mix(in srgb,var(--phos) 6%,var(--void))}
   body.print-sit .sit-foot,body.print-sit #sitClose{display:none}
   body.print-sit .sit-out{overflow:visible;font-size:11pt}
 }
+.set-body input[type=range]{width:100%;accent-color:var(--phos)}

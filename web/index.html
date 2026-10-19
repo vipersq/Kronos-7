@@ -50,6 +50,10 @@
       <label for="setModel">Model AI</label>
       <select id="setModel"></select>
       <label class="chk"><input id="setPull" type="checkbox"> Automatycznie pobieraj zalecany model</label>
+      <label for="setVol">Dźwięk terminala <small>włączasz przyciskiem AUDIO; te opcje zapisują się w tej przeglądarce</small></label>
+      <input id="setVol" type="range" min="0" max="100" step="5">
+      <label class="chk"><input id="setHum" type="checkbox"> Szum tła (buczenie maszynowni)</label>
+      <label class="chk"><input id="setChat" type="checkbox"> Terkot drukowanego tekstu i „liczenie” rdzenia</label>
       <p class="set-msg" id="setMsg" aria-live="polite"></p>
     </div>
     <div class="set-foot"><button type="submit" class="btn" id="setSave">ZAPISZ</button></div>
