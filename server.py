@@ -124,9 +124,19 @@ def ensure_model():
         if not st["backend"]:
             log("Nie wykryto Ollamy ani LM Studio – terminal działa bez analizy AI.")
         return
-    if st["recommended"] in [m["name"] for m in st["installed"]]:
-        return
     name = st["recommended"]
+    have = ", ".join(m["name"] for m in st["installed"]) or "brak"
+    log(f"Modele w Ollamie: {have}")
+    if ENGINE.has_model(name):
+        ENGINE.refresh()
+        if not ENGINE.model:
+            ENGINE.model = name
+        log(f"Model {ENGINE.model} jest zainstalowany – nic nie pobieram.")
+        return
+    if st["model"]:
+        # jest już używalny model – nie pobieramy kilku GB przy każdym starcie
+        log(f"Używam zainstalowanego modelu {st['model']}. Zalecany {name} możesz pobrać w panelu STATUS SYSTEMU.")
+        return
     log(f"Automatyczne pobieranie modelu {name} ({st['recommended_size_gb']} GB) – jednorazowo, może potrwać kilkanaście minut.")
     ENGINE.pull_model(name)
     time.sleep(1)
@@ -138,7 +148,7 @@ def ensure_model():
     finally:
         JOB.update(running=False, step="", pct=0)
     ENGINE.refresh()
-    if ENGINE.model == name:
+    if ENGINE.has_model(name):
         log(f"Model {name} gotowy.")
         return True
     log(f"Nie udało się pobrać {name}: {ENGINE.pull['status']}")
