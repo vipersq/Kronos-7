@@ -1,4 +1,4 @@
-/* KRONOS-7 v3.1 — interfejs terminala. Dane: lokalny serwer (/api/*). */
+/* KRONOS-7 v3.3 — interfejs terminala. Dane: lokalny serwer (/api/*). */
 (function () {
 "use strict";
 const $ = s => document.querySelector(s);
@@ -49,16 +49,80 @@ let S = {}, CURRENT = null, ARCH = false, STATUS = null, MK = null, selected = n
 const F = () => S.feeds || {};
 
 /* ------------------------------------------------------------ dźwięk, alarm, kompakt, zegary */
-let actx = null, audioOn = false, klaxon = null;
-function beep(f = 880, d = .05, type = "square", vol = .04) {
-  if (!audioOn) return;
-  try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); const o = actx.createOscillator(), g = actx.createGain();
-    o.type = type; o.frequency.value = f; g.gain.value = vol; o.connect(g); g.connect(actx.destination); o.start();
-    g.gain.exponentialRampToValueAtTime(.0001, actx.currentTime + d); o.stop(actx.currentTime + d + .02); } catch (e) {}
+/* Syntezator dźwięków terminala (Web Audio, wszystko generowane na żywo, bez plików):
+   beep – krótki sygnał, chatter – terkot drukowania tekstu, burble – „liczenie” rdzenia,
+   hum – szum tła statku, klaxon – alarm, power – rozruch, done – koniec analizy. */
+let actx = null, master = null, audioOn = store.get("audio", false), klaxon = null;
+const SND = Object.assign({ vol: .7, hum: true, chatter: true }, store.get("sound", {}));
+function ac() {
+  if (!actx) { actx = new (window.AudioContext || window.webkitAudioContext)(); master = actx.createGain(); master.gain.value = SND.vol;
+    const comp = actx.createDynamicsCompressor(); master.connect(comp); comp.connect(actx.destination); }
+  if (actx.state === "suspended") actx.resume();
+  return actx;
 }
-function startKlaxon() { stopKlaxon(); if (!audioOn) return; let hi = true; klaxon = setInterval(() => { beep(hi ? 660 : 440, .35, "sawtooth", .03); hi = !hi; }, 420); }
+function tone(f, d, type = "square", vol = .04, at = 0, slideTo = 0, lp = 0) {
+  if (!audioOn) return;
+  try { const c = ac(), t = c.currentTime + at, o = c.createOscillator(), g = c.createGain(); let out = o;
+    o.type = type; o.frequency.setValueAtTime(f, t); if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + d);
+    if (lp) { const fl = c.createBiquadFilter(); fl.type = "lowpass"; fl.frequency.value = lp; o.connect(fl); out = fl; }
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + .004); g.gain.exponentialRampToValueAtTime(.0001, t + d);
+    out.connect(g); g.connect(master); o.start(t); o.stop(t + d + .03); } catch (e) {}
+}
+let noiseBuf = null;
+function noise(d, vol = .03, at = 0, hp = 2000) {
+  if (!audioOn) return;
+  try { const c = ac(), t = c.currentTime + at;
+    if (!noiseBuf) { noiseBuf = c.createBuffer(1, c.sampleRate, c.sampleRate); const ch = noiseBuf.getChannelData(0); for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1; }
+    const n = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain(); n.buffer = noiseBuf; f.type = "highpass"; f.frequency.value = hp;
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0001, t + d); n.connect(f); f.connect(g); g.connect(master);
+    n.start(t, Math.random() * .5); n.stop(t + d + .02); } catch (e) {}
+}
+function beep(f = 880, d = .05, type = "square", vol = .04) { tone(f, d, type, vol, 0, 0, 5000); }
+/* terkot drukarki terminala: szybkie, nieregularne kliknięcia wysokich tonów */
+let chatterUntil = 0;
+function chatter(chars = 20) {
+  if (!audioOn || !SND.chatter) return;
+  const c = ac(), now = c.currentTime; if (now < chatterUntil - .05) return;
+  const n = Math.min(24, Math.max(3, Math.round(chars / 3)));
+  for (let i = 0; i < n; i++) { const at = i * (.022 + Math.random() * .018);
+    if (Math.random() < .55) tone(1800 + Math.random() * 2600, .012, "square", .018, at, 0, 7000); else noise(.008, .03, at, 3500); }
+  chatterUntil = now + n * .03;
+}
+/* „liczenie” rdzenia: przypadkowe tony z siatki, jak bulgotanie komputera pokładowego */
+let burbleT = null;
+const BURBLE = [523, 587, 659, 784, 880, 1047, 1175, 1319, 1568, 1760, 2093];
+function burble(on) {
+  clearInterval(burbleT); burbleT = null; if (!on || !audioOn) return;
+  burbleT = setInterval(() => { const f = BURBLE[Math.floor(Math.random() * BURBLE.length)]; tone(f, .055, Math.random() < .7 ? "square" : "triangle", .022, 0, 0, 4000);
+    if (Math.random() < .25) tone(f * 1.5, .04, "square", .014, .05, 0, 4000); }, 85);
+}
+/* szum tła: niskie buczenie i przefiltrowany szum wentylacji */
+let humNodes = null;
+function hum(on) {
+  if (humNodes) { const { g, nodes } = humNodes; try { g.gain.setTargetAtTime(0, actx.currentTime, .4); setTimeout(() => nodes.forEach(n => { try { n.stop(); } catch (e) {} }), 1500); } catch (e) {} humNodes = null; }
+  if (!on || !audioOn || !SND.hum) return;
+  try { const c = ac(), g = c.createGain(), lp = c.createBiquadFilter(), nodes = []; g.gain.value = 0; g.gain.setTargetAtTime(.05, c.currentTime, 1.5);
+    lp.type = "lowpass"; lp.frequency.value = 320; lp.connect(g); g.connect(master);
+    [[50, .5], [100.4, .25], [150.2, .08]].forEach(([f, v]) => { const o = c.createOscillator(), og = c.createGain(); o.frequency.value = f; og.gain.value = v; o.connect(og); og.connect(lp); o.start(); nodes.push(o); });
+    const len = c.sampleRate * 4, buf = c.createBuffer(1, len, c.sampleRate), ch = buf.getChannelData(0); let last = 0;
+    for (let i = 0; i < len; i++) { last = (last + .02 * (Math.random() * 2 - 1)) / 1.02; ch[i] = last * 3.5; }
+    const n = c.createBufferSource(), ng = c.createGain(); n.buffer = buf; n.loop = true; ng.gain.value = .6; n.connect(ng); ng.connect(lp); n.start(); nodes.push(n);
+    const lfo = c.createOscillator(), lg = c.createGain(); lfo.frequency.value = .08; lg.gain.value = 60; lfo.connect(lg); lg.connect(lp.frequency); lfo.start(); nodes.push(lfo);
+    humNodes = { g, nodes }; } catch (e) {}
+}
+function powerUp() { tone(60, 1.2, "sawtooth", .05, 0, 900, 1200); [0, .35, .7].forEach((at, i) => { noise(.05, .08, at, 300); tone(90 + i * 30, .08, "square", .03, at, 0, 600); }); tone(1760, .12, "square", .03, 1.25, 0, 5000); }
+function doneChime() { [1568, 1175, 1568, 2093].forEach((f, i) => tone(f, .09, "square", .03, i * .1, 0, 5000)); }
+function alarmBurst(times = 3) { for (let i = 0; i < times * 2; i++) tone(i % 2 ? 440 : 660, .36, "sawtooth", .035, i * .42, 0, 1800); }
+function startKlaxon() { stopKlaxon(); if (!audioOn) return; let hi = true; const go = () => { tone(hi ? 660 : 440, .38, "sawtooth", .035, 0, 0, 1800); hi = !hi; }; go(); klaxon = setInterval(go, 420); }
 function stopKlaxon() { if (klaxon) { clearInterval(klaxon); klaxon = null; } }
-$("#audioBtn").addEventListener("click", e => { audioOn = !audioOn; e.currentTarget.setAttribute("aria-pressed", audioOn); beep(1200, .08); if (document.body.classList.contains("alert")) startKlaxon(); });
+function setAudio(on) { audioOn = on; store.set("audio", on); $("#audioBtn").setAttribute("aria-pressed", on);
+  if (on) { ac(); beep(1200, .08); hum(true); if (document.body.classList.contains("alert")) startKlaxon(); } else { hum(false); burble(false); stopKlaxon(); } }
+$("#audioBtn").addEventListener("click", () => setAudio(!audioOn));
+$("#audioBtn").setAttribute("aria-pressed", audioOn);
+window.K7SND = { state: () => ({ on: audioOn, ctx: actx && actx.state, hum: !!humNodes, burble: !!burbleT, vol: SND.vol }), alarmBurst, doneChime, powerUp, chatter };
+/* przeglądarka pozwala grać dopiero po pierwszym kliknięciu – wtedy wznawiamy dźwięk zapamiętany z poprzedniej sesji */
+document.addEventListener("pointerdown", function first() { document.removeEventListener("pointerdown", first); if (audioOn) { ac(); hum(true); } }, { once: true });
+document.addEventListener("keydown", function firstK() { document.removeEventListener("keydown", firstK); if (audioOn) { ac(); if (!humNodes) hum(true); } }, { once: true });
 $("#alertBtn").addEventListener("click", e => { const on = !document.body.classList.contains("alert"); document.body.classList.toggle("alert", on); e.currentTarget.setAttribute("aria-pressed", on); on ? startKlaxon() : stopKlaxon(); });
 function setCompact(on) { document.body.classList.toggle("compact", on); $("#compactBtn").setAttribute("aria-pressed", on); store.set("compact", on); }
 $("#compactBtn").addEventListener("click", () => { beep(700); setCompact(!document.body.classList.contains("compact")); });
@@ -770,7 +834,7 @@ function renderSys() {
   $("#jobbar").hidden = !j.running; $("#jobfill").style.width = j.pct + "%"; $("#jobtext").textContent = `ANALIZA: ${j.step} · ${j.pct}%`;
   $("#refreshBtn").disabled = j.running; $("#refreshBtn").textContent = j.running ? "ANALIZA TRWA…" : "ODŚWIEŻ ANALIZĘ";
   if (seenFinished === undefined) seenFinished = j.finished;
-  else if (j.finished !== seenFinished) { seenFinished = j.finished; if (!ARCH) loadState(true); }
+  else if (j.finished !== seenFinished) { seenFinished = j.finished; doneChime(); if (!ARCH) loadState(true); }
 }
 let pollT = null;
 async function pollStatus() {
@@ -786,12 +850,13 @@ const HINTS = ["Dlaczego Ormuz jest zamknięty?", "Co się zmieniło na froncie 
 $("#qHints").innerHTML = HINTS.map(h => `<button>${esc(h)}</button>`).join("");
 $("#qHints").querySelectorAll("button").forEach(b => b.addEventListener("click", () => { $("#q").value = b.textContent; ask(); }));
 async function streamTo(url, body, el, onDone, signal) {
-  el.hidden = false; el.textContent = "> PRZETWARZANIE…"; let text = "";
+  el.hidden = false; el.textContent = "> PRZETWARZANIE…"; let text = ""; burble(true);
   try { const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal });
     const rd = r.body.getReader(), dec = new TextDecoder();
-    for (;;) { const { done, value } = await rd.read(); if (done) break; text += dec.decode(value, { stream: true }); el.textContent = text.replace(/\n?REF:.*$/s, "") || "> PRZETWARZANIE…"; }
-  } catch (e) { if (e.name === "AbortError") return; el.textContent = "Brak połączenia z serwerem KRONOS-7."; return; }
-  el.textContent = text.replace(/\n?REF:.*$/s, "").trim(); beep(1400, .05); if (onDone) onDone(text);
+    for (;;) { const { done, value } = await rd.read(); if (done) break; const part = dec.decode(value, { stream: true }); if (part && burbleT) burble(false); chatter(part.length); text += part; el.textContent = text.replace(/\n?REF:.*$/s, "") || "> PRZETWARZANIE…"; }
+  } catch (e) { burble(false); if (e.name === "AbortError") return; el.textContent = "Brak połączenia z serwerem KRONOS-7."; beep(220, .3, "sawtooth"); return; }
+  burble(false);
+  el.textContent = text.replace(/\n?REF:.*$/s, "").trim(); tone(1400, .05, "square", .03); tone(2100, .07, "square", .03, .07); if (onDone) onDone(text);
 }
 function ask() {
   const q = $("#q").value.trim(); if (!q) return; beep(1000, .06);
@@ -801,11 +866,11 @@ function ask() {
     const it = ids.find(i => A(S.items).some(x => x.id === i)); if (it) go("n:" + it); });
 }
 $("#qGo").addEventListener("click", ask);
-$("#q").addEventListener("keydown", e => { if (e.key === "Enter") ask(); else if (e.key.length === 1) beep(1600 + Math.random() * 400, .015, "square", .02); });
+$("#q").addEventListener("keydown", e => { if (e.key === "Enter") ask(); else if (e.key.length === 1) { noise(.012, .045, 0, 2500); tone(1600 + Math.random() * 400, .01, "square", .012); } });
 /* SITREP w oknie: strumień, kopiuj, czytaj, drukuj */
 let sitCtl = null, sitBusy = false, sitFocus = null, sitText = "";
 function sitOpen() { sitFocus = document.activeElement; $("#sitModal").hidden = false; $("#sitClose").focus(); }
-function sitClose() { if (sitCtl) sitCtl.abort(); sitCtl = null; sitBusy = false; if ("speechSynthesis" in window) speechSynthesis.cancel(); $("#sitModal").hidden = true; if (sitFocus) sitFocus.focus(); }
+function sitClose() { burble(false); if (sitCtl) sitCtl.abort(); sitCtl = null; sitBusy = false; if ("speechSynthesis" in window) speechSynthesis.cancel(); $("#sitModal").hidden = true; if (sitFocus) sitFocus.focus(); }
 function sitButtons() { ["#sitCopy", "#sitSpeak", "#sitPrint", "#sitAgain"].forEach(b => $(b).disabled = sitBusy); }
 function sitrep() {
   const r = $("#sitIn").value.trim() || "Świat"; beep(1000, .06);
@@ -889,7 +954,9 @@ function renderPanels() {
 function renderAll() { renderPanels(); buildMap(); buildChain(); setView(view); if (selected) pick(selected, true); else idleDetail(); }
 async function loadState(keepSel) {
   try { CURRENT = await api("/api/state"); } catch (e) { $("#foot").textContent = "Nie można połączyć się z serwerem KRONOS-7. Uruchom start.bat."; return; }
+  const before = (S && S.threat && S.threat.level) || 0, after = (CURRENT.threat && CURRENT.threat.level) || 0;
   if (!ARCH) { S = CURRENT; if (!keepSel) selected = null; fillArchive(); renderAll(); } else fillArchive();
+  if (keepSel && after > before && before > 0) alarmBurst(after >= 4 ? 4 : 2);
 }
 
 /* ------------------------------------------------------------ OPERATOR */
@@ -909,6 +976,7 @@ async function openSettings() {
   $("#setModel").innerHTML = [`<option value="auto">AUTOMATYCZNIE (zalecany: ${esc(SET.recommended || "?")})</option>`].concat(A(SET.installed).map(m => `<option value="${esc(m)}">${esc(m)}</option>`)).join("");
   $("#setModel").value = A(SET.installed).includes(SET.model) ? SET.model : "auto";
   $("#setPull").checked = !!SET.auto_pull; $("#setMsg").textContent = "";
+  $("#setVol").value = Math.round(SND.vol * 100); $("#setHum").checked = SND.hum; $("#setChat").checked = SND.chatter;
   $("#settings").hidden = false; $("#setCall").focus();
 }
 function closeSettings() { $("#settings").hidden = true; if (lastFocus) lastFocus.focus(); }
@@ -916,8 +984,16 @@ $("#setBtn").addEventListener("click", openSettings);
 $("#setClose").addEventListener("click", closeSettings);
 $("#settings").addEventListener("click", e => { if (e.target.id === "settings") closeSettings(); });
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#settings").hidden) closeSettings(); });
+function applySound() {
+  SND.vol = +$("#setVol").value / 100; SND.hum = $("#setHum").checked; SND.chatter = $("#setChat").checked; store.set("sound", SND);
+  if (master) master.gain.setTargetAtTime(SND.vol, actx.currentTime, .05);
+  if (SND.hum && audioOn && !humNodes) hum(true); else if (!SND.hum && humNodes) hum(false);
+}
+$("#setVol").addEventListener("input", () => { applySound(); beep(1200, .06); });
+$("#setHum").addEventListener("change", applySound);
+$("#setChat").addEventListener("change", () => { applySound(); chatter(30); });
 $("#setForm").addEventListener("submit", async e => {
-  e.preventDefault();
+  e.preventDefault(); applySound();
   const r = await saveSettings({ callsign: $("#setCall").value, name: $("#setName").value, model: $("#setModel").value, auto_pull: $("#setPull").checked,
     refresh_times: ["#setT1", "#setT2", "#setT3"].map(s2 => $(s2).value).filter(Boolean) });
   if (r.ok) { beep(1400, .08); $("#setMsg").textContent = "Zapisano."; pollStatus(); setTimeout(closeSettings, 600); }
@@ -936,7 +1012,7 @@ function boot(done) {
     "BAZA KONFLIKTÓW ..... " + A(C.conflicts).length + " WĘZŁÓW", "FRONTY .............. " + A(C.fronts).length + " TEATRÓW",
     "FEEDY ............... " + A((C.feeds || {}).status).filter(s => s.ok).length + "/" + A((C.feeds || {}).status).length + " OK",
     "ŁĄCZE ORBITALNE ..... " + (A(C.tle).length + A((C.feeds || {}).celestrak).length) + " OBIEKTÓW", ""];
-  let i = 0, stop = false; const T2 = $("#bootText"), Lg = $("#bootLogin");
+  let i = 0, stop = false; const T2 = $("#bootText"), Lg = $("#bootLogin"); powerUp();
   const finish = () => { if (stop) return; stop = true; B.hidden = true; try { sessionStorage.setItem("k7-boot", "1"); } catch (e) {} done(); };
   const greet = () => { const n = SET && (SET.name || SET.callsign); Lg.innerHTML = `IDENTYFIKATOR OPERATORA: ${esc(opCall())}<br>DOSTĘP PRZYZNANY · WITAJ${n ? ", " + esc(n.toUpperCase()) : ", OPERATORZE"}`; setTimeout(finish, 900); };
   if (!needSetup) {
@@ -951,9 +1027,9 @@ function boot(done) {
       return;
     }
     const id = opCall(); let j = 0; Lg.innerHTML = 'IDENTYFIKATOR OPERATORA: <span id="lg"></span><span class="cursor"></span>';
-    (function type() { if (stop) return; if (j < id.length) { $("#lg").textContent += id[j++]; setTimeout(type, 110); return; } setTimeout(() => { if (!stop) greet(); }, 300); })();
+    (function type() { if (stop) return; if (j < id.length) { $("#lg").textContent += id[j++]; noise(.012, .05, 0, 2500); tone(2400, .01, "square", .015); setTimeout(type, 110); return; } setTimeout(() => { if (!stop) greet(); }, 300); })();
   };
-  (function line() { if (stop) return; if (i < lines.length && !reduce) { T2.textContent += lines[i++] + "\n"; setTimeout(line, 150); return; } if (reduce) T2.textContent = lines.join("\n"); login(); })();
+  (function line() { if (stop) return; if (i < lines.length && !reduce) { chatter(lines[i].length); T2.textContent += lines[i++] + "\n"; setTimeout(line, 150); return; } if (reduce) T2.textContent = lines.join("\n"); login(); })();
 }
 
 /* odczyt ma wysokość mapy (na szerokim ekranie) */

@@ -125,6 +125,15 @@ def _stream(url, data, timeout=600):
                 continue
 
 
+def norm_name(n):
+    """qwen3:14b == QWEN3:14B == registry.ollama.ai/library/qwen3:14b; brak tagu == :latest."""
+    n = (n or "").strip().lower()
+    for pre in ("registry.ollama.ai/library/", "library/"):
+        if n.startswith(pre):
+            n = n[len(pre):]
+    return n if ":" in n else n + ":latest"
+
+
 # ---------------------------------------------------------------- silnik
 class Engine:
     def __init__(self, cfg, log=print):
@@ -166,18 +175,19 @@ class Engine:
     def _choose(self):
         ai = self.cfg["ai"]
         names = [m["name"] for m in self.installed]
+        by_norm = {norm_name(n): n for n in names}
         rec = self.recommended
         self.ctx = rec.get("ctx", 8192)
         if ai.get("model", "auto") != "auto":
-            self.model = ai["model"] if (ai["model"] in names or self.backend == "lmstudio") else None
+            self.model = by_norm.get(norm_name(ai["model"])) or (ai["model"] if self.backend == "lmstudio" else None)
             if not self.model:
                 self.log(f"Model z config.json ({ai['model']}) nie jest zainstalowany.")
             return
         if self.backend == "lmstudio":
             self.model = names[0] if names else None
             return
-        if rec["name"] in names:
-            self.model = rec["name"]; return
+        if norm_name(rec["name"]) in by_norm:
+            self.model = by_norm[norm_name(rec["name"])]; return
         # najlepszy zainstalowany, który mieści się w budżecie pamięci
         budget = (self.hw["vram_gb"] * 0.85) if self.hw["vram_gb"] >= 5 else self.hw["ram_gb"] * 0.4
         skip = ("embed", "bge", "nomic", "minilm", "llava", "vision")
@@ -188,12 +198,24 @@ class Engine:
             self.model = None
 
     def status(self):
-        better = bool(self.model and self.model != self.recommended["name"] and self.backend == "ollama")
+        better = bool(self.model and norm_name(self.model) != norm_name(self.recommended["name"]) and self.backend == "ollama")
         return {"backend": self.backend, "model": self.model, "recommended": self.recommended["name"],
                 "recommended_size_gb": self.recommended.get("size_gb"), "reason": self.reason,
                 "hardware": self.hw, "installed": self.installed, "pull": self.pull,
                 "suggest_pull": (self.backend == "ollama" and (self.model is None or better)),
                 "ready": bool(self.backend and self.model)}
+
+    def has_model(self, name):
+        """Pewne sprawdzenie w Ollamie (/api/show), niezależne od listy /api/tags."""
+        if self.backend != "ollama":
+            return False
+        if norm_name(name) in {norm_name(m["name"]) for m in self.installed}:
+            return True
+        try:
+            _http(self.cfg["ai"]["ollama_url"] + "/api/show", {"model": name, "name": name}, timeout=10)
+            return True
+        except Exception:
+            return False
 
     # --- pobieranie modelu
     def pull_model(self, name=None):
