@@ -1,6 +1,6 @@
 """Samoloty wojskowe na żywo (ADS-B), bez AI.
 
-Serwer odpytuje darmowe API (adsb.lol, zapasowo adsb.fi) co kilkanaście sekund,
+Serwer odpytuje darmowe API (adsb.fi, zapasowo adsb.lol) co kilkanaście sekund,
 ale tylko wtedy, gdy terminal jest otwarty. Bez otwartej strony – raz na 5 minut.
 Trzyma ślad trasy każdego samolotu i wykrywa zdarzenia: wejście samolotu
 rozpoznawczego, bombowca lub tankowca w obserwowany rejon oraz kody alarmowe."""
@@ -8,11 +8,13 @@ import gzip, json, threading, time, urllib.request
 from collections import deque
 
 from .feeds import MIL_TYPES
+from . import registry as REG
 
 UA = "KRONOS-7/3.4 (+https://github.com/vipersq/Kronos-7)"
+# adsb.fi: podaje też model i właściciela, limit 1 zapytanie/s; adsb.lol jako zapas
 SOURCES = [
-    ("adsb.lol", "https://api.adsb.lol/v2/mil", "https://globe.adsb.lol/?icao={hex}"),
     ("adsb.fi", "https://opendata.adsb.fi/api/v2/mil", "https://globe.adsb.fi/?icao={hex}"),
+    ("adsb.lol", "https://api.adsb.lol/v2/mil", "https://globe.adsb.lol/?icao={hex}"),
 ]
 # obserwowane rejony: nazwa, (szer. min, szer. max), (dł. min, dł. max)
 ZONES = [
@@ -65,6 +67,8 @@ class LiveAir:
         self.fallback_until = 0
         self.last_view = 0
         self.status = {"ok": False, "src": None, "err": None, "at": 0, "n": 0, "total": 0}
+        self.meta = {}               # hex -> opis, właściciel, rok (z bazy adsb.fi)
+        self.meta_at = 0
         self.lock = threading.Lock()
         self.wake = threading.Event()
 
@@ -78,7 +82,7 @@ class LiveAir:
         return json.loads(b)
 
     def fetch(self):
-        """adsb.lol, a gdy nie odpowiada – adsb.fi przez 5 minut, potem znowu próba adsb.lol."""
+        """adsb.fi, a gdy nie odpowiada – adsb.lol przez 5 minut, potem znowu próba adsb.fi."""
         order = [1, 0] if time.time() < self.fallback_until else [0, 1]
         errs = []
         for i in order:
@@ -100,10 +104,26 @@ class LiveAir:
             return d
         raise RuntimeError(" · ".join(errs) or "brak źródeł")
 
+    def learn_meta(self, d):
+        for a in d.get("ac", []):
+            if a.get("desc") or a.get("ownOp") or a.get("year"):
+                self.meta[a.get("hex")] = {"desc": (a.get("desc") or "").strip(), "own": (a.get("ownOp") or "").strip(), "year": a.get("year")}
+
+    def refresh_meta(self):
+        """Gdy działa zapasowy adsb.lol (bez modelu i właściciela) – co 5 minut uzupełniamy je z adsb.fi."""
+        if time.time() - self.meta_at < 300:
+            return
+        self.meta_at = time.time()
+        try:
+            self.learn_meta(self._get(SOURCES[0][1]))
+        except Exception:
+            pass
+
     def ingest(self, d):
         now = time.time()
         now_ms = d.get("now") or now * 1000
         src = SOURCES[self.src_i]
+        self.learn_meta(d)
         seen = set()
         new_events = []
         with self.lock:
@@ -119,15 +139,24 @@ class LiveAir:
                 in_na = 15 < lat < 72 and -170 < lon < -50
                 if self.hide_na and in_na and cat not in NOTABLE:
                     continue
+                own = (self.meta.get(hx) or {}).get("own", "")
+                if cat == "tanker" and any(w in own.upper() for w in ("ROYAL", "AMIRI", "GOVERNMENT", "PRESIDEN", "FLIGHT")):
+                    cat = "transport"            # A330 lotów rządowych to transport VIP, nie tankowiec
                 alt = a.get("alt_baro")
                 ground = alt == "ground"
                 ts = int(now_ms - 1000 * float(a.get("seen_pos", a.get("seen", 0)) or 0))
                 rec = self.ac.get(hx)
                 if rec is None:
                     rec = self.ac[hx] = {"hex": hx, "trail": [], "first": now}
+                md = self.meta.get(hx, {})
+                cs = (a.get("flight") or "").strip()
+                reg = (a.get("r") or "").strip()
+                country = REG.icao_country(hx, reg)
+                desc = md.get("desc") or (a.get("desc") or "").strip()
                 rec.update({
-                    "cs": (a.get("flight") or "").strip() or (a.get("r") or "").strip(), "reg": (a.get("r") or "").strip(),
-                    "t": t, "desc": a.get("desc") or "", "cat": cat,
+                    "cs": cs or reg, "reg": reg, "country": country, "flag": REG.FLAGS.get(country, ""),
+                    "t": t, "desc": desc.title() if desc.isupper() else desc, "model": REG.AC_TYPES.get(t, ""),
+                    "op": md.get("own") or REG.callsign_operator(cs), "year": md.get("year"), "cat": cat,
                     "lat": round(lat, 4), "lon": round(lon, 4), "ts": ts,
                     "alt": 0 if ground else alt, "ground": ground, "gs": a.get("gs"),
                     "trk": a.get("track", a.get("true_heading")), "vr": a.get("baro_rate"),
@@ -142,7 +171,7 @@ class LiveAir:
                         tr.pop(0)
                 seen.add(hx)
                 # zdarzenia
-                label = f"{rec['cs'] or hx} ({rec['desc'] or t or '?'})"
+                label = f"{rec['cs'] or hx} ({rec['desc'] or rec['model'].split(' (')[0] or t or '?'}{', ' + country if country else ''})"
                 z = zone_of(lat, lon)
                 if z and cat in NOTABLE and not ground:
                     k = (hx, z)
@@ -172,6 +201,8 @@ class LiveAir:
         while True:
             try:
                 self.ingest(self.fetch())
+                if self.src_i == 1:
+                    self.refresh_meta()
             except Exception as e:
                 with self.lock:
                     self.status.update(ok=False, err=str(e)[:200])

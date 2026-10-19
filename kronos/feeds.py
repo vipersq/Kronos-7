@@ -168,9 +168,12 @@ MIL_TYPES = {"K35R": "tanker", "KC46": "tanker", "K46": "tanker", "A332": "tanke
              "B52": "bomber", "B1": "bomber", "B2": "bomber",
              "C17": "transport", "C5M": "transport", "C5": "transport", "C30J": "transport", "C130": "transport", "A400": "transport", "IL76": "transport",
              "F35": "fighter", "F16": "fighter", "F15": "fighter", "F18": "fighter", "EUFI": "fighter", "RFAL": "fighter", "F22": "fighter"}
-@feed("adsb", "adsb.lol – samoloty wojskowe (ADS-B)", "https://adsb.lol/", "B", "migawka z chwili pobrania; transpondery bywają wyłączane, brak pokrycia nad Rosją i Iranem")
+@feed("adsb", "adsb.fi / adsb.lol – samoloty wojskowe (ADS-B)", "https://adsb.fi/", "B", "migawka dla analizy AI; na mapie samoloty są na żywo; transpondery bywają wyłączane, brak pokrycia nad Rosją i Iranem")
 def f_adsb():
-    d = json.loads(fetch("mil.json", "https://api.adsb.lol/v2/mil"))
+    try:
+        d = json.loads(fetch("mil.json", "https://opendata.adsb.fi/api/v2/mil"))
+    except Exception:
+        d = json.loads(fetch("mil.json", "https://api.adsb.lol/v2/mil"))
     out = []
     for a in d.get("ac", []):
         if a.get("lat") is None: continue

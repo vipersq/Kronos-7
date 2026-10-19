@@ -50,6 +50,8 @@
       <label for="setModel">Model AI</label>
       <select id="setModel"></select>
       <label class="chk"><input id="setPull" type="checkbox"> Automatycznie pobieraj zalecany model</label>
+      <label for="setAis">Klucz aisstream.io <small>statki na żywo z całego świata; darmowy klucz: aisstream.io → zaloguj przez GitHub → API Keys. Bez klucza widać tylko północny Bałtyk.</small></label>
+      <div class="set-row"><input id="setAis" type="password" autocomplete="off" spellcheck="false" placeholder="wklej klucz"><button type="button" class="btn" id="setAisClr" hidden>USUŃ</button></div>
       <label for="setVol">Dźwięk terminala <small>włączasz przyciskiem AUDIO; te opcje zapisują się w tej przeglądarce</small></label>
       <input id="setVol" type="range" min="0" max="100" step="5">
       <label class="chk"><input id="setHum" type="checkbox"> Szum tła (buczenie maszynowni)</label>
@@ -125,6 +127,7 @@
       <span>✕ uderzenie (czerwone: Rosja, cyjan: Ukraina)</span>
       <span>◯ żegluga / zakłócenie</span>
       <span>▲ trzęsienie · ◆ wulkan · ● cyklon</span>
+      <span>▸ statek na żywo (AIS; czerwony okręt, bursztyn tankowiec, fiolet towarowy)</span>
       <span>➤ samolot wojskowy na żywo (ADS-B; cyjan rozpoznanie, bursztyn tankowiec, czerwony bombowiec)</span>
       <span>AT obiekt jądrowy</span>
     </div>
@@ -195,6 +198,10 @@
       <div class="frame-h"><span>&gt; NIEBO</span><em id="airT"></em></div>
       <ul class="rows" id="sky"></ul>
     </section>
+    <section class="frame cap" data-slide="war2">
+      <div class="frame-h"><span>&gt; STATKI</span><em id="seaT"></em></div>
+      <ul class="rows" id="sea"></ul>
+    </section>
     <section class="frame cap" data-slide="watch">
       <div class="frame-h"><span>&gt; PROGNOZY</span><em>Polymarket</em></div>
       <div id="pm"></div>
@@ -261,6 +268,7 @@
 <script src="vendor/topojson-client.min.js"></script>
 <script src="vendor/satellite.min.js"></script>
 <script src="vendor/land.js"></script>
+<script src="sound.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -5,6 +5,7 @@
   "max_age_hours": 8,
   "language": "pl",
   "live_air": {"enabled": true, "interval_s": 10, "idle_interval_s": 300, "hide_na_routine": true},
+  "live_sea": {"enabled": true, "interval_s": 30, "digitraffic": true, "max_ships": 4000},
 
   "ai": {
     "backend": "auto",

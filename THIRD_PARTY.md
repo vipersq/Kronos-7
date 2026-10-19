@@ -11,4 +11,4 @@ Pliki w `web/vendor/`:
 
 Opcjonalne pakiety Pythona (`requirements.txt`): [pycountry](https://github.com/pycountry/pycountry) (LGPL-2.1) i [h3](https://github.com/uber/h3-py) (Apache-2.0).
 
-Dane online pochodzą z serwisów wymienionych w README. Obowiązują ich własne warunki korzystania.
+Dane online pochodzą z serwisów wymienionych w README. Samoloty: adsb.fi (opendata, użytek niekomercyjny) i adsb.lol (ODbL). Statki: Digitraffic (Fintraffic, CC BY 4.0) i aisstream.io (darmowy klucz). Obowiązują ich własne warunki korzystania.

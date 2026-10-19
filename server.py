@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-from kronos import analyst, collector, live_air, llm  # noqa: E402
+from kronos import analyst, collector, live_air, live_sea, llm  # noqa: E402
 
 DATA = ROOT / "data"; ARCH = DATA / "archive"; WEB = ROOT / "web"
 ARCH.mkdir(parents=True, exist_ok=True)
@@ -70,6 +70,7 @@ def save_state(st):
 STATE = load_state()
 ENGINE = llm.Engine(CFG, log)
 AIR = live_air.LiveAir(CFG, log)
+SEA = live_sea.LiveSea(CFG, log)
 
 
 def progress(step, pct):
@@ -187,7 +188,8 @@ def settings_view():
     return {"callsign": CFG["operator"]["callsign"], "name": CFG["operator"]["name"],
             "refresh_times": CFG.get("refresh_times", []), "model": CFG["ai"].get("model", "auto"),
             "auto_pull": CFG["ai"].get("auto_pull", True), "installed": [m["name"] for m in st["installed"]],
-            "recommended": st["recommended"], "configured": bool(CFG["operator"]["callsign"])}
+            "recommended": st["recommended"], "configured": bool(CFG["operator"]["callsign"]),
+            "ais_key": ("…" + SETTINGS["aisstream_key"][-4:]) if SETTINGS.get("aisstream_key") else ""}
 
 
 def save_settings(body):
@@ -212,10 +214,18 @@ def save_settings(body):
         new["model"] = m
     if "auto_pull" in body:
         new["auto_pull"] = bool(body["auto_pull"])
+    if body.get("ais_clear"):
+        new.pop("aisstream_key", None)
+    elif str(body.get("aisstream_key") or "").strip():
+        k = str(body["aisstream_key"]).strip()
+        if not re.match(r"^[A-Za-z0-9_\-]{16,100}$", k):
+            return False, "Klucz aisstream.io wygląda nieprawidłowo (skopiuj go w całości ze strony aisstream.io)."
+        new["aisstream_key"] = k
     SETTINGS = new
     SETTINGS_FILE.write_text(json.dumps(new, ensure_ascii=False, indent=2), encoding="utf-8")
     apply_settings(new)
     ENGINE._choose()
+    SEA.set_key(new.get("aisstream_key", ""))
     log(f"Ustawienia zapisane (operator: {new.get('callsign') or '—'}).")
     return True, None
 
@@ -274,6 +284,9 @@ class H(BaseHTTPRequestHandler):
         if p == "/api/air":
             m = re.search(r"since=(\d+)", self.path)
             return self._json(AIR.snapshot(int(m.group(1)) if m else 0))
+        if p == "/api/sea":
+            m = re.search(r"since=(\d+)", self.path)
+            return self._json(SEA.snapshot(int(m.group(1)) if m else 0))
         if p == "/api/markets":
             return self._json(get_markets("force" in self.path))
         m = re.match(r"^/api/archive/([\w\-]+)$", p)
@@ -334,6 +347,9 @@ def main():
     threading.Thread(target=scheduler, daemon=True).start()
     if CFG.get("live_air", {}).get("enabled", True) and os.environ.get("KRONOS_NO_LIVE") != "1":
         AIR.start(); log(f"Samoloty wojskowe na żywo: co {AIR.interval} s, gdy terminal jest otwarty.")
+    if CFG.get("live_sea", {}).get("enabled", True) and os.environ.get("KRONOS_NO_LIVE") != "1":
+        SEA.start(); SEA.set_key(SETTINGS.get("aisstream_key", ""))
+        log("Statki na żywo: Digitraffic (Bałtyk, bez klucza)" + (" + aisstream.io (świat)" if SETTINGS.get("aisstream_key") else "; świat po wpisaniu klucza aisstream.io w oknie OPERATOR"))
     url = f"http://127.0.0.1:{port}"
     log(f"Terminal: {url}")
     if CFG.get("open_browser", True) and os.environ.get("KRONOS_NO_BROWSER") != "1":

@@ -46,84 +46,39 @@ const L = (u, n) => u ? `<a href="${esc(u)}" target="_blank" rel="noopener">${es
 function dd(rows) { return `<dl class="dl">${rows.filter(r => r && r[1] != null && r[1] !== "").map(r => `<dt>${r[0]}</dt><dd>${r[2] ? r[1] : esc(r[1])}</dd>`).join("")}</dl>`; }
 
 const AIR = { ok: false, d: null, mk: {}, skew: 0, lastEv: 0, first: true, at: 0 };
+const SEA = { ok: false, d: null, mk: {}, skew: 0, lastEv: 0, first: true, trail: null };
 let S = {}, CURRENT = null, ARCH = false, STATUS = null, MK = null, selected = null;
 const F = () => S.feeds || {};
 
 /* ------------------------------------------------------------ dźwięk, alarm, kompakt, zegary */
-/* Syntezator dźwięków terminala (Web Audio, wszystko generowane na żywo, bez plików):
-   beep – krótki sygnał, chatter – terkot drukowania tekstu, burble – „liczenie” rdzenia,
-   hum – szum tła statku, klaxon – alarm, power – rozruch, done – koniec analizy. */
-let actx = null, master = null, audioOn = store.get("audio", false), klaxon = null;
+/* Dźwięk: silnik w sound.js (K7Sound). Tu tylko włączanie, ustawienia i wywołania. */
+let actx = null, SE = null, audioOn = store.get("audio", false), klaxon = null, humH = null, burbleT = null;
 const SND = Object.assign({ vol: .7, hum: true, chatter: true }, store.get("sound", {}));
-function ac() {
-  if (!actx) { actx = new (window.AudioContext || window.webkitAudioContext)(); master = actx.createGain(); master.gain.value = SND.vol;
-    const comp = actx.createDynamicsCompressor(); master.connect(comp); comp.connect(actx.destination); }
-  if (actx.state === "suspended") actx.resume();
-  return actx;
+function eng() {
+  if (!audioOn || !window.K7Sound) return null;
+  try { if (!actx) { actx = new (window.AudioContext || window.webkitAudioContext)(); SE = window.K7Sound(actx, actx.destination); SE.setVol(SND.vol); }
+    if (actx.state === "suspended") actx.resume(); return SE; } catch (e) { return null; }
 }
-function tone(f, d, type = "square", vol = .04, at = 0, slideTo = 0, lp = 0) {
-  if (!audioOn) return;
-  try { const c = ac(), t = c.currentTime + at, o = c.createOscillator(), g = c.createGain(); let out = o;
-    o.type = type; o.frequency.setValueAtTime(f, t); if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + d);
-    if (lp) { const fl = c.createBiquadFilter(); fl.type = "lowpass"; fl.frequency.value = lp; o.connect(fl); out = fl; }
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + .004); g.gain.exponentialRampToValueAtTime(.0001, t + d);
-    out.connect(g); g.connect(master); o.start(t); o.stop(t + d + .03); } catch (e) {}
-}
-let noiseBuf = null;
-function noise(d, vol = .03, at = 0, hp = 2000) {
-  if (!audioOn) return;
-  try { const c = ac(), t = c.currentTime + at;
-    if (!noiseBuf) { noiseBuf = c.createBuffer(1, c.sampleRate, c.sampleRate); const ch = noiseBuf.getChannelData(0); for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1; }
-    const n = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain(); n.buffer = noiseBuf; f.type = "highpass"; f.frequency.value = hp;
-    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0001, t + d); n.connect(f); f.connect(g); g.connect(master);
-    n.start(t, Math.random() * .5); n.stop(t + d + .02); } catch (e) {}
-}
-function beep(f = 880, d = .05, type = "square", vol = .04) { tone(f, d, type, vol, 0, 0, 5000); }
-/* terkot drukarki terminala: szybkie, nieregularne kliknięcia wysokich tonów */
-let chatterUntil = 0;
-function chatter(chars = 20) {
-  if (!audioOn || !SND.chatter) return;
-  const c = ac(), now = c.currentTime; if (now < chatterUntil - .05) return;
-  const n = Math.min(24, Math.max(3, Math.round(chars / 3)));
-  for (let i = 0; i < n; i++) { const at = i * (.022 + Math.random() * .018);
-    if (Math.random() < .55) tone(1800 + Math.random() * 2600, .012, "square", .018, at, 0, 7000); else noise(.008, .03, at, 3500); }
-  chatterUntil = now + n * .03;
-}
-/* „liczenie” rdzenia: przypadkowe tony z siatki, jak bulgotanie komputera pokładowego */
-let burbleT = null;
-const BURBLE = [523, 587, 659, 784, 880, 1047, 1175, 1319, 1568, 1760, 2093];
+const sfx = (name, ...a) => { const e = eng(); if (e) try { return e[name](...a); } catch (err) {} };
+function beep(f = 880, d = .05, type = "square") { sfx("beep", f, d, type); }
+function chatter(n = 20) { if (SND.chatter) sfx("chatter", n); }
 function burble(on) {
-  clearInterval(burbleT); burbleT = null; if (!on || !audioOn) return;
-  burbleT = setInterval(() => { const f = BURBLE[Math.floor(Math.random() * BURBLE.length)]; tone(f, .055, Math.random() < .7 ? "square" : "triangle", .022, 0, 0, 4000);
-    if (Math.random() < .25) tone(f * 1.5, .04, "square", .014, .05, 0, 4000); }, 85);
+  clearTimeout(burbleT); burbleT = null; if (!on || !audioOn || !SND.chatter) return;
+  const loop = () => { const dur = sfx("burblePhrase") || .4; burbleT = setTimeout(loop, dur * 1000); }; loop();
 }
-/* szum tła: niskie buczenie i przefiltrowany szum wentylacji */
-let humNodes = null;
-function hum(on) {
-  if (humNodes) { const { g, nodes } = humNodes; try { g.gain.setTargetAtTime(0, actx.currentTime, .4); setTimeout(() => nodes.forEach(n => { try { n.stop(); } catch (e) {} }), 1500); } catch (e) {} humNodes = null; }
-  if (!on || !audioOn || !SND.hum) return;
-  try { const c = ac(), g = c.createGain(), lp = c.createBiquadFilter(), nodes = []; g.gain.value = 0; g.gain.setTargetAtTime(.05, c.currentTime, 1.5);
-    lp.type = "lowpass"; lp.frequency.value = 320; lp.connect(g); g.connect(master);
-    [[50, .5], [100.4, .25], [150.2, .08]].forEach(([f, v]) => { const o = c.createOscillator(), og = c.createGain(); o.frequency.value = f; og.gain.value = v; o.connect(og); og.connect(lp); o.start(); nodes.push(o); });
-    const len = c.sampleRate * 4, buf = c.createBuffer(1, len, c.sampleRate), ch = buf.getChannelData(0); let last = 0;
-    for (let i = 0; i < len; i++) { last = (last + .02 * (Math.random() * 2 - 1)) / 1.02; ch[i] = last * 3.5; }
-    const n = c.createBufferSource(), ng = c.createGain(); n.buffer = buf; n.loop = true; ng.gain.value = .6; n.connect(ng); ng.connect(lp); n.start(); nodes.push(n);
-    const lfo = c.createOscillator(), lg = c.createGain(); lfo.frequency.value = .08; lg.gain.value = 60; lfo.connect(lg); lg.connect(lp.frequency); lfo.start(); nodes.push(lfo);
-    humNodes = { g, nodes }; } catch (e) {}
-}
-function powerUp() { tone(60, 1.2, "sawtooth", .05, 0, 900, 1200); [0, .35, .7].forEach((at, i) => { noise(.05, .08, at, 300); tone(90 + i * 30, .08, "square", .03, at, 0, 600); }); tone(1760, .12, "square", .03, 1.25, 0, 5000); }
-function doneChime() { [1568, 1175, 1568, 2093].forEach((f, i) => tone(f, .09, "square", .03, i * .1, 0, 5000)); }
-function alarmBurst(times = 3) { for (let i = 0; i < times * 2; i++) tone(i % 2 ? 440 : 660, .36, "sawtooth", .035, i * .42, 0, 1800); }
-function startKlaxon() { stopKlaxon(); if (!audioOn) return; let hi = true; const go = () => { tone(hi ? 660 : 440, .38, "sawtooth", .035, 0, 0, 1800); hi = !hi; }; go(); klaxon = setInterval(go, 420); }
+function hum(on) { if (humH) { humH.stop(); humH = null; } if (on && audioOn && SND.hum) { const e = eng(); if (e) humH = e.humStart(); } }
+const powerUp = () => sfx("powerUp"), doneChime = () => sfx("done"), alarmBurst = n => sfx("alarm", n || 2);
+function startKlaxon() { stopKlaxon(); if (!audioOn) return; sfx("whoop"); klaxon = setInterval(() => sfx("whoop"), 780); }
 function stopKlaxon() { if (klaxon) { clearInterval(klaxon); klaxon = null; } }
 function setAudio(on) { audioOn = on; store.set("audio", on); $("#audioBtn").setAttribute("aria-pressed", on);
-  if (on) { ac(); beep(1200, .08); hum(true); if (document.body.classList.contains("alert")) startKlaxon(); } else { hum(false); burble(false); stopKlaxon(); } }
+  if (on) { sfx("click"); sfx("blip", 1568, .08); hum(true); if (document.body.classList.contains("alert")) startKlaxon(); } else { hum(false); burble(false); stopKlaxon(); } }
 $("#audioBtn").addEventListener("click", () => setAudio(!audioOn));
 $("#audioBtn").setAttribute("aria-pressed", audioOn);
-window.K7SND = { state: () => ({ on: audioOn, ctx: actx && actx.state, hum: !!humNodes, burble: !!burbleT, vol: SND.vol }), alarmBurst, doneChime, powerUp, chatter };
-/* przeglądarka pozwala grać dopiero po pierwszym kliknięciu – wtedy wznawiamy dźwięk zapamiętany z poprzedniej sesji */
-document.addEventListener("pointerdown", function first() { document.removeEventListener("pointerdown", first); if (audioOn) { ac(); hum(true); } }, { once: true });
-document.addEventListener("keydown", function firstK() { document.removeEventListener("keydown", firstK); if (audioOn) { ac(); if (!humNodes) hum(true); } }, { once: true });
+window.K7SND = { state: () => ({ on: audioOn, ctx: actx && actx.state, hum: !!humH, burble: !!burbleT, vol: SND.vol }), sfx };
+/* przeglądarka pozwala grać dopiero po pierwszym kliknięciu – wtedy wznawiamy dźwięk z poprzedniej sesji */
+["pointerdown", "keydown"].forEach(ev => document.addEventListener(ev, () => { if (audioOn && !humH) hum(true); }, { once: true }));
+/* każdy przycisk terminala klika jak przekaźnik */
+document.addEventListener("click", e => { if (e.target.closest("button.btn") && e.target.id !== "audioBtn") sfx("click"); }, true);
 $("#alertBtn").addEventListener("click", e => { const on = !document.body.classList.contains("alert"); document.body.classList.toggle("alert", on); e.currentTarget.setAttribute("aria-pressed", on); on ? startKlaxon() : stopKlaxon(); });
 function setCompact(on) { document.body.classList.toggle("compact", on); $("#compactBtn").setAttribute("aria-pressed", on); store.set("compact", on); }
 $("#compactBtn").addEventListener("click", () => { beep(700); setCompact(!document.body.classList.contains("compact")); });
@@ -132,11 +87,19 @@ function clocks() { const n = new Date(); $("#utc").textContent = n.toISOString(
 clocks(); setInterval(clocks, 1000);
 
 /* ------------------------------------------------------------ MAPA */
-const W = 960, H = 480;
+const W = 960; let H = 480;   // szerokość stała (współrzędne wewnętrzne), wysokość dopasowana do okna
 const svg = d3.select("#map");
 let mode = store.get("proj", "flat"), rot = [-30, -25], dragging = false, T = d3.zoomIdentity;
 const flat = d3.geoEquirectangular().scale(W / (2 * Math.PI)).translate([W / 2, H / 2]);
 const globe = d3.geoOrthographic().scale(232).translate([W / 2, H / 2]).clipAngle(90).precision(.4);
+function sizeMap() {
+  const r = $("#mapbox").getBoundingClientRect(); if (!r.width || !r.height) return false;
+  const nh = Math.round(W * Math.max(.3, Math.min(.85, r.height / r.width)));
+  if (nh === H && sizeMap.done) return false; H = nh; sizeMap.done = true;
+  svg.attr("viewBox", `0 0 ${W} ${H}`); flat.translate([W / 2, H / 2]); globe.scale(Math.min(W, H) * .47).translate([W / 2, H / 2]);
+  if (typeof zoom !== "undefined") zoom.extent([[0, 0], [W, H]]).translateExtent([[0, Math.min(0, H / 2 - W / 4)], [W, Math.max(H, H / 2 + W / 4)]]);
+  return true;
+}
 let proj = flat, path = d3.geoPath(flat);
 function fixWinding(fc) {   // niektóre wielokąty mają odwrotną orientację i d3 rysuje je jako „cały świat bez kraju”
   const fix = poly => { if (d3.geoArea({ type: "Polygon", coordinates: poly }) > 2 * Math.PI) poly.forEach(r => r.reverse()); };
@@ -150,9 +113,9 @@ const gSphere = root.append("path").attr("class", "sphere");
 const gGrat = root.append("path").attr("class", "grat");
 const gLand = root.append("path").attr("class", "land");
 const LAYERS = [["conf", "KONFLIKTY", 1], ["front", "FRONTY", 1], ["move", "NATARCIA", 1], ["strike", "UDERZENIA", 1], ["force", "SIŁY", 1], ["ship", "ŻEGLUGA", 1],
-  ["haz", "NATURA", 1], ["sat", "ORBITY", 1], ["air", "LOTNICTWO", 1], ["flank", "FLANKA", 1], ["nuke", "ATOM", 1], ["asp", "PRZESTRZEŃ", 0], ["gps", "GNSS", 0],
+  ["haz", "NATURA", 1], ["sat", "ORBITY", 1], ["air", "LOTNICTWO", 1], ["vessel", "STATKI", 1], ["flank", "FLANKA", 1], ["nuke", "ATOM", 1], ["asp", "PRZESTRZEŃ", 0], ["gps", "GNSS", 0],
   ["fire", "POŻARY", 0], ["net", "SIEĆ", 0], ["hum", "HUMANITARNE", 0], ["cyber", "CYBER", 0], ["news", "DEPESZE", 0], ["night", "NOC", 1]];
-const DRAW_ORDER = ["night", "gps", "fire", "asp", "ship", "sat", "haz", "front", "move", "strike", "force", "net", "hum", "nuke", "flank", "air", "airlive", "cyber", "news", "conf"];
+const DRAW_ORDER = ["night", "gps", "fire", "asp", "vessel", "ship", "sat", "haz", "front", "move", "strike", "force", "net", "hum", "nuke", "flank", "air", "airlive", "cyber", "news", "conf"];
 const G = {}; DRAW_ORDER.forEach(k => G[k] = root.append("g").attr("data-l", k));
 const pNight = G.night.append("path").attr("class", "night"), pTwi = G.night.append("path").attr("class", "twi");
 let layerOn = Object.assign(Object.fromEntries(LAYERS.map(l => [l[0], !!l[2]])), store.get("layers3", {}));
@@ -196,14 +159,14 @@ function redraw() {
     if (!p) { d.el.style.display = "none"; return; } d.el.style.display = ""; d.el.setAttribute("cx", p[0].toFixed(2)); d.el.setAttribute("cy", p[1].toFixed(2)); });
   placeMarkers(); zoomClasses();
 }
-function zoomClasses() { placeLive(true); const k = mode === "globe" ? 1 : T.k; svg.classed("z3", k >= 3).classed("z6", k >= 6); $("#zoomlvl").textContent = mode === "globe" ? "3D" : "×" + (k < 10 ? k.toFixed(1) : Math.round(k)); }
+function zoomClasses() { placeLive(true); placeSea(); const k = mode === "globe" ? 1 : T.k; svg.classed("z3", k >= 3).classed("z6", k >= 6); $("#zoomlvl").textContent = mode === "globe" ? "3D" : "×" + (k < 10 ? k.toFixed(1) : Math.round(k)); }
 function loadHi() {
   if (land50 || loadHi.busy) return; loadHi.busy = true;
   const s = document.createElement("script"); s.src = "vendor/land50.js";
   s.onload = () => { land50 = fixWinding(topojson.feature(window.__LAND50, window.__LAND50.objects.countries)); if (landHi) redraw(); };
   document.body.appendChild(s);
 }
-const zoom = d3.zoom().scaleExtent([1, 320]).translateExtent([[0, 0], [W, H]]).extent([[0, 0], [W, H]])
+const zoom = d3.zoom().scaleExtent([1, 320]).translateExtent([[0, Math.min(0, H / 2 - W / 4)], [W, Math.max(H, H / 2 + W / 4)]]).extent([[0, 0], [W, H]])
   .filter(ev => mode === "flat" && (ev.type === "wheel" || ev.type === "dblclick" || ev.type === "mousedown" ? !ev.button : (ev.touches ? ev.touches.length > 1 : true)))
   .on("zoom", ev => { T = ev.transform; root.attr("transform", T); placeMarkers(); zoomClasses();
     const hi = T.k >= 2.5; if (hi !== landHi) { landHi = hi; if (hi) loadHi(); gLand.attr("d", path(hi && land50 ? land50 : land110)); } });
@@ -286,7 +249,7 @@ function gdot(layer, lat, lon, r, style, id) { const c = G[layer].append("circle
   if (id) c.attr("data-id", id).style("cursor", "pointer").on("click", () => go(id)); dots.push({ el: c.node(), lon, lat }); return c; }
 
 function buildMap() {
-  DRAW_ORDER.filter(k => k !== "night" && k !== "airlive").forEach(k => G[k].selectAll("*").remove()); markers = []; dots = []; geoPaths = [];
+  DRAW_ORDER.filter(k => k !== "night" && k !== "airlive" && k !== "vessel").forEach(k => G[k].selectAll("*").remove()); markers = []; dots = []; geoPaths = [];
   const f = F(), ch = S.changes || {}, nm = ch.new_mods || {};
   const isNew = (k, id) => A(nm[k]).includes(id);
   if (f.gpsjam && f.gpsjam.pts) f.gpsjam.pts.forEach(d => gdot("gps", d[0], d[1], .55, { fill: d[2] >= .3 ? "var(--red)" : "var(--amber)", opacity: .15 + d[2] * .45, "pointer-events": "none" }));
@@ -357,7 +320,7 @@ function drawSats(noRedraw) {
 }
 
 /* ------------------------------------------------------------ SAMOLOTY NA ŻYWO (ADS-B) */
-/* Serwer pobiera adsb.lol (zapasowo adsb.fi) co ~10 s. Między odczytami pozycja jest
+/* Serwer pobiera adsb.fi (zapasowo adsb.lol) co ~10 s. Między odczytami pozycja jest
    przewidywana z kursu i prędkości, więc samoloty płyną jak na radarze. */
 const ACOL = { isr: "var(--cyan)", tanker: "var(--amber)", bomber: "var(--red)", transport: "var(--violet)", fighter: "var(--phos)", other: "var(--phos-dim)" };
 const NOTABLE = new Set(["isr", "bomber", "tanker"]);
@@ -382,7 +345,7 @@ function drawLive() {
       m = AIR.mk[a.hex] = { g: g.node(), core: g.node().firstChild, txt: g.node().lastChild, tr: tr.node() };
     }
     m.a = a; m.core.style.fill = ACOL[a.cat] || ACOL.other; m.txt.textContent = a.cs || a.hex;
-    m.g.setAttribute("aria-label", `${a.cs || a.hex} ${a.desc || a.t}`); m.g.classList.toggle("sel", selected === "ah:" + a.hex);
+    m.g.setAttribute("aria-label", `${a.cs || a.hex} ${a.desc || a.t} ${a.country || ""}`); m.g.classList.toggle("sel", selected === "ah:" + a.hex);
   });
   Object.keys(AIR.mk).forEach(h => { if (!seen.has(h)) { AIR.mk[h].g.remove(); AIR.mk[h].tr.remove(); delete AIR.mk[h]; } });
   placeLive(true);
@@ -401,11 +364,11 @@ function placeLive(trails) {
 }
 let airT = null, airTick = 0;
 d3.timer(t => { if (!AIR.ok || document.hidden || t - airTick < 200 || view !== "map") return; airTick = t; placeLive(t % 2000 < 210); });
-function contactSound(kind) { if (kind === "squawk") { alarmBurst(1); return; } tone(880, .12, "sine", .05, 0, 1320); tone(1320, .18, "sine", .04, .16, 990); }
+function contactSound(kind) { if (kind === "squawk") alarmBurst(1); else sfx("contact"); }
 function airToast(e) {
   const box = $("#airToast"); if (!box) return; const b = document.createElement("button");
   b.className = "toast" + (e.kind === "squawk" ? " red" : ""); b.innerHTML = `<b>KONTAKT · ${esc(new Date(e.at).toISOString().slice(11, 16))} UTC</b>${esc(e.msg)}`;
-  b.addEventListener("click", () => { go("ah:" + e.hex); b.remove(); }); box.appendChild(b); setTimeout(() => b.remove(), 12000);
+  b.addEventListener("click", () => { go(e.go || "ah:" + e.hex); b.remove(); }); box.appendChild(b); setTimeout(() => b.remove(), 12000);
   while (box.children.length > 4) box.firstChild.remove();
 }
 async function pollAir() {
@@ -422,6 +385,76 @@ async function pollAir() {
   airT = setTimeout(pollAir, document.hidden ? 30000 : next);
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden) pollAir(); });
+
+/* ------------------------------------------------------------ STATKI NA ŻYWO (AIS) */
+const SCOL = { military: "var(--red)", law: "#ff8f6b", tanker: "var(--amber)", cargo: "var(--violet)", passenger: "var(--cyan)", sar: "var(--white)", service: "var(--phos-dim)", fishing: "var(--khaki)", other: "var(--phos-faint)" };
+const SCN = { military: "WOJSKOWY", law: "STRAŻ", tanker: "TANKOWIEC", cargo: "TOWAROWY", passenger: "PASAŻERSKI", sar: "RATOWNICZY", service: "SERWISOWY", fishing: "RYBACKI", other: "INNY" };
+const SHOT = new Set(["military", "law", "tanker"]);
+function seaPos(r, now) {
+  const dt = Math.min(1800, Math.max(0, (now - r.ts) / 1000)); if (!r.sog || r.sog < .5 || r.cog == null) return [r.lat, r.lon];
+  const nm = r.sog * dt / 3600, a = r.cog * Math.PI / 180; return [r.lat + nm * Math.cos(a) / 60, r.lon + nm * Math.sin(a) / (60 * Math.max(.2, Math.cos(r.lat * Math.PI / 180)))];
+}
+function drawSea() {
+  const seen = new Set();
+  A(SEA.d && SEA.d.ships).forEach(r => {
+    const id = String(r.mmsi); seen.add(id); let m = SEA.mk[id];
+    if (!m) {
+      const g = G.vessel.append("g").attr("class", "mk ship").attr("tabindex", -1).attr("role", "button").attr("data-id", "vs:" + id);
+      g.append("path").attr("class", "core"); g.append("text").attr("class", "lbl hlbl").attr("x", 6).attr("y", -4);
+      g.on("click", ev => { ev.stopPropagation(); go("vs:" + id); });
+      m = SEA.mk[id] = { g: g.node(), core: g.node().firstChild, txt: g.node().lastChild };
+    }
+    m.r = r; const moving = r.sog >= .5, big = SHOT.has(r.cat);
+    m.core.setAttribute("d", moving ? (big ? "M6,0L-4,-3.2L-4,3.2Z" : "M4.5,0L-3,-2.4L-3,2.4Z") : (big ? "M0,-2.8L2.8,0L0,2.8L-2.8,0Z" : "M0,-2L2,0L0,2L-2,0Z"));
+    m.core.style.fill = SCOL[r.cat] || SCOL.other; m.txt.textContent = big ? (r.name || "") : "";
+    m.g.setAttribute("aria-label", `${r.name || r.mmsi} ${r.kind} ${r.flag || ""}`); m.g.classList.toggle("sel", selected === "vs:" + id);
+  });
+  Object.keys(SEA.mk).forEach(k => { if (!seen.has(k)) { SEA.mk[k].g.remove(); delete SEA.mk[k]; } });
+  placeSea();
+}
+function placeSea() {
+  if (!SEA.ok) return; const now = Date.now() + SEA.skew, k = mode === "globe" ? 1 : T.k;
+  Object.values(SEA.mk).forEach(m => {
+    const r = m.r, ll = seaPos(r, now);
+    if (!visible(ll[1], ll[0])) { m.g.style.display = "none"; return; }
+    const p = proj([ll[1], ll[0]]); if (!p) { m.g.style.display = "none"; return; }
+    m.g.style.display = ""; m.g.setAttribute("transform", `translate(${p[0].toFixed(1)},${p[1].toFixed(1)})${k !== 1 ? ` scale(${1 / k})` : ""}`);
+    const h = r.sog >= .5 ? (r.cog != null ? r.cog : r.hdg) : null; m.core.setAttribute("transform", h != null ? `rotate(${(h - 90).toFixed(0)})` : "");
+  });
+  if (SEA.trail) { const sel = selected && selected.startsWith("vs:") && A(SEA.d.ships).find(x => "vs:" + x.mmsi === selected);
+    SEA.trail.attr("d", sel ? (path(LL(A(sel.trail).map(p => [p[0], p[1]]).concat([seaPos(sel, now)]))) || "") : "").style("stroke", sel ? SCOL[sel.cat] : null); }
+}
+let seaT = null, seaTick = 0;
+d3.timer(t => { if (!SEA.ok || document.hidden || t - seaTick < 2000 || view !== "map") return; seaTick = t; placeSea(); });
+async function pollSea() {
+  clearTimeout(seaT); let next = 30000;
+  try {
+    const d = await api("/api/sea?since=" + SEA.lastEv); next = (d.interval || 30) * 1000;
+    if (A(d.ships).length) {
+      const was = SEA.ok; SEA.ok = true; SEA.skew = d.now - Date.now(); SEA.d = Object.assign({}, d, { events: (SEA.d ? A(SEA.d.events) : []).concat(A(d.events)).slice(-30) });
+      if (!SEA.trail) SEA.trail = G.vessel.insert("path", ":first-child").attr("class", "shtrail");
+      A(d.events).forEach(e => { SEA.lastEv = Math.max(SEA.lastEv, e.at); if (!SEA.first) { airToast(Object.assign({}, e, { hex: null, go: "vs:" + e.mmsi })); contactSound(e.kind === "alarm" ? "squawk" : "zone"); } });
+      SEA.first = false; drawSea(); if (selected && selected.startsWith("vs:")) pick(selected, true);
+    } else SEA.d = d;
+    renderSea();
+  } catch (e) {}
+  seaT = setTimeout(pollSea, document.hidden ? 60000 : next);
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) pollSea(); });
+function renderSea() {
+  const d = SEA.d; if (!d) return; const st = d.status || {}, dt = st.digitraffic || {}, ai = st.aisstream || {}, ships = A(d.ships), now = Date.now() + SEA.skew;
+  $("#seaT").innerHTML = ships.length ? `<span class="livedot"></span>NA ŻYWO · ${ships.length} jednostek` : "";
+  const srcLine = (n, s, extra) => `<li><button tabindex="-1" style="cursor:default"><span class="t">${n}</span><span class="${s.ok ? "" : s.ok === false ? "red" : "dim"}">${s.ok ? (s.n || 0) + " statków" : s.ok === false ? "BŁĄD" : "—"}</span><span class="sub">${esc(s.err || extra || "")}</span></button></li>`;
+  let h = `<li class="hd">Źródła</li>` + srcLine("Digitraffic · północny Bałtyk", dt, "bez klucza") + srcLine("aisstream.io · obserwowane rejony świata", ai, d.key ? "" : "wpisz darmowy klucz w oknie OPERATOR");
+  const ev = A(d.events).slice(-8).reverse();
+  if (ev.length) h += `<li class="hd">Zdarzenia</li>` + ev.map(e => `<li><button data-go="vs:${e.mmsi}"><span class="t">${esc(e.msg)}</span><span class="dim">${new Date(e.at).toISOString().slice(11, 16)}</span></button></li>`).join("");
+  const zones = {}; ships.forEach(r => { if (!r.zone) return; const z = zones[r.zone] = zones[r.zone] || { tanker: 0, cargo: 0, military: 0, all: 0, ru: 0, foc: 0 }; z.all++; if (r.cat in z) z[r.cat]++; if (r.cat === "law") z.military++;
+    if (r.cat === "tanker" && r.flag === "Rosja") z.ru++; if (r.cat === "tanker" && r.foc) z.foc++; });
+  if (Object.keys(zones).length) h += `<li class="hd">Rejony</li>` + Object.entries(zones).sort((a, b) => b[1].all - a[1].all).map(([n, z]) => `<li><button tabindex="-1" style="cursor:default"><span class="t">${esc(n)}</span><span class="dim">${z.all}</span><span class="sub">tankowce ${z.tanker} (rosyjska bandera ${z.ru}, bandery wygody ${z.foc}) · towarowe ${z.cargo} · wojskowe/straż ${z.military}</span></button></li>`).join("");
+  const hot = ships.filter(r => r.cat === "military" || r.cat === "law").slice(0, 12);
+  if (hot.length) h += `<li class="hd">Jednostki wojskowe i straży</li>` + hot.map(r => `<li><button data-go="vs:${r.mmsi}"><span class="t">${esc(r.flag_e || "")} ${esc(r.name || r.mmsi)}</span>${chip(SCN[r.cat], SCOL[r.cat])}<span class="sub">${esc(r.flag || "")} · ${esc(r.zone || fmtLL(r.lat, r.lon))} · ${agoTxt(Math.round((now - r.ts) / 1000))}</span></button></li>`).join("");
+  rowsInto("#sea", h);
+}
 
 /* ------------------------------------------------------------ ŁAŃCUCH PRZYCZYN */
 const csvg = d3.select("#chain"), CW = 960, CH = 560;
@@ -526,6 +559,7 @@ function go(id) {
 function locExtra(t, key) {
   const f = F();
   if (t === "ac") { const a = A(f.adsb && f.adsb.ac)[+key]; return a && [a.lat, a.lon, 6, "air"]; }
+  if (t === "vs") { const r = A(SEA.d && SEA.d.ships).find(x => String(x.mmsi) === key); if (!r) return null; const p = seaPos(r, Date.now() + SEA.skew); return [p[0], p[1], 5, "vessel"]; }
   if (t === "ah") { const a = A(AIR.d && AIR.d.ac).find(x => x.hex === key); if (!a) return null; const p = airPos(a, Date.now() + AIR.skew); return [p[0], p[1], 4, "air"]; }
   if (t === "gd") { const g = A(f.gdacs)[+key]; return g && [g.lat, g.lon, 12, "haz"]; }
   if (t === "nhc") { const n = A(f.nhc)[+key]; return n && [n.lat, n.lon, 12, "haz"]; }
@@ -613,11 +647,23 @@ function pick(id, silent) {
     const s = satrecs[+key]; if (!s) return; const p = s.last || {};
     h = `${chip("OBIEKT ORBITALNY", "var(--cyan)")}<h2 class="glow">${esc(s.name)}</h2>` + dd([["POZYCJA", p.lat != null ? fmtLL(p.lat, p.lon) : "–"], ["WYSOKOŚĆ", p.alt ? Math.round(p.alt) + " km" : "–"],
       ["TOR", "Linia przerywana: najbliższe ok. 95 minut lotu."], ["DANE", "TLE (AMSAT, CelesTrak), propagacja SGP4 na żywo."]]);
+  } else if (t === "vs") { const r = A(SEA.d && SEA.d.ships).find(x => String(x.mmsi) === key);
+    if (!r) h = chip("AIS", "var(--cyan)") + `<h2 class="glow">MMSI ${esc(key)}</h2><p class="hint">Statek przestał nadawać albo wypłynął poza zasięg odbiorników.</p>`;
+    else { const now = Date.now() + SEA.skew, p = seaPos(r, now), age = Math.round((now - r.ts) / 1000), NAV = ["w drodze (silnik)", "na kotwicy", "bez napędu", "ograniczona manewrowość", "ograniczony zanurzeniem", "zacumowany", "na mieliźnie", "połów", "w drodze (żagle)"];
+      h = chip("NA ŻYWO · " + (SCN[r.cat] || r.cat), SCOL[r.cat]) + `<h2 class="glow">${esc(r.flag_e || "")} ${esc(r.name || "MMSI " + r.mmsi)}</h2>` + dd([
+        ["BANDERA", (r.flag || "nieustalona") + (r.foc ? " (bandera wygody – armator zwykle z innego kraju)" : "")], ["TYP", r.kind],
+        ["CEL PODRÓŻY", r.dest], ["WYMIARY", r.length ? `${r.length} × ${r.width || "?"} m` : null], ["ZANURZENIE", r.draught ? r.draught + " m" : null],
+        ["PRĘDKOŚĆ", r.sog != null ? `${r.sog} w. (${Math.round(r.sog * 1.852)} km/h)` : null], ["KURS", r.cog != null ? Math.round(r.cog) + "°" : null],
+        ["STATUS", r.nav === 14 ? "ALARM AIS-SART" : NAV[r.nav]], ["POZYCJA", fmtLL(p[0], p[1]) + (r.zone ? " · " + r.zone : "")], ["OSTATNI ODCZYT", agoTxt(age)],
+        ["MMSI", r.mmsi], ["IMO", r.imo], ["ZNAK WYWOŁAWCZY", r.cs], ["ŹRÓDŁO", r.src], ["PODGLĄD", L(r.u, "MarineTraffic"), 1]]) +
+        `<p class="hint">Dane AIS nadaje sam statek, więc nazwa, typ i cel podróży mogą być nieaktualne lub fałszywe. Okręty zwykle wyłączają AIS. Linia przerywana to trasa z ostatnich godzin.</p>`; }
   } else if (t === "ah") { const a = A(AIR.d && AIR.d.ac).find(x => x.hex === key);
     if (!a) h = chip("ADS-B NA ŻYWO", "var(--cyan)") + `<h2 class="glow">${esc(key)}</h2><p class="hint">Samolot przestał nadawać albo zniknął z zasięgu odbiorników.</p>`;
     else { const now = Date.now() + AIR.skew, p = airPos(a, now), age = airAge(a, now);
-      h = chip("NA ŻYWO · " + (ACN[a.cat] || a.cat), ACOL[a.cat] || "var(--cyan)") + `<h2 class="glow">${esc(a.cs || a.hex)} · ${esc(a.t || "?")}</h2>` + dd([
-        ["TYP", a.desc || a.t], ["REJESTRACJA", a.reg], ["POZYCJA", fmtLL(p[0], p[1])], ["WYSOKOŚĆ", a.ground ? "na ziemi" : a.alt != null ? `${a.alt} ft (${Math.round(a.alt * .3048)} m)` : null],
+      h = chip("NA ŻYWO · " + (ACN[a.cat] || a.cat), ACOL[a.cat] || "var(--cyan)") + `<h2 class="glow">${esc(a.flag || "")} ${esc(a.cs || a.hex)} · ${esc(a.t || "?")}</h2>` + dd([
+        ["KRAJ", a.country ? a.country + (a.country === "NATO" ? " (rejestracja luksemburska)" : "") : "nieustalony"],
+        ["MODEL", [a.desc, a.model && a.model !== a.desc ? a.model : ""].filter(Boolean).join(" — ") || a.t],
+        ["OPERATOR", a.op], ["ROK PRODUKCJI", a.year], ["REJESTRACJA", a.reg], ["ADRES ICAO", a.hex.toUpperCase()], ["POZYCJA", fmtLL(p[0], p[1])], ["WYSOKOŚĆ", a.ground ? "na ziemi" : a.alt != null ? `${a.alt} ft (${Math.round(a.alt * .3048)} m)` : null],
         ["PRĘDKOŚĆ", a.gs ? `${Math.round(a.gs)} kt (${Math.round(a.gs * 1.852)} km/h)` : null], ["KURS", a.trk != null ? Math.round(a.trk) + "°" : null],
         ["WZNOSZENIE", a.vr ? (a.vr > 0 ? "+" : "") + a.vr + " ft/min" : null], ["SQUAWK", a.sq], ["OSTATNI ODCZYT", agoTxt(age) + (a.mlat ? " · pozycja z MLAT" : "")],
         ["ŹRÓDŁO", L(a.u, (AIR.d.status || {}).src || "ADS-B"), 1]]) +
@@ -850,7 +896,7 @@ function renderSky() {
     if (ev.length) h += `<li class="hd">Kontakty w obserwowanych rejonach</li>` + ev.map(e => `<li><button data-go="ah:${esc(e.hex)}"><span class="t">${esc(e.msg)}</span><span class="dim">${new Date(e.at).toISOString().slice(11, 16)}</span></button></li>`).join("");
     const hot = ac.filter(a => NOTABLE.has(a.cat) && !a.ground).slice(0, 16);
     h += `<li class="hd">Rozpoznanie, tankowce, bombowce · ${hot.length}</li>` + hot.map(a => { const p = airPos(a, now);
-      return `<li><button data-go="ah:${esc(a.hex)}"><span class="t">${esc(a.cs || a.hex)} · ${esc(a.desc || a.t)}</span><span class="chip" style="color:${ACOL[a.cat]};border-color:${ACOL[a.cat]}">${ACN[a.cat]}</span><span class="sub">${fmtLL(p[0], p[1])} · ${a.alt != null ? a.alt + " ft" : ""} · ${agoTxt(airAge(a, now))}</span></button></li>`; }).join("");
+      return `<li><button data-go="ah:${esc(a.hex)}"><span class="t">${esc(a.flag || "")} ${esc(a.cs || a.hex)} · ${esc(a.desc || (a.model || "").split(" (")[0] || a.t)}</span><span class="chip" style="color:${ACOL[a.cat]};border-color:${ACOL[a.cat]}">${ACN[a.cat]}</span><span class="sub">${esc(a.country || "")}${a.op ? " · " + esc(a.op) : ""} · ${fmtLL(p[0], p[1])} · ${a.alt != null ? a.alt + " ft" : ""} · ${agoTxt(airAge(a, now))}</span></button></li>`; }).join("");
   } else {
     const ad = f.adsb || {}, ac = A(ad.ac); $("#airT").textContent = ad.t ? "MIGAWKA " + ad.t + (AIR.err ? " · brak łącza na żywo" : "") : "";
     const cnt = {}; ac.forEach(a => cnt[a.cat] = (cnt[a.cat] || 0) + 1);
@@ -943,10 +989,10 @@ async function streamTo(url, body, el, onDone, signal) {
   el.hidden = false; el.textContent = "> PRZETWARZANIE…"; let text = ""; burble(true);
   try { const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal });
     const rd = r.body.getReader(), dec = new TextDecoder();
-    for (;;) { const { done, value } = await rd.read(); if (done) break; const part = dec.decode(value, { stream: true }); if (part && burbleT) burble(false); chatter(part.length); text += part; el.textContent = text.replace(/\n?REF:.*$/s, "") || "> PRZETWARZANIE…"; }
-  } catch (e) { burble(false); if (e.name === "AbortError") return; el.textContent = "Brak połączenia z serwerem KRONOS-7."; beep(220, .3, "sawtooth"); return; }
+    for (;;) { const { done, value } = await rd.read(); if (done) break; const part = dec.decode(value, { stream: true }); if (part && burbleT) burble(false); chatter(part.length); if (/\n/.test(part)) sfx("carriage", .1); text += part; el.textContent = text.replace(/\n?REF:.*$/s, "") || "> PRZETWARZANIE…"; }
+  } catch (e) { burble(false); if (e.name === "AbortError") return; el.textContent = "Brak połączenia z serwerem KRONOS-7."; sfx("error"); return; }
   burble(false);
-  el.textContent = text.replace(/\n?REF:.*$/s, "").trim(); tone(1400, .05, "square", .03); tone(2100, .07, "square", .03, .07); if (onDone) onDone(text);
+  el.textContent = text.replace(/\n?REF:.*$/s, "").trim(); sfx("carriage"); sfx("blip", 1568, .3); if (onDone) onDone(text);
 }
 function ask() {
   const q = $("#q").value.trim(); if (!q) return; beep(1000, .06);
@@ -956,7 +1002,7 @@ function ask() {
     const it = ids.find(i => A(S.items).some(x => x.id === i)); if (it) go("n:" + it); });
 }
 $("#qGo").addEventListener("click", ask);
-$("#q").addEventListener("keydown", e => { if (e.key === "Enter") ask(); else if (e.key.length === 1) { noise(.012, .045, 0, 2500); tone(1600 + Math.random() * 400, .01, "square", .012); } });
+$("#q").addEventListener("keydown", e => { if (e.key === "Enter") ask(); else if (e.key.length === 1) sfx("key", 0, .8); });
 /* SITREP w oknie: strumień, kopiuj, czytaj, drukuj */
 let sitCtl = null, sitBusy = false, sitFocus = null, sitText = "";
 function sitOpen() { sitFocus = document.activeElement; $("#sitModal").hidden = false; $("#sitClose").focus(); }
@@ -1066,6 +1112,7 @@ async function openSettings() {
   $("#setModel").innerHTML = [`<option value="auto">AUTOMATYCZNIE (zalecany: ${esc(SET.recommended || "?")})</option>`].concat(A(SET.installed).map(m => `<option value="${esc(m)}">${esc(m)}</option>`)).join("");
   $("#setModel").value = A(SET.installed).includes(SET.model) ? SET.model : "auto";
   $("#setPull").checked = !!SET.auto_pull; $("#setMsg").textContent = "";
+  $("#setAis").value = ""; $("#setAis").placeholder = SET.ais_key ? `klucz ustawiony (${SET.ais_key}) – wklej nowy, aby zmienić` : "wklej klucz"; $("#setAisClr").hidden = !SET.ais_key;
   $("#setVol").value = Math.round(SND.vol * 100); $("#setHum").checked = SND.hum; $("#setChat").checked = SND.chatter;
   $("#settings").hidden = false; $("#setCall").focus();
 }
@@ -1076,15 +1123,15 @@ $("#settings").addEventListener("click", e => { if (e.target.id === "settings") 
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#settings").hidden) closeSettings(); });
 function applySound() {
   SND.vol = +$("#setVol").value / 100; SND.hum = $("#setHum").checked; SND.chatter = $("#setChat").checked; store.set("sound", SND);
-  if (master) master.gain.setTargetAtTime(SND.vol, actx.currentTime, .05);
-  if (SND.hum && audioOn && !humNodes) hum(true); else if (!SND.hum && humNodes) hum(false);
+  if (SE) SE.setVol(SND.vol); if (SND.hum && audioOn && !humH) hum(true); else if (!SND.hum && humH) hum(false);
 }
 $("#setVol").addEventListener("input", () => { applySound(); beep(1200, .06); });
 $("#setHum").addEventListener("change", applySound);
 $("#setChat").addEventListener("change", () => { applySound(); chatter(30); });
+$("#setAisClr").addEventListener("click", async () => { const r = await saveSettings({ ais_clear: true }); $("#setMsg").textContent = r.ok ? "Klucz usunięty." : r.error; $("#setAisClr").hidden = true; $("#setAis").placeholder = "wklej klucz"; });
 $("#setForm").addEventListener("submit", async e => {
   e.preventDefault(); applySound();
-  const r = await saveSettings({ callsign: $("#setCall").value, name: $("#setName").value, model: $("#setModel").value, auto_pull: $("#setPull").checked,
+  const r = await saveSettings({ aisstream_key: $("#setAis").value.trim(), callsign: $("#setCall").value, name: $("#setName").value, model: $("#setModel").value, auto_pull: $("#setPull").checked,
     refresh_times: ["#setT1", "#setT2", "#setT3"].map(s2 => $(s2).value).filter(Boolean) });
   if (r.ok) { beep(1400, .08); $("#setMsg").textContent = "Zapisano."; pollStatus(); setTimeout(closeSettings, 600); }
   else { beep(300, .2, "sawtooth"); $("#setMsg").textContent = r.error || "Nie udało się zapisać."; }
@@ -1117,20 +1164,21 @@ function boot(done) {
       return;
     }
     const id = opCall(); let j = 0; Lg.innerHTML = 'IDENTYFIKATOR OPERATORA: <span id="lg"></span><span class="cursor"></span>';
-    (function type() { if (stop) return; if (j < id.length) { $("#lg").textContent += id[j++]; noise(.012, .05, 0, 2500); tone(2400, .01, "square", .015); setTimeout(type, 110); return; } setTimeout(() => { if (!stop) greet(); }, 300); })();
+    (function type() { if (stop) return; if (j < id.length) { $("#lg").textContent += id[j++]; sfx("key"); setTimeout(type, 110); return; } setTimeout(() => { if (!stop) greet(); }, 300); })();
   };
-  (function line() { if (stop) return; if (i < lines.length && !reduce) { chatter(lines[i].length); T2.textContent += lines[i++] + "\n"; setTimeout(line, 150); return; } if (reduce) T2.textContent = lines.join("\n"); login(); })();
+  (function line() { if (stop) return; if (i < lines.length && !reduce) { chatter(lines[i].length); T2.textContent += lines[i++] + "\n"; sfx("carriage", lines[i - 1].length * .02); setTimeout(line, 150 + lines[i - 1].length * 20); return; } if (reduce) T2.textContent = lines.join("\n"); login(); })();
 }
 
 /* odczyt ma wysokość mapy (na szerokim ekranie) */
 if (window.ResizeObserver) new ResizeObserver(() => { const h = $("#map").getBoundingClientRect().height; $("#detail").style.maxHeight = innerWidth > 1060 && h > 200 ? Math.round(h) + "px" : ""; }).observe($("#mapbox"));
 
 (async function init() {
-  setMode(mode);
+  sizeMap(); setMode(mode);
+  if (window.ResizeObserver) { let rT = null; new ResizeObserver(() => { clearTimeout(rT); rT = setTimeout(() => { if (sizeMap()) { if (mode === "flat") setTheater(theater || "world", false); redraw(); } }, 120); }).observe($("#mapbox")); }
   try { STATUS = await api("/api/status"); } catch (e) {}
   await loadSettings();
   await loadState();
-  pollAir();
+  pollAir(); pollSea();
   renderSys(); renderSrc();
   if (mode === "flat") setTheater(theater || "world", false);
   loadMarkets(); setInterval(loadMarkets, 5 * 60 * 1000);
