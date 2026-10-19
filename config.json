@@ -4,6 +4,7 @@
   "refresh_times": ["05:50", "17:50"],
   "max_age_hours": 8,
   "language": "pl",
+  "live_air": {"enabled": true, "interval_s": 10, "idle_interval_s": 300, "hide_na_routine": true},
 
   "ai": {
     "backend": "auto",

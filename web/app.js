@@ -1,4 +1,4 @@
-/* KRONOS-7 v3.3 — interfejs terminala. Dane: lokalny serwer (/api/*). */
+/* KRONOS-7 v3.4 — interfejs terminala. Dane: lokalny serwer (/api/*). */
 (function () {
 "use strict";
 const $ = s => document.querySelector(s);
@@ -45,6 +45,7 @@ function srcLinks(arr) { return A(arr).filter(s => Array.isArray(s) && s[1]).map
 const L = (u, n) => u ? `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(n || "źródło")}</a>` : "";
 function dd(rows) { return `<dl class="dl">${rows.filter(r => r && r[1] != null && r[1] !== "").map(r => `<dt>${r[0]}</dt><dd>${r[2] ? r[1] : esc(r[1])}</dd>`).join("")}</dl>`; }
 
+const AIR = { ok: false, d: null, mk: {}, skew: 0, lastEv: 0, first: true, at: 0 };
 let S = {}, CURRENT = null, ARCH = false, STATUS = null, MK = null, selected = null;
 const F = () => S.feeds || {};
 
@@ -151,12 +152,13 @@ const gLand = root.append("path").attr("class", "land");
 const LAYERS = [["conf", "KONFLIKTY", 1], ["front", "FRONTY", 1], ["move", "NATARCIA", 1], ["strike", "UDERZENIA", 1], ["force", "SIŁY", 1], ["ship", "ŻEGLUGA", 1],
   ["haz", "NATURA", 1], ["sat", "ORBITY", 1], ["air", "LOTNICTWO", 1], ["flank", "FLANKA", 1], ["nuke", "ATOM", 1], ["asp", "PRZESTRZEŃ", 0], ["gps", "GNSS", 0],
   ["fire", "POŻARY", 0], ["net", "SIEĆ", 0], ["hum", "HUMANITARNE", 0], ["cyber", "CYBER", 0], ["news", "DEPESZE", 0], ["night", "NOC", 1]];
-const DRAW_ORDER = ["night", "gps", "fire", "asp", "ship", "sat", "haz", "front", "move", "strike", "force", "net", "hum", "nuke", "flank", "air", "cyber", "news", "conf"];
+const DRAW_ORDER = ["night", "gps", "fire", "asp", "ship", "sat", "haz", "front", "move", "strike", "force", "net", "hum", "nuke", "flank", "air", "airlive", "cyber", "news", "conf"];
 const G = {}; DRAW_ORDER.forEach(k => G[k] = root.append("g").attr("data-l", k));
 const pNight = G.night.append("path").attr("class", "night"), pTwi = G.night.append("path").attr("class", "twi");
 let layerOn = Object.assign(Object.fromEntries(LAYERS.map(l => [l[0], !!l[2]])), store.get("layers3", {}));
 $("#layers").innerHTML = LAYERS.map(([k, n]) => `<button class="btn" data-layer="${k}" aria-pressed="${!!layerOn[k]}">${n}</button>`).join("");
-function applyLayers() { LAYERS.forEach(([k]) => G[k].style("display", layerOn[k] ? null : "none")); }
+function applyLayers() { LAYERS.forEach(([k]) => G[k].style("display", layerOn[k] ? null : "none"));
+  const live = AIR.ok; G.air.style("display", layerOn.air && !live ? null : "none"); G.airlive.style("display", layerOn.air && live ? null : "none"); }
 $$("[data-layer]").forEach(b => b.addEventListener("click", () => { const k = b.dataset.layer; layerOn[k] = !layerOn[k]; b.setAttribute("aria-pressed", layerOn[k]); store.set("layers3", layerOn); beep(600); applyLayers(); }));
 function ensureLayer(k) { if (k && !layerOn[k]) { const b = $(`[data-layer="${k}"]`); if (b) b.click(); } }
 
@@ -194,7 +196,7 @@ function redraw() {
     if (!p) { d.el.style.display = "none"; return; } d.el.style.display = ""; d.el.setAttribute("cx", p[0].toFixed(2)); d.el.setAttribute("cy", p[1].toFixed(2)); });
   placeMarkers(); zoomClasses();
 }
-function zoomClasses() { const k = mode === "globe" ? 1 : T.k; svg.classed("z3", k >= 3).classed("z6", k >= 6); $("#zoomlvl").textContent = mode === "globe" ? "3D" : "×" + (k < 10 ? k.toFixed(1) : Math.round(k)); }
+function zoomClasses() { placeLive(true); const k = mode === "globe" ? 1 : T.k; svg.classed("z3", k >= 3).classed("z6", k >= 6); $("#zoomlvl").textContent = mode === "globe" ? "3D" : "×" + (k < 10 ? k.toFixed(1) : Math.round(k)); }
 function loadHi() {
   if (land50 || loadHi.busy) return; loadHi.busy = true;
   const s = document.createElement("script"); s.src = "vendor/land50.js";
@@ -284,7 +286,7 @@ function gdot(layer, lat, lon, r, style, id) { const c = G[layer].append("circle
   if (id) c.attr("data-id", id).style("cursor", "pointer").on("click", () => go(id)); dots.push({ el: c.node(), lon, lat }); return c; }
 
 function buildMap() {
-  DRAW_ORDER.filter(k => k !== "night").forEach(k => G[k].selectAll("*").remove()); markers = []; dots = []; geoPaths = [];
+  DRAW_ORDER.filter(k => k !== "night" && k !== "airlive").forEach(k => G[k].selectAll("*").remove()); markers = []; dots = []; geoPaths = [];
   const f = F(), ch = S.changes || {}, nm = ch.new_mods || {};
   const isNew = (k, id) => A(nm[k]).includes(id);
   if (f.gpsjam && f.gpsjam.pts) f.gpsjam.pts.forEach(d => gdot("gps", d[0], d[1], .55, { fill: d[2] >= .3 ? "var(--red)" : "var(--amber)", opacity: .15 + d[2] * .45, "pointer-events": "none" }));
@@ -353,6 +355,73 @@ function drawSats(noRedraw) {
   $("#satTime").textContent = "SGP4 · " + now.toISOString().slice(11, 16) + " UTC";
   if (!noRedraw) { satPaths.forEach(g => g.node.setAttribute("d", path(g.geo) || "")); placeMarkers(); }
 }
+
+/* ------------------------------------------------------------ SAMOLOTY NA ŻYWO (ADS-B) */
+/* Serwer pobiera adsb.lol (zapasowo adsb.fi) co ~10 s. Między odczytami pozycja jest
+   przewidywana z kursu i prędkości, więc samoloty płyną jak na radarze. */
+const ACOL = { isr: "var(--cyan)", tanker: "var(--amber)", bomber: "var(--red)", transport: "var(--violet)", fighter: "var(--phos)", other: "var(--phos-dim)" };
+const NOTABLE = new Set(["isr", "bomber", "tanker"]);
+function airPos(a, now) {
+  const dt = Math.min(90, Math.max(0, (now - a.ts) / 1000));
+  if (a.ground || !a.gs || a.trk == null || dt < .5) return [a.lat, a.lon];
+  const nm = a.gs * dt / 3600, r = a.trk * Math.PI / 180, lat = a.lat + nm * Math.cos(r) / 60;
+  return [lat, a.lon + nm * Math.sin(r) / (60 * Math.max(.2, Math.cos(a.lat * Math.PI / 180)))];
+}
+const airAge = (a, now) => Math.max(0, Math.round((now - a.ts) / 1000));
+function agoTxt(sec) { return sec < 60 ? sec + " s temu" : sec < 3600 ? Math.round(sec / 60) + " min temu" : Math.round(sec / 3600) + " h temu"; }
+function drawLive() {
+  const seen = new Set();
+  A(AIR.d && AIR.d.ac).forEach(a => {
+    seen.add(a.hex); let m = AIR.mk[a.hex];
+    if (!m) {
+      const tr = G.airlive.append("path").attr("class", "actrail" + (NOTABLE.has(a.cat) ? " hot" : "")).style("stroke", ACOL[a.cat] || ACOL.other);
+      const g = G.airlive.append("g").attr("class", "mk live").attr("tabindex", 0).attr("role", "button").attr("data-id", "ah:" + a.hex);
+      g.append("path").attr("class", "core").attr("d", "M7,0L-3,-5L-1,0L-3,5Z");
+      g.append("text").attr("class", "lbl " + (NOTABLE.has(a.cat) ? "hlbl aclbl" : "shlbl aclbl")).attr("x", 8).attr("y", -6);
+      g.on("click", ev => { ev.stopPropagation(); go("ah:" + a.hex); }).on("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); go("ah:" + a.hex); } });
+      m = AIR.mk[a.hex] = { g: g.node(), core: g.node().firstChild, txt: g.node().lastChild, tr: tr.node() };
+    }
+    m.a = a; m.core.style.fill = ACOL[a.cat] || ACOL.other; m.txt.textContent = a.cs || a.hex;
+    m.g.setAttribute("aria-label", `${a.cs || a.hex} ${a.desc || a.t}`); m.g.classList.toggle("sel", selected === "ah:" + a.hex);
+  });
+  Object.keys(AIR.mk).forEach(h => { if (!seen.has(h)) { AIR.mk[h].g.remove(); AIR.mk[h].tr.remove(); delete AIR.mk[h]; } });
+  placeLive(true);
+}
+function placeLive(trails) {
+  if (!AIR.ok) return; const now = Date.now() + AIR.skew, k = mode === "globe" ? 1 : T.k;
+  Object.values(AIR.mk).forEach(m => {
+    const a = m.a, ll = airPos(a, now), age = airAge(a, now);
+    if (trails) { const pts = A(a.trail).map(p => [p[0], p[1]]).concat([ll]); m.tr.setAttribute("d", pts.length > 1 ? (path(LL(pts)) || "") : ""); }
+    if (!visible(ll[1], ll[0])) { m.g.style.display = "none"; return; }
+    const p = proj([ll[1], ll[0]]); if (!p) { m.g.style.display = "none"; return; }
+    m.g.style.display = ""; m.g.style.opacity = age < 60 ? 1 : age < 180 ? .55 : .25;
+    m.g.setAttribute("transform", `translate(${p[0].toFixed(2)},${p[1].toFixed(2)})${k !== 1 ? ` scale(${1 / k})` : ""}`);
+    m.core.setAttribute("transform", `rotate(${((a.trk || 0) - 90).toFixed(0)})`);
+  });
+}
+let airT = null, airTick = 0;
+d3.timer(t => { if (!AIR.ok || document.hidden || t - airTick < 200 || view !== "map") return; airTick = t; placeLive(t % 2000 < 210); });
+function contactSound(kind) { if (kind === "squawk") { alarmBurst(1); return; } tone(880, .12, "sine", .05, 0, 1320); tone(1320, .18, "sine", .04, .16, 990); }
+function airToast(e) {
+  const box = $("#airToast"); if (!box) return; const b = document.createElement("button");
+  b.className = "toast" + (e.kind === "squawk" ? " red" : ""); b.innerHTML = `<b>KONTAKT · ${esc(new Date(e.at).toISOString().slice(11, 16))} UTC</b>${esc(e.msg)}`;
+  b.addEventListener("click", () => { go("ah:" + e.hex); b.remove(); }); box.appendChild(b); setTimeout(() => b.remove(), 12000);
+  while (box.children.length > 4) box.firstChild.remove();
+}
+async function pollAir() {
+  clearTimeout(airT); let next = 10000;
+  try {
+    const d = await api("/api/air?since=" + AIR.lastEv); next = (d.interval || 10) * 1000;
+    if (d.status && d.status.ok && A(d.ac).length) {
+      const was = AIR.ok; AIR.ok = true; AIR.skew = d.now - Date.now(); AIR.d = Object.assign({}, d, { events: (AIR.d ? A(AIR.d.events) : []).concat(A(d.events)).slice(-30) });
+      A(d.events).forEach(e => { AIR.lastEv = Math.max(AIR.lastEv, e.at); if (!AIR.first) { airToast(e); contactSound(e.kind); } });
+      AIR.first = false; if (!was) applyLayers(); drawLive(); renderSky();
+      if (selected && selected.startsWith("ah:")) pick(selected, true);
+    } else if (d.status && d.status.err) { AIR.err = d.status.err; renderSky(); }
+  } catch (e) {}
+  airT = setTimeout(pollAir, document.hidden ? 30000 : next);
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) pollAir(); });
 
 /* ------------------------------------------------------------ ŁAŃCUCH PRZYCZYN */
 const csvg = d3.select("#chain"), CW = 960, CH = 560;
@@ -457,6 +526,7 @@ function go(id) {
 function locExtra(t, key) {
   const f = F();
   if (t === "ac") { const a = A(f.adsb && f.adsb.ac)[+key]; return a && [a.lat, a.lon, 6, "air"]; }
+  if (t === "ah") { const a = A(AIR.d && AIR.d.ac).find(x => x.hex === key); if (!a) return null; const p = airPos(a, Date.now() + AIR.skew); return [p[0], p[1], 4, "air"]; }
   if (t === "gd") { const g = A(f.gdacs)[+key]; return g && [g.lat, g.lon, 12, "haz"]; }
   if (t === "nhc") { const n = A(f.nhc)[+key]; return n && [n.lat, n.lon, 12, "haz"]; }
   if (t === "asp") { const a = A(S.airspace).find(x => x.id === key); return a && [a.lat, a.lon, 14, "asp"]; }
@@ -543,6 +613,15 @@ function pick(id, silent) {
     const s = satrecs[+key]; if (!s) return; const p = s.last || {};
     h = `${chip("OBIEKT ORBITALNY", "var(--cyan)")}<h2 class="glow">${esc(s.name)}</h2>` + dd([["POZYCJA", p.lat != null ? fmtLL(p.lat, p.lon) : "–"], ["WYSOKOŚĆ", p.alt ? Math.round(p.alt) + " km" : "–"],
       ["TOR", "Linia przerywana: najbliższe ok. 95 minut lotu."], ["DANE", "TLE (AMSAT, CelesTrak), propagacja SGP4 na żywo."]]);
+  } else if (t === "ah") { const a = A(AIR.d && AIR.d.ac).find(x => x.hex === key);
+    if (!a) h = chip("ADS-B NA ŻYWO", "var(--cyan)") + `<h2 class="glow">${esc(key)}</h2><p class="hint">Samolot przestał nadawać albo zniknął z zasięgu odbiorników.</p>`;
+    else { const now = Date.now() + AIR.skew, p = airPos(a, now), age = airAge(a, now);
+      h = chip("NA ŻYWO · " + (ACN[a.cat] || a.cat), ACOL[a.cat] || "var(--cyan)") + `<h2 class="glow">${esc(a.cs || a.hex)} · ${esc(a.t || "?")}</h2>` + dd([
+        ["TYP", a.desc || a.t], ["REJESTRACJA", a.reg], ["POZYCJA", fmtLL(p[0], p[1])], ["WYSOKOŚĆ", a.ground ? "na ziemi" : a.alt != null ? `${a.alt} ft (${Math.round(a.alt * .3048)} m)` : null],
+        ["PRĘDKOŚĆ", a.gs ? `${Math.round(a.gs)} kt (${Math.round(a.gs * 1.852)} km/h)` : null], ["KURS", a.trk != null ? Math.round(a.trk) + "°" : null],
+        ["WZNOSZENIE", a.vr ? (a.vr > 0 ? "+" : "") + a.vr + " ft/min" : null], ["SQUAWK", a.sq], ["OSTATNI ODCZYT", agoTxt(age) + (a.mlat ? " · pozycja z MLAT" : "")],
+        ["ŹRÓDŁO", L(a.u, (AIR.d.status || {}).src || "ADS-B"), 1]]) +
+        `<p class="hint">Pozycja aktualizowana co ${AIR.d.interval || 10} s, między odczytami przewidywana z kursu i prędkości. Linia za samolotem to trasa z ostatnich 30 minut.</p>`; }
   } else if (t === "ac") { const a = A(f.adsb && f.adsb.ac)[+key]; if (!a) return;
     h = chip("ADS-B · " + (ACN[a.cat] || a.cat), "var(--cyan)") + `<h2 class="glow">${esc(a.cs || a.hex)} · ${esc(a.t)}</h2>` + dd([["POZYCJA", fmtLL(a.lat, a.lon)], ["WYSOKOŚĆ", a.alt != null ? a.alt + " ft" : null], ["KURS", a.trk + "°"], ["MIGAWKA", f.adsb.t], ["ŚLAD", L(a.u, "globe.adsb.lol"), 1]]) + `<p class="hint">Pozycja z chwili pobrania, nie na żywo. Nad strefami walk samoloty często lecą z wyłączonym transponderem.</p>`;
   } else if (t === "gd") { const g = A(f.gdacs)[+key]; if (!g) return;
@@ -762,12 +841,23 @@ function renderForces() { const f = A(S.forces); $("#forceCount").textContent = 
 function renderEF() { const e = A(S.eastflank); $("#efCount").textContent = e.length ? e.length + " ZDARZEŃ" : "";
   rowsInto("#ef", e.map((x, i) => `<li${isNewMod("eastflank", x.id) ? ' class="newrow"' : ""}><button data-go="ef:${i}"><span class="t">${esc(x.t)}</span><span class="dim">${esc(fd(x.d))}</span><span class="sub">${esc(KND[x.kind] || x.kind)} · ${esc(x.note)}</span></button></li>`).join("")); }
 function renderSky() {
-  const f = F(), ad = f.adsb || {}, ac = A(ad.ac); $("#airT").textContent = ad.t ? "MIGAWKA " + ad.t : "";
-  const cnt = {}; ac.forEach(a => cnt[a.cat] = (cnt[a.cat] || 0) + 1);
-  const far = ac.map((a, i) => Object.assign({ i }, a)).filter(a => !(a.lat > 15 && a.lat < 72 && a.lon > -170 && a.lon < -50)).slice(0, 14);
-  const gj = f.gpsjam || {};
-  let h = `<li class="hd">Samoloty wojskowe (ADS-B) · ${ac.length} z ${ad.total || "?"}</li><li><button tabindex="-1" style="cursor:default"><span class="sub">${Object.entries(cnt).map(([k, v]) => `${ACN[k] || k}: ${v}`).join(" · ") || "brak"}</span></button></li>`;
-  h += far.map(a => `<li><button data-go="ac:${a.i}"><span class="t">${esc(a.cs || a.hex)} · ${esc(a.t)}</span><span class="chip cyan">${ACN[a.cat] || a.cat}</span><span class="sub">${fmtLL(a.lat, a.lon)} · ${a.alt != null ? a.alt + " ft" : ""}</span></button></li>`).join("");
+  const f = F(), gj = f.gpsjam || {}; let h = "";
+  if (AIR.ok) {
+    const d = AIR.d, ac = A(d.ac), st = d.status || {}, now = Date.now() + AIR.skew, cnt = {}; ac.forEach(a => cnt[a.cat] = (cnt[a.cat] || 0) + 1);
+    $("#airT").innerHTML = `<span class="livedot"></span>NA ŻYWO · ${esc(st.src || "")} · co ${d.interval} s`;
+    h += `<li class="hd">Samoloty wojskowe na żywo · ${ac.length} z ${st.total || "?"} nadających</li><li><button tabindex="-1" style="cursor:default"><span class="sub">${Object.entries(cnt).map(([k, v]) => `${ACN[k] || k}: ${v}`).join(" · ") || "brak"}</span></button></li>`;
+    const ev = A(d.events).slice(-8).reverse();
+    if (ev.length) h += `<li class="hd">Kontakty w obserwowanych rejonach</li>` + ev.map(e => `<li><button data-go="ah:${esc(e.hex)}"><span class="t">${esc(e.msg)}</span><span class="dim">${new Date(e.at).toISOString().slice(11, 16)}</span></button></li>`).join("");
+    const hot = ac.filter(a => NOTABLE.has(a.cat) && !a.ground).slice(0, 16);
+    h += `<li class="hd">Rozpoznanie, tankowce, bombowce · ${hot.length}</li>` + hot.map(a => { const p = airPos(a, now);
+      return `<li><button data-go="ah:${esc(a.hex)}"><span class="t">${esc(a.cs || a.hex)} · ${esc(a.desc || a.t)}</span><span class="chip" style="color:${ACOL[a.cat]};border-color:${ACOL[a.cat]}">${ACN[a.cat]}</span><span class="sub">${fmtLL(p[0], p[1])} · ${a.alt != null ? a.alt + " ft" : ""} · ${agoTxt(airAge(a, now))}</span></button></li>`; }).join("");
+  } else {
+    const ad = f.adsb || {}, ac = A(ad.ac); $("#airT").textContent = ad.t ? "MIGAWKA " + ad.t + (AIR.err ? " · brak łącza na żywo" : "") : "";
+    const cnt = {}; ac.forEach(a => cnt[a.cat] = (cnt[a.cat] || 0) + 1);
+    const far = ac.map((a, i) => Object.assign({ i }, a)).filter(a => !(a.lat > 15 && a.lat < 72 && a.lon > -170 && a.lon < -50)).slice(0, 14);
+    h += `<li class="hd">Samoloty wojskowe (ADS-B, migawka) · ${ac.length} z ${ad.total || "?"}</li><li><button tabindex="-1" style="cursor:default"><span class="sub">${Object.entries(cnt).map(([k, v]) => `${ACN[k] || k}: ${v}`).join(" · ") || "brak"}</span></button></li>`;
+    h += far.map(a => `<li><button data-go="ac:${a.i}"><span class="t">${esc(a.cs || a.hex)} · ${esc(a.t)}</span><span class="chip cyan">${ACN[a.cat] || a.cat}</span><span class="sub">${fmtLL(a.lat, a.lon)} · ${a.alt != null ? a.alt + " ft" : ""}</span></button></li>`).join("");
+  }
   if (gj.regions) h += `<li class="hd">Zakłócenia GNSS · ${esc(gj.day || "")} · ${gj.n || 0} heksów</li>` + Object.entries(gj.regions).map(([k, v]) => `<li><button tabindex="-1" style="cursor:default"><span>${esc(k)}</span><span class="${v > 50 ? "red" : "amber"}">${v}</span></button></li>`).join("");
   h += `<li class="hd">Przestrzeń powietrzna (EASA / FAA)</li>` + A(S.airspace).map(a => { const l = ASL[a.level] || ASL.caution; return `<li${isNewMod("airspace", a.id) ? ' class="newrow"' : ""}><button data-go="asp:${a.id}"><span class="t">${esc(a.name)}</span>${chip(l[0], l[1])}</button></li>`; }).join("");
   rowsInto("#sky", h);
@@ -1006,7 +1096,7 @@ function boot(done) {
   let seen = false; try { seen = sessionStorage.getItem("k7-boot") === "1"; } catch (e) { seen = true; }
   if (!needSetup && (seen || reduce)) return done();
   const B = $("#boot"); B.hidden = false; const e = STATUS ? STATUS.engine : null, C = CURRENT || {};
-  const lines = ["KRONOS-7 PLANETARY INTELLIGENCE · v3.2", "TEST PAMIĘCI ........ OK",
+  const lines = ["KRONOS-7 PLANETARY INTELLIGENCE · v3.4", "TEST PAMIĘCI ........ OK",
     "PROCESOR GRAFICZNY .. " + (e ? e.hardware.gpu_name + (e.hardware.vram_gb ? " / " + e.hardware.vram_gb + " GB" : "") : "?"),
     "RDZEŃ ANALITYCZNY ... " + (e && e.model ? e.model.toUpperCase() : "NIEAKTYWNY"),
     "BAZA KONFLIKTÓW ..... " + A(C.conflicts).length + " WĘZŁÓW", "FRONTY .............. " + A(C.fronts).length + " TEATRÓW",
@@ -1040,6 +1130,7 @@ if (window.ResizeObserver) new ResizeObserver(() => { const h = $("#map").getBou
   try { STATUS = await api("/api/status"); } catch (e) {}
   await loadSettings();
   await loadState();
+  pollAir();
   renderSys(); renderSrc();
   if (mode === "flat") setTheater(theater || "world", false);
   loadMarkets(); setInterval(loadMarkets, 5 * 60 * 1000);

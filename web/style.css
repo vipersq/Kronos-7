@@ -334,3 +334,17 @@ button.stat:hover{background:color-mix(in srgb,var(--phos) 6%,var(--void))}
   body.print-sit .sit-out{overflow:visible;font-size:11pt}
 }
 .set-body input[type=range]{width:100%;accent-color:var(--phos)}
+
+/* ---- v3.4: samoloty na żywo ---- */
+#map .actrail{fill:none;stroke-width:.8;opacity:.28;vector-effect:non-scaling-stroke}
+#map .actrail.hot{stroke-width:1.3;opacity:.6}
+#map .mk.live .core{stroke:var(--void);stroke-width:.8}
+#map .aclbl{font-size:10px}
+.livedot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--red);margin-right:6px;vertical-align:1px;animation:livepulse 1.6s infinite}
+@keyframes livepulse{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.livedot{animation:none}}
+.mapbox{position:relative}
+.air-toast{position:absolute;right:8px;bottom:8px;display:grid;gap:6px;z-index:5;max-width:min(360px,80%);pointer-events:none}
+.air-toast .toast{pointer-events:auto;text-align:left;background:color-mix(in srgb,var(--void) 88%,transparent);border:1px solid var(--cyan);color:var(--text);font-family:var(--f-body);font-size:12px;padding:6px 9px;cursor:pointer;line-height:1.35}
+.air-toast .toast b{display:block;font-family:var(--f-display);font-size:13px;letter-spacing:.12em;color:var(--cyan)}
+.air-toast .toast.red{border-color:var(--red)}.air-toast .toast.red b{color:var(--red)}
