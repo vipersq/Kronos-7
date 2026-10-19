@@ -9,6 +9,7 @@ from collections import deque
 
 from .feeds import MIL_TYPES
 from . import registry as REG
+from . import i18n
 
 UA = "KRONOS-7/3.4 (+https://github.com/vipersq/Kronos-7)"
 # adsb.fi: podaje też model i właściciela, limit 1 zapytanie/s; adsb.lol jako zapas
@@ -34,6 +35,13 @@ FAMILY = [("K35", "tanker"), ("KC1", "tanker"), ("KC4", "tanker"), ("R13", "isr"
           ("P8", "isr"), ("RQ4", "isr"), ("MQ9", "isr"), ("TU95", "bomber"), ("T95", "bomber"), ("TU16", "bomber"), ("T160", "bomber")]
 SQUAWK = {"7500": "porwanie (7500)", "7600": "utrata łączności (7600)", "7700": "sytuacja awaryjna (7700)"}
 CAT_PL = {"isr": "rozpoznawczy", "tanker": "tankowiec", "bomber": "bombowiec", "transport": "transportowy", "fighter": "myśliwiec", "other": "wojskowy"}
+CAT_EN = {"isr": "reconnaissance aircraft", "tanker": "tanker", "bomber": "bomber", "transport": "transport aircraft", "fighter": "fighter", "other": "military aircraft"}
+SQUAWK_EN = {"7500": "hijack (7500)", "7600": "radio failure (7600)", "7700": "emergency (7700)"}
+ZONE_EN = {"Morze Czarne": "Black Sea", "Bałtyk": "Baltic Sea", "Polska": "Poland", "Rumunia i Mołdawia": "Romania and Moldova", "Zatoka Perska i Ormuz": "Persian Gulf and Hormuz",
+           "Morze Czerwone i Jemen": "Red Sea and Yemen", "Wschodnie Morze Śródziemne": "Eastern Mediterranean", "Cieśnina Tajwańska": "Taiwan Strait",
+           "Morze Południowochińskie": "South China Sea", "Półwysep Koreański": "Korean Peninsula"}
+def zone_name(z):
+    return ZONE_EN.get(z, z) if i18n.en() else z
 
 
 def zone_of(lat, lon):
@@ -155,8 +163,8 @@ class LiveAir:
                 desc = md.get("desc") or (a.get("desc") or "").strip()
                 rec.update({
                     "cs": cs or reg, "reg": reg, "country": country, "flag": REG.FLAGS.get(country, ""),
-                    "t": t, "desc": desc.title() if desc.isupper() else desc, "model": REG.AC_TYPES.get(t, ""),
-                    "op": md.get("own") or REG.callsign_operator(cs), "year": md.get("year"), "cat": cat,
+                    "t": t, "desc": desc.title() if desc.isupper() else desc, "model": (REG.AC_TYPES_EN if i18n.en() else REG.AC_TYPES).get(t, ""),
+                    "op": md.get("own") or REG.callsign_operator(cs, i18n.en()), "year": md.get("year"), "cat": cat,
                     "lat": round(lat, 4), "lon": round(lon, 4), "ts": ts,
                     "alt": 0 if ground else alt, "ground": ground, "gs": a.get("gs"),
                     "trk": a.get("track", a.get("true_heading")), "vr": a.get("baro_rate"),
@@ -171,18 +179,19 @@ class LiveAir:
                         tr.pop(0)
                 seen.add(hx)
                 # zdarzenia
-                label = f"{rec['cs'] or hx} ({rec['desc'] or rec['model'].split(' (')[0] or t or '?'}{', ' + country if country else ''})"
+                cname = (REG.COUNTRY_EN.get(country, country) if i18n.en() else country)
+                label = f"{rec['cs'] or hx} ({rec['desc'] or rec['model'].split(' (')[0] or t or '?'}{', ' + cname if cname else ''})"
                 z = zone_of(lat, lon)
                 if z and cat in NOTABLE and not ground:
                     k = (hx, z)
                     if now - self.seen_zone.get(k, 0) > 2 * 3600:
                         new_events.append({"kind": "zone", "hex": hx, "cat": cat, "zone": z,
-                                           "msg": f"Samolot {CAT_PL[cat]} {label} w rejonie: {z}"})
+                                           "msg": i18n.L(f"Samolot {CAT_PL[cat]} {label} w rejonie: {z}", f"{CAT_EN[cat].capitalize()} {label} in the {zone_name(z)} area")})
                     self.seen_zone[k] = now
                 sq = rec["sq"]
                 if sq in SQUAWK and rec.get("sq_ev") != sq:
                     new_events.append({"kind": "squawk", "hex": hx, "cat": cat, "zone": z,
-                                       "msg": f"{label} nadaje kod {SQUAWK[sq]}"})
+                                       "msg": i18n.L(f"{label} nadaje kod {SQUAWK[sq]}", f"{label} is squawking {SQUAWK_EN[sq]}")})
                 rec["sq_ev"] = sq if sq in SQUAWK else None
             # sprzątanie: samoloty, których nikt nie widział od 10 minut
             for hx in [h for h, r in self.ac.items() if now - r["upd"] > 600]:

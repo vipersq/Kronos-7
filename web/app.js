@@ -1,11 +1,31 @@
-/* KRONOS-7 v3.6 — interfejs terminala. Dane: lokalny serwer (/api/*). */
+/* KRONOS-7 v3.7 — interfejs terminala. Dane: lokalny serwer (/api/*). */
 (function () {
 "use strict";
 const $ = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const esc0 = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const esc = s => esc0(typeof s === "string" && window.K7_EN && window.K7_LANG === "en" && window.K7_EN[s] != null ? window.K7_EN[s] : s);   // dane z serwera: kraje, kategorie
 const A = a => Array.isArray(a) ? a : [];
+const LANG = (() => { try { return localStorage.getItem("k7-lang") === '"en"' ? "en" : "pl"; } catch (e) { return "pl"; } })();
+const EN = (LANG === "en" && window.K7_EN) || {};
+const TX = s => (LANG === "en" && EN[s] != null) ? EN[s] : s;   // tłumaczenie napisu interfejsu
+const LOC = LANG === "en" ? "en-GB" : "pl-PL";
+window.K7_LANG = LANG;
+document.documentElement.lang = LANG;
+/* statyczne teksty i atrybuty strony */
+(function translateStatic() {
+  if (LANG !== "en") return;
+  const tr = t => { const m = t.match(/^(\s*)([\s\S]*?)(\s*)$/); return EN[m[2]] != null ? m[1] + EN[m[2]] + m[3] : null; };
+  const walkNode = root => {
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); const nodes = []; while (w.nextNode()) nodes.push(w.currentNode);
+    nodes.forEach(n => { if (n.parentNode && /^(SCRIPT|STYLE)$/.test(n.parentNode.nodeName)) return; const r = tr(n.nodeValue); if (r != null) n.nodeValue = r; });
+    (root.querySelectorAll ? root.querySelectorAll("[placeholder],[title],[aria-label]") : []).forEach(el => ["placeholder", "title", "aria-label"].forEach(a => { const v = el.getAttribute(a); if (v) { const r = tr(v); if (r != null) el.setAttribute(a, r); } }));
+  };
+  walkNode(document.body);
+  /* atrybuty dodawane później (np. podpowiedzi przycisków) */
+  new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => { if (n.nodeType === 1) n.querySelectorAll && [n, ...n.querySelectorAll("[title],[placeholder]")].forEach(el => ["title", "placeholder"].forEach(a => { const v = el.getAttribute && el.getAttribute(a); if (v && EN[v.trim()] != null) el.setAttribute(a, EN[v.trim()]); })); }))).observe(document.body, { childList: true, subtree: true });
+})();
 const SOLO = new URLSearchParams(location.search).get("panel") || "";   // okno z jednym odpiętym panelem
 const BC = "BroadcastChannel" in window ? new BroadcastChannel("kronos7") : null;
 const store = {
@@ -14,37 +34,37 @@ const store = {
 };
 const api = (p, body) => fetch(p, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}).then(r => r.json());
 
-const SEC = { all: "WSZYSTKO", conflict: "KONFLIKTY", geo: "GEOPOLITYKA", human: "HUMANITARNE", nature: "NATURA", space: "KOSMOS", ai: "AI", cyber: "CYBER", watch: "OBSERWOWANE" };
-const LVL = { crit: "KRYTYCZNY", high: "WYSOKI", med: "ŚREDNI", low: "NISKI" };
-const TREND = { new: ["NOWY", "var(--red)"], esc: ["ESKALACJA", "var(--red)"], ongoing: ["TRWAJĄCY", "var(--amber)"], truce: ["KRUCHY ROZEJM", "var(--violet)"], watch: ["OBSERWACJA", "var(--phos-dim)"] };
+const SEC = { all: TX("WSZYSTKO"), conflict: TX("KONFLIKTY"), geo: TX("GEOPOLITYKA"), human: TX("HUMANITARNE"), nature: TX("NATURA"), space: TX("KOSMOS"), ai: TX("AI"), cyber: TX("CYBER"), watch: TX("OBSERWOWANE") };
+const LVL = { crit: TX("KRYTYCZNY"), high: TX("WYSOKI"), med: TX("ŚREDNI"), low: TX("NISKI") };
+const TREND = { new: [TX("NOWY"), "var(--red)"], esc: [TX("ESKALACJA"), "var(--red)"], ongoing: [TX("TRWAJĄCY"), "var(--amber)"], truce: [TX("KRUCHY ROZEJM"), "var(--violet)"], watch: [TX("OBSERWACJA"), "var(--phos-dim)"] };
 const TORDER = { new: 0, esc: 1, ongoing: 2, truce: 3, watch: 4 };
-const SHIP = { closed: ["ZAMKNIĘTA", "var(--red)"], restricted: ["OGRANICZONA", "var(--amber)"], disrupted: ["ZAKŁÓCONA", "var(--amber)"], open: ["OTWARTA", "var(--phos)"] };
-const CAT = { elect: "WYBORY", summit: "SZCZYT", bank: "BANK CENTR.", energy: "ENERGIA", deadline: "TERMIN", space: "KOSMOS", war: "WOJNA" };
-const FKIND = { cvn: ["CV", "LOTNISKOWIEC"], amphib: ["AM", "GRUPA DESANTOWA"], naval: ["N", "SIŁY MORSKIE"], air: ["A", "LOTNICTWO"], ground: ["G", "SIŁY LĄDOWE"], exercise: ["EX", "ĆWICZENIA"] };
-const KND = { airspace: "PRZESTRZEŃ", sabotage: "SABOTAŻ", cable: "KABEL", jamming: "ZAGŁUSZANIE", military: "WOJSKO", shadowfleet: "FLOTA CIENI" };
-const ACN = { isr: "ROZPOZNANIE", tanker: "TANKOWIEC", bomber: "BOMBOWIEC", transport: "TRANSPORT", fighter: "MYŚLIWIEC", other: "INNY" };
-const NKS = { crit: ["KRYTYCZNY", "var(--red)"], warn: ["OSTRZEŻENIE", "var(--amber)"], ok: ["OK", "var(--phos)"], unknown: ["NIEZNANY", "var(--phos-dim)"] };
-const ASL = { closed: ["ZAMKNIĘTA", "var(--red)"], avoid: ["OMIJAĆ", "var(--amber)"], caution: ["OSTROŻNIE", "var(--violet)"] };
-const REL = { A: "całkowicie wiarygodne", B: "zwykle wiarygodne", C: "dość wiarygodne", D: "zwykle niewiarygodne", E: "niewiarygodne", F: "nie można ocenić" };
-const INFO = { 1: "potwierdzona przez inne źródła", 2: "prawdopodobnie prawdziwa", 3: "możliwie prawdziwa", 4: "wątpliwa", 5: "nieprawdopodobna", 6: "nie można ocenić" };
-const MON = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
+const SHIP = { closed: [TX("ZAMKNIĘTA"), "var(--red)"], restricted: [TX("OGRANICZONA"), "var(--amber)"], disrupted: [TX("ZAKŁÓCONA"), "var(--amber)"], open: [TX("OTWARTA"), "var(--phos)"] };
+const CAT = { elect: TX("WYBORY"), summit: TX("SZCZYT"), bank: TX("BANK CENTR."), energy: TX("ENERGIA"), deadline: TX("TERMIN"), space: TX("KOSMOS"), war: TX("WOJNA") };
+const FKIND = { cvn: [TX("CV"), TX("LOTNISKOWIEC")], amphib: [TX("AM"), TX("GRUPA DESANTOWA")], naval: ["N", TX("SIŁY MORSKIE")], air: ["A", TX("LOTNICTWO")], ground: ["G", TX("SIŁY LĄDOWE")], exercise: [TX("EX"), TX("ĆWICZENIA")] };
+const KND = { airspace: TX("PRZESTRZEŃ"), sabotage: TX("SABOTAŻ"), cable: TX("KABEL"), jamming: TX("ZAGŁUSZANIE"), military: TX("WOJSKO"), shadowfleet: TX("FLOTA CIENI") };
+const ACN = { isr: TX("ROZPOZNANIE"), tanker: TX("TANKOWIEC"), bomber: TX("BOMBOWIEC"), transport: TX("TRANSPORT"), fighter: TX("MYŚLIWIEC"), other: TX("INNY") };
+const NKS = { crit: [TX("KRYTYCZNY"), "var(--red)"], warn: [TX("OSTRZEŻENIE"), "var(--amber)"], ok: [TX("OK"), "var(--phos)"], unknown: [TX("NIEZNANY"), "var(--phos-dim)"] };
+const ASL = { closed: [TX("ZAMKNIĘTA"), "var(--red)"], avoid: [TX("OMIJAĆ"), "var(--amber)"], caution: [TX("OSTROŻNIE"), "var(--violet)"] };
+const REL = { A: TX("całkowicie wiarygodne"), B: TX("zwykle wiarygodne"), C: TX("dość wiarygodne"), D: TX("zwykle niewiarygodne"), E: "niewiarygodne", F: TX("nie można ocenić") };
+const INFO = { 1: TX("potwierdzona przez inne źródła"), 2: TX("prawdopodobnie prawdziwa"), 3: TX("możliwie prawdziwa"), 4: TX("wątpliwa"), 5: "nieprawdopodobna", 6: TX("nie można ocenić") };
+const MON = LANG === "en" ? window.K7_EN_MON : ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
 const COL = c => "var(--" + (c || "phos") + ")";
-const THEATERS = [["world", "ŚWIAT", null], ["ua", "UKRAINA", [[29.5, 45.6], [40.8, 52.6]]], ["bs", "M. CZARNE", [[27, 40.6], [42, 47.6]]],
-  ["ef", "FLANKA NATO", [[13, 50], [32, 60.5]]], ["me", "BLISKI WSCHÓD", [[30, 11], [64, 40]]], ["hz", "ORMUZ", [[50.5, 23], [60, 28.8]]],
-  ["ye", "JEMEN · M. CZERWONE", [[36.5, 11], [50, 20]]], ["lev", "LEWANT", [[33.9, 30.95], [36.4, 33.8]]], ["sd", "SUDAN", [[21, 7.5], [39, 20]]],
-  ["cd", "KONGO", [[26.8, -4.6], [30.8, 0.6]]], ["mm", "MJANMA", [[91.5, 16.5], [98.5, 25.5]]], ["tw", "TAJWAN", [[115, 19.5], [126, 27.5]]], ["wp", "ZACH. PACYFIK", [[110, 5], [160, 42]]]];
+const THEATERS = [["world", TX("ŚWIAT"), null], ["ua", TX("UKRAINA"), [[29.5, 45.6], [40.8, 52.6]]], ["bs", TX("M. CZARNE"), [[27, 40.6], [42, 47.6]]],
+  ["ef", TX("FLANKA NATO"), [[13, 50], [32, 60.5]]], ["me", TX("BLISKI WSCHÓD"), [[30, 11], [64, 40]]], ["hz", TX("ORMUZ"), [[50.5, 23], [60, 28.8]]],
+  ["ye", TX("JEMEN · M. CZERWONE"), [[36.5, 11], [50, 20]]], ["lev", TX("LEWANT"), [[33.9, 30.95], [36.4, 33.8]]], ["sd", TX("SUDAN"), [[21, 7.5], [39, 20]]],
+  ["cd", TX("KONGO"), [[26.8, -4.6], [30.8, 0.6]]], ["mm", TX("MJANMA"), [[91.5, 16.5], [98.5, 25.5]]], ["tw", TX("TAJWAN"), [[115, 19.5], [126, 27.5]]], ["wp", TX("ZACH. PACYFIK"), [[110, 5], [160, 42]]]];
 const fmtLL = (lat, lon) => `${Math.abs(lat).toFixed(1)}°${lat >= 0 ? "N" : "S"} ${Math.abs(lon).toFixed(1)}°${lon >= 0 ? "E" : "W"}`;
 function fmtDate(d) { const p = String(d).split("-"); if (p.length === 3) return (+p[2].slice(0, 2)) + " " + MON[+p[1] - 1] + " " + p[0]; if (p.length === 2) return MON[+p[1] - 1] + " " + p[0]; return d; }
 const fd = d => d ? fmtDate(String(d).slice(0, 10)) : "";
 function dayDiff(d) { const p = String(d).split("-"); if (p.length < 3) return null; const t = Date.UTC(+p[0], +p[1] - 1, +p[2].slice(0, 2)); const n = new Date(); return Math.round((t - Date.UTC(n.getFullYear(), n.getMonth(), n.getDate())) / 864e5); }
-function countdown(d) { const n = dayDiff(d); if (n == null) return "termin w miesiącu"; if (n === 0) return "DZIŚ"; if (n === 1) return "jutro"; if (n < 0) return Math.abs(n) + " dni temu"; return "za " + n + " dni"; }
+function countdown(d) { const n = dayDiff(d); if (n == null) return TX("termin w miesiącu"); if (n === 0) return TX("DZIŚ"); if (n === 1) return "jutro"; if (n < 0) return Math.abs(n) + " " + TX("dni temu"); return "za " + n + " dni"; }
 const pct = p => Math.round(p * 100) + "%";
 const chip = (txt, col) => `<span class="chip" style="color:${col}">${esc(txt)}</span>`;
 function spark(h, hgt) { h = A(h); if (h.length < 2) return ""; const mx = Math.max(...h), mn = Math.min(...h), r = (mx - mn) || 1, hh = hgt || 24;
   const pts = h.map((v, i) => `${(i / (h.length - 1)) * 98 + 1},${hh - 2 - ((v - mn) / r) * (hh - 6)}`).join(" "); const up = h[h.length - 1] >= h[0];
   return `<svg viewBox="0 0 100 ${hh}" preserveAspectRatio="none" aria-hidden="true" style="width:100%;height:${hh}px;display:block"><polyline points="${pts}" style="fill:none;stroke:${up ? "var(--phos)" : "var(--red)"}" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>`; }
 function srcLinks(arr) { return A(arr).filter(s => Array.isArray(s) && s[1]).map(s => `<a href="${esc(s[1])}" target="_blank" rel="noopener">${esc(s[0])}</a>`).join(" · "); }
-const L = (u, n) => u ? `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(n || "źródło")}</a>` : "";
+const L = (u, n) => u ? `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(n || TX("źródło"))}</a>` : "";
 function dd(rows) { return `<dl class="dl">${rows.filter(r => r && r[1] != null && r[1] !== "").map(r => `<dt>${r[0]}</dt><dd>${r[2] ? r[1] : esc(r[1])}</dd>`).join("")}</dl>`; }
 
 const AIR = { ok: false, d: null, mk: {}, skew: 0, lastEv: 0, first: true, at: 0 };
@@ -88,7 +108,7 @@ $("#alertBtn").addEventListener("click", e => { const on = !document.body.classL
 function setCompact(on) { document.body.classList.toggle("compact", on); $("#compactBtn").setAttribute("aria-pressed", on); store.set("compact", on); }
 $("#compactBtn").addEventListener("click", () => { beep(700); setCompact(!document.body.classList.contains("compact")); });
 setCompact(store.get("compact", false));
-function clocks() { const n = new Date(); $("#utc").textContent = n.toISOString().slice(11, 19); $("#loc").textContent = n.toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" }); }
+function clocks() { const n = new Date(); $("#utc").textContent = n.toISOString().slice(11, 19); $("#loc").textContent = n.toLocaleTimeString(LOC, { hour: "2-digit", minute: "2-digit" }); }
 clocks(); setInterval(clocks, 1000);
 
 /* ------------------------------------------------------------ MAPA */
@@ -117,9 +137,9 @@ const root = svg.append("g");
 const gSphere = root.append("path").attr("class", "sphere");
 const gGrat = root.append("path").attr("class", "grat");
 const gLand = root.append("path").attr("class", "land");
-const LAYERS = [["conf", "KONFLIKTY", 1], ["front", "FRONTY", 1], ["move", "NATARCIA", 1], ["strike", "UDERZENIA", 1], ["force", "SIŁY", 1], ["ship", "ŻEGLUGA", 1],
-  ["haz", "NATURA", 1], ["sat", "ORBITY", 1], ["air", "LOTNICTWO", 1], ["vessel", "STATKI", 1], ["flank", "FLANKA", 1], ["nuke", "ATOM", 1], ["asp", "PRZESTRZEŃ", 0], ["gps", "GNSS", 0],
-  ["fire", "POŻARY", 0], ["net", "SIEĆ", 0], ["hum", "HUMANITARNE", 0], ["cyber", "CYBER", 0], ["news", "DEPESZE", 0], ["night", "NOC", 1]];
+const LAYERS = [["conf", TX("KONFLIKTY"), 1], ["front", TX("FRONTY"), 1], ["move", TX("NATARCIA"), 1], ["strike", TX("UDERZENIA"), 1], ["force", TX("SIŁY"), 1], ["ship", TX("ŻEGLUGA"), 1],
+  ["haz", TX("NATURA"), 1], ["sat", TX("ORBITY"), 1], ["air", TX("LOTNICTWO"), 1], ["vessel", TX("STATKI"), 1], ["flank", TX("FLANKA"), 1], ["nuke", TX("ATOM"), 1], ["asp", TX("PRZESTRZEŃ"), 0], ["gps", TX("GNSS"), 0],
+  ["fire", TX("POŻARY"), 0], ["net", TX("SIEĆ"), 0], ["hum", TX("HUMANITARNE"), 0], ["cyber", TX("CYBER"), 0], ["news", TX("DEPESZE"), 0], ["night", TX("NOC"), 1]];
 const DRAW_ORDER = ["night", "gps", "fire", "asp", "vessel", "ship", "sat", "haz", "front", "move", "strike", "force", "net", "hum", "nuke", "flank", "air", "airlive", "cyber", "news", "conf"];
 const G = {}; DRAW_ORDER.forEach(k => G[k] = root.append("g").attr("data-l", k));
 const pNight = G.night.append("path").attr("class", "night"), pTwi = G.night.append("path").attr("class", "twi");
@@ -267,14 +287,14 @@ function buildMap() {
   A(f.who).forEach((w, i) => mk("hum", w.lat, w.lon, "tag", "var(--red)", "who:" + i, w.dis, { txt: "+", w: 13, lbl: w.dis, lblClass: "lbl shlbl", lx: 9 }));
   A(S.items).filter(i => i.s === "human" && i.lat != null).forEach(i => mk("hum", i.lat, i.lon, "dot", "var(--khaki)", "n:" + i.id, i.h));
   const NC = { crit: "var(--red)", warn: "var(--amber)", ok: "var(--phos)", unknown: "var(--phos-dim)" };
-  A(S.nuclear).forEach((n, i) => mk("nuke", n.lat, n.lon, "tag", NC[n.status] || NC.unknown, "nk:" + i, n.name, { txt: "AT", w: 20, lbl: n.name, lblClass: "lbl hlbl", lx: 12 }));
+  A(S.nuclear).forEach((n, i) => mk("nuke", n.lat, n.lon, "tag", NC[n.status] || NC.unknown, "nk:" + i, n.name, { txt: TX("AT"), w: 20, lbl: n.name, lblClass: "lbl hlbl", lx: 12 }));
   A(S.eastflank).forEach((e, i) => mk("flank", e.lat, e.lon, "dot", "var(--violet)", "ef:" + i, e.t, { size: 1.4, lbl: e.t, lblClass: "lbl hlbl", lx: 6, cls: isNew("eastflank", e.id) ? "new" : "" }));
   const AC = { isr: "var(--cyan)", tanker: "var(--amber)", bomber: "var(--red)", transport: "var(--violet)", fighter: "var(--phos)", other: "var(--phos-dim)" };
   A(f.adsb && f.adsb.ac).forEach((a, i) => mk("air", a.lat, a.lon, "head", AC[a.cat] || AC.other, "ac:" + i, (a.cs || a.hex) + " " + a.t, { rot: (a.trk || 0) - 90, size: .9 }));
   A(f.gdacs).forEach((g, i) => { if (g.track && g.track.length > 1) gpath("haz", LL(g.track), "gtrack");
     mk("haz", g.lat, g.lon, "ring", g.lvl === "Red" ? "var(--red)" : "#ff9a3a", "gd:" + i, g.kind + " " + g.name, { pulse: g.lvl === "Red" }); });
   A(f.nhc).forEach((n, i) => mk("haz", n.lat, n.lon, "ci", "var(--red)", "nhc:" + i, n.name, { pulse: true, lbl: n.name, lblClass: "lbl shlbl" }));
-  A(S.hazards).forEach((h, i) => { const shape = h.kind === "quake" ? "tri" : h.kind === "volcano" ? "dia" : "ci"; mk("haz", h.lat, h.lon, shape, (h.alert === "RED" || /^M7|^M8|^M9/.test(h.mag || "")) ? "var(--red)" : "var(--amber)", "h:" + i, h.name_pl || h.name, { pulse: h.kind === "storm" }); });
+  A(S.hazards).forEach((h, i) => { const shape = h.kind === "quake" ? "tri" : h.kind === "volcano" ? "dia" : "ci"; mk("haz", h.lat, h.lon, shape, (h.alert === "RED" || /^M7|^M8|^M9/.test(h.mag || "")) ? "var(--red)" : "var(--amber)", "h:" + i, (LANG === "en" ? h.name || h.name_pl : h.name_pl || h.name), { pulse: h.kind === "storm" }); });
   A(S.fronts).forEach(fr => {
     A(fr.prev).forEach(seg => gpath("front", LL(seg), "fprev"));
     A(fr.line).forEach(seg => { gpath("front", LL(seg), "fline"); gpath("front", LL(seg), "fline hit").attr("data-id", "f:" + fr.id).on("click", () => go("f:" + fr.id)); });
@@ -323,8 +343,8 @@ function drawSats(noRedraw) {
     if (g) { g.select(".core").attr("transform", "scale(.7)"); g.on("click", () => go("s:" + i)); satMarkers.push(markers[markers.length - 1]); }
     rows.push(`<tr><td>${esc(s.name)}</td><td>${p.lat.toFixed(1)}°</td><td>${p.lon.toFixed(1)}°</td><td>${Math.round(p.alt)}</td></tr>`);
   });
-  $("#sats").innerHTML = rows.join("") || '<tr><td colspan="4">Brak danych orbitalnych</td></tr>';
-  $("#satTime").textContent = "SGP4 · " + now.toISOString().slice(11, 16) + " UTC";
+  $("#sats").innerHTML = rows.join("") || ("<tr>" + "<td colspan=\"4\">" + TX("Brak danych orbitalnych") + "</td>" + "</tr>");
+  $("#satTime").textContent = TX("SGP4 ·") + " " + now.toISOString().slice(11, 16) + " " + TX("UTC");
   if (!noRedraw) { satPaths.forEach(g => g.node.setAttribute("d", path(g.geo) || "")); placeMarkers(); }
 }
 
@@ -340,7 +360,7 @@ function airPos(a, now) {
   return [lat, a.lon + nm * Math.sin(r) / (60 * Math.max(.2, Math.cos(a.lat * Math.PI / 180)))];
 }
 const airAge = (a, now) => Math.max(0, Math.round((now - a.ts) / 1000));
-function agoTxt(sec) { return sec < 60 ? sec + " s temu" : sec < 3600 ? Math.round(sec / 60) + " min temu" : Math.round(sec / 3600) + " h temu"; }
+function agoTxt(sec) { return sec < 60 ? sec + " " + TX("s temu") : sec < 3600 ? Math.round(sec / 60) + " " + TX("min temu") : Math.round(sec / 3600) + " " + TX("h temu"); }
 function drawLive() {
   const seen = new Set();
   A(AIR.d && AIR.d.ac).forEach(a => {
@@ -376,7 +396,7 @@ d3.timer(t => { if (!AIR.ok || document.hidden || t - airTick < 200 || view !== 
 function contactSound(kind) { if (kind === "squawk") alarmBurst(1); else sfx("contact"); }
 function airToast(e) {
   const box = $("#airToast"); if (!box) return; const b = document.createElement("button");
-  b.className = "toast" + (e.kind === "squawk" ? " red" : ""); b.innerHTML = `<b>KONTAKT · ${esc(new Date(e.at).toISOString().slice(11, 16))} UTC</b>${esc(e.msg)}`;
+  b.className = "toast" + (e.kind === "squawk" ? " red" : ""); b.innerHTML = `<b>${TX("KONTAKT ·")} ${esc(new Date(e.at).toISOString().slice(11, 16))} ${TX("UTC")}</b>${esc(e.msg)}`;
   b.addEventListener("click", () => { go(e.go || "ah:" + e.hex); b.remove(); }); box.appendChild(b); setTimeout(() => b.remove(), 12000);
   while (box.children.length > 4) box.firstChild.remove();
 }
@@ -397,7 +417,7 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) poll
 
 /* ------------------------------------------------------------ STATKI NA ŻYWO (AIS) */
 const SCOL = { military: "var(--red)", law: "#ff8f6b", tanker: "var(--amber)", cargo: "var(--violet)", passenger: "var(--cyan)", sar: "var(--white)", service: "var(--phos-dim)", fishing: "var(--khaki)", other: "var(--phos-faint)" };
-const SCN = { military: "WOJSKOWY", law: "STRAŻ", tanker: "TANKOWIEC", cargo: "TOWAROWY", passenger: "PASAŻERSKI", sar: "RATOWNICZY", service: "SERWISOWY", fishing: "RYBACKI", other: "INNY" };
+const SCN = { military: TX("WOJSKOWY"), law: TX("STRAŻ"), tanker: TX("TANKOWIEC"), cargo: TX("TOWAROWY"), passenger: TX("PASAŻERSKI"), sar: TX("RATOWNICZY"), service: TX("SERWISOWY"), fishing: TX("RYBACKI"), other: TX("INNY") };
 const SHOT = new Set(["military", "law", "tanker"]);
 function seaPos(r, now) {
   const dt = Math.min(1800, Math.max(0, (now - r.ts) / 1000)); if (!r.sog || r.sog < .5 || r.cog == null) return [r.lat, r.lon];
@@ -452,16 +472,16 @@ async function pollSea() {
 document.addEventListener("visibilitychange", () => { if (!document.hidden) pollSea(); });
 function renderSea() {
   const d = SEA.d; if (!d) return; const st = d.status || {}, dt = st.digitraffic || {}, ai = st.aisstream || {}, ships = A(d.ships), now = Date.now() + SEA.skew;
-  $("#seaT").innerHTML = ships.length ? `<span class="livedot"></span>NA ŻYWO · ${ships.length} jednostek` : "";
-  const srcLine = (n, s, extra) => `<li><button tabindex="-1" style="cursor:default"><span class="t">${n}</span><span class="${s.ok ? "" : s.ok === false ? "red" : "dim"}">${s.ok ? (s.n || 0) + " statków" : s.ok === false ? "BŁĄD" : "—"}</span><span class="sub">${esc(s.err || extra || "")}</span></button></li>`;
-  let h = `<li class="hd">Źródła</li>` + srcLine("Digitraffic · północny Bałtyk", dt, "bez klucza") + srcLine("aisstream.io · obserwowane rejony świata", ai, d.key ? "" : "wpisz darmowy klucz w oknie OPERATOR");
+  $("#seaT").innerHTML = ships.length ? `<span class="livedot"></span>${TX("NA ŻYWO ·")} ${ships.length} jednostek` : "";
+  const srcLine = (n, s, extra) => `<li><button tabindex="-1" style="cursor:default"><span class="t">${n}</span><span class="${s.ok ? "" : s.ok === false ? "red" : "dim"}">${s.ok ? (s.n || 0) + " " + TX("statków") : s.ok === false ? TX("BŁĄD") : "—"}</span><span class="sub">${esc(s.err || extra || "")}</span></button></li>`;
+  let h = `<li class="hd">${TX("Źródła")}</li>` + srcLine(TX("Digitraffic · północny Bałtyk"), dt, TX("bez klucza")) + srcLine(TX("aisstream.io · obserwowane rejony świata"), ai, d.key ? "" : TX("wpisz darmowy klucz w oknie OPERATOR"));
   const ev = A(d.events).slice(-8).reverse();
-  if (ev.length) h += `<li class="hd">Zdarzenia</li>` + ev.map(e => `<li><button data-go="vs:${e.mmsi}"><span class="t">${esc(e.msg)}</span><span class="dim">${new Date(e.at).toISOString().slice(11, 16)}</span></button></li>`).join("");
+  if (ev.length) h += `<li class="hd">${TX("Zdarzenia")}</li>` + ev.map(e => `<li><button data-go="vs:${e.mmsi}"><span class="t">${esc(e.msg)}</span><span class="dim">${new Date(e.at).toISOString().slice(11, 16)}</span></button></li>`).join("");
   const zones = {}; ships.forEach(r => { if (!r.zone) return; const z = zones[r.zone] = zones[r.zone] || { tanker: 0, cargo: 0, military: 0, all: 0, ru: 0, foc: 0 }; z.all++; if (r.cat in z) z[r.cat]++; if (r.cat === "law") z.military++;
     if (r.cat === "tanker" && r.flag === "Rosja") z.ru++; if (r.cat === "tanker" && r.foc) z.foc++; });
-  if (Object.keys(zones).length) h += `<li class="hd">Rejony</li>` + Object.entries(zones).sort((a, b) => b[1].all - a[1].all).map(([n, z]) => `<li><button tabindex="-1" style="cursor:default"><span class="t">${esc(n)}</span><span class="dim">${z.all}</span><span class="sub">tankowce ${z.tanker} (rosyjska bandera ${z.ru}, bandery wygody ${z.foc}) · towarowe ${z.cargo} · wojskowe/straż ${z.military}</span></button></li>`).join("");
+  if (Object.keys(zones).length) h += `<li class="hd">${TX("Rejony")}</li>` + Object.entries(zones).sort((a, b) => b[1].all - a[1].all).map(([n, z]) => `<li><button tabindex="-1" style="cursor:default"><span class="t">${esc(n)}</span><span class="dim">${z.all}</span><span class="sub">tankowce ${z.tanker} ${TX("(rosyjska bandera")} ${z.ru}${TX(", bandery wygody")} ${z.foc}${TX(") · towarowe")} ${z.cargo} ${TX("· wojskowe/straż")} ${z.military}</span></button></li>`).join("");
   const hot = ships.filter(r => r.cat === "military" || r.cat === "law").slice(0, 12);
-  if (hot.length) h += `<li class="hd">Jednostki wojskowe i straży</li>` + hot.map(r => `<li><button data-go="vs:${r.mmsi}"><span class="t">${esc(r.flag_e || "")} ${esc(r.name || r.mmsi)}</span>${chip(SCN[r.cat], SCOL[r.cat])}<span class="sub">${esc(r.flag || "")} · ${esc(r.zone || fmtLL(r.lat, r.lon))} · ${agoTxt(Math.round((now - r.ts) / 1000))}</span></button></li>`).join("");
+  if (hot.length) h += `<li class="hd">${TX("Jednostki wojskowe i straży")}</li>` + hot.map(r => `<li><button data-go="vs:${r.mmsi}"><span class="t">${esc(r.flag_e || "")} ${esc(r.name || r.mmsi)}</span>${chip(SCN[r.cat], SCOL[r.cat])}<span class="sub">${esc(r.flag || "")} · ${esc(r.zone || fmtLL(r.lat, r.lon))} · ${agoTxt(Math.round((now - r.ts) / 1000))}</span></button></li>`).join("");
   rowsInto("#sea", h);
 }
 
@@ -496,9 +516,9 @@ function satCloud() {
   return n;
 }
 function renderSatSum() {
-  const g = SATSEL.groups.map(id => (SATCAT && (SATCAT.groups.find(x => x.id === id) || {}).label || id).split(" (")[0]);
+  const g = SATSEL.groups.map(id => TX(SATCAT && (SATCAT.groups.find(x => x.id === id) || {}).label || id).split(" (")[0]);
   const n = Object.entries(SATG).filter(([id]) => SATSEL.groups.includes(id)).reduce((a, [, x]) => a + x.recs.length, 0);
-  $("#satSum").textContent = (SATSEL.base ? "Podstawowe" : "") + (g.length ? (SATSEL.base ? " + " : "") + g.join(", ") + ` (${n})` : "") + (SATPIN.length ? ` · przypięte: ${SATPIN.length}` : "") || "Brak satelitów na mapie";
+  $("#satSum").textContent = (SATSEL.base ? TX("Podstawowe") : "") + (g.length ? (SATSEL.base ? " + " : "") + g.join(", ") + ` (${n})` : "") + (SATPIN.length ? ` ${TX("· przypięte:")} ${SATPIN.length}` : "") || TX("Brak satelitów na mapie");
 }
 async function applySats() {
   for (const id of SATSEL.groups) { try { await loadSatGroup(id); } catch (e) {} }
@@ -515,33 +535,33 @@ let SATCLICK = null;
 function satInfo(r) {
   const l1 = r.l1 || "", l2 = r.rec, mm = r.rec.no * 1440 / (2 * Math.PI), per = 1440 / mm, inc = r.rec.inclo * 180 / Math.PI, alt = r.last ? Math.round(r.last.alt) : null;
   const yy = +l1.slice(9, 11), year = isNaN(yy) ? null : (yy < 57 ? 2000 + yy : 1900 + yy);
-  const orbit = alt == null ? "" : alt > 34000 && alt < 37000 ? "geostacjonarna (GEO)" : alt > 2000 && alt < 34000 ? "średnia (MEO)" : r.rec.ecco > .25 ? "eliptyczna (HEO)" : "niska (LEO)";
+  const orbit = alt == null ? "" : alt > 34000 && alt < 37000 ? TX("geostacjonarna (GEO)") : alt > 2000 && alt < 34000 ? TX("średnia (MEO)") : r.rec.ecco > .25 ? TX("eliptyczna (HEO)") : TX("niska (LEO)");
   return { per, inc, alt, year, orbit };
 }
 async function openSatModal() {
   $("#satModal").hidden = false; $("#satBase").checked = SATSEL.base; $("#satQ").focus(); renderPins();
   try { SATCAT = await api("/api/sats/groups"); } catch (e) { SATCAT = null; }
-  $("#satGroups").innerHTML = SATCAT && SATCAT.groups.some(g => g.n) ? SATCAT.groups.map(g => `<label class="chk"><input type="checkbox" data-sg="${g.id}"${SATSEL.groups.includes(g.id) ? " checked" : ""}><i style="background:${GCOL[g.id]}"></i>${esc(g.label)}<em>${g.n}</em></label>`).join("")
-    : `<p class="empty">Nie udało się pobrać katalogu z CelesTrak${SATCAT && SATCAT.err ? " (" + esc(SATCAT.err) + ")" : ""}. Spróbuj później.</p>`;
+  $("#satGroups").innerHTML = SATCAT && SATCAT.groups.some(g => g.n) ? SATCAT.groups.map(g => `<label class="chk"><input type="checkbox" data-sg="${g.id}"${SATSEL.groups.includes(g.id) ? " checked" : ""}><i style="background:${GCOL[g.id]}"></i>${esc(TX(g.label))}<em>${g.n}</em></label>`).join("")
+    : `<p class="empty">${TX("Nie udało się pobrać katalogu z CelesTrak")}${SATCAT && SATCAT.err ? " (" + esc(SATCAT.err) + ")" : ""}${TX(". Spróbuj później.")}</p>`;
   $("#satGroups").querySelectorAll("[data-sg]").forEach(c => c.addEventListener("change", async () => {
     const id = c.dataset.sg; SATSEL.groups = SATSEL.groups.filter(x => x !== id); if (c.checked) SATSEL.groups.push(id); saveSatSel();
-    if (c.checked && (id === "all" || id === "starlink")) $("#satSum").textContent = "Wczytywanie " + id + "…";
+    if (c.checked && (id === "all" || id === "starlink")) $("#satSum").textContent = TX("Wczytywanie") + " " + id + "…";
     await applySats(); ensureLayer("sat");
   }));
 }
 function renderPins() {
-  $("#satPins").innerHTML = SATPIN.length ? SATPIN.map(p => `<li><button data-unpin="${p[1]}"><span class="t">${esc(p[0])}</span><span class="dim">ODEPNIJ</span><span class="sub">NORAD ${p[1]}</span></button></li>`).join("") : '<li class="empty">Nic nie przypięto.</li>';
+  $("#satPins").innerHTML = SATPIN.length ? SATPIN.map(p => `<li><button data-unpin="${p[1]}"><span class="t">${esc(p[0])}</span><span class="dim">${TX("ODEPNIJ")}</span><span class="sub">${TX("NORAD")} ${p[1]}</span></button></li>`).join("") : ("<li class=\"empty\">" + TX("Nic nie przypięto.") + "</li>");
   $("#satPins").querySelectorAll("[data-unpin]").forEach(b => b.addEventListener("click", async () => { SATSEL.pins = SATSEL.pins.filter(x => x !== +b.dataset.unpin); saveSatSel(); await applySats(); renderPins(); }));
 }
 let satQT = null;
 $("#satQ").addEventListener("input", () => { clearTimeout(satQT); satQT = setTimeout(async () => {
   const q = $("#satQ").value.trim(); if (q.length < 2) { $("#satRes").innerHTML = ""; return; }
-  $("#satRes").innerHTML = '<li class="empty">Szukam…</li>';
+  $("#satRes").innerHTML = ("<li class=\"empty\">" + TX("Szukam…") + "</li>");
   let r = []; try { r = A((await api("/api/sats/search?q=" + encodeURIComponent(q))).results); } catch (e) {}
-  const lab = id => (SATCAT && (SATCAT.groups.find(x => x.id === id) || {}).label || id).split(" (")[0].split(" i ")[0];
-  $("#satRes").innerHTML = r.length ? r.map(x => `<li><button data-pin="${x.id}"><span class="t">${esc(x.name)}</span><span class="${SATSEL.pins.includes(x.id) ? "dim" : ""}">${SATSEL.pins.includes(x.id) ? "PRZYPIĘTY" : "PRZYPNIJ"}</span><span class="sub">NORAD ${x.id}${x.groups.length ? " · " + x.groups.map(lab).join(", ") : ""}</span></button></li>`).join("") : '<li class="empty">Brak wyników.</li>';
+  const lab = id => TX(SATCAT && (SATCAT.groups.find(x => x.id === id) || {}).label || id).split(" (")[0].split(" i ")[0];
+  $("#satRes").innerHTML = r.length ? r.map(x => `<li><button data-pin="${x.id}"><span class="t">${esc(x.name)}</span><span class="${SATSEL.pins.includes(x.id) ? "dim" : ""}">${SATSEL.pins.includes(x.id) ? TX("PRZYPIĘTY") : TX("PRZYPNIJ")}</span><span class="sub">${TX("NORAD")} ${x.id}${x.groups.length ? " · " + x.groups.map(lab).join(", ") : ""}</span></button></li>`).join("") : ("<li class=\"empty\">" + TX("Brak wyników.") + "</li>");
   $("#satRes").querySelectorAll("[data-pin]").forEach(b => b.addEventListener("click", async () => {
-    const id = +b.dataset.pin; if (!SATSEL.pins.includes(id)) { SATSEL.pins.push(id); saveSatSel(); } b.querySelector("span:nth-child(2)").textContent = "PRZYPIĘTY";
+    const id = +b.dataset.pin; if (!SATSEL.pins.includes(id)) { SATSEL.pins.push(id); saveSatSel(); } b.querySelector("span:nth-child(2)").textContent = TX("PRZYPIĘTY");
     await applySats(); renderPins(); ensureLayer("sat"); }));
 }, 250); });
 $("#satBase").addEventListener("change", async () => { SATSEL.base = $("#satBase").checked; saveSatSel(); await applySats(); });
@@ -557,7 +577,7 @@ function applyLayout() {
   R.setProperty("--wrapmax", LAY.w === "center" ? "1500px" : LAY.w === "narrow" ? "1100px" : "none");
   if (LAY.auto) R.removeProperty("--maph"); else R.setProperty("--maph", `max(220px, ${LAY.map}vh)`);
   $$("#layWidth [data-w]").forEach(b => b.setAttribute("aria-pressed", b.dataset.w === LAY.w));
-  $("#layScale").value = LAY.scale; $("#layScaleV").textContent = LAY.scale + "%"; $("#layMap").value = LAY.map; $("#layMapV").textContent = LAY.auto ? "automatyczna" : LAY.map + "% wysokości okna";
+  $("#layScale").value = LAY.scale; $("#layScaleV").textContent = LAY.scale + "%"; $("#layMap").value = LAY.map; $("#layMapV").textContent = LAY.auto ? "automatyczna" : LAY.map + TX("% wysokości okna");
   $("#layMap").disabled = LAY.auto; $("#layAuto").checked = LAY.auto; store.set("layout", LAY);
 }
 $$("#layWidth [data-w]").forEach(b => b.addEventListener("click", () => { LAY.w = b.dataset.w; applyLayout(); }));
@@ -579,7 +599,7 @@ const slug = t => t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").repla
 const PANELS = { status: $("#rail") }, DETACHED = new Set(), ALIVE = {}, WINS = {};
 $$(".wrap section.frame").forEach(sec => {
   const h = sec.querySelector(":scope > .frame-h"); if (!h) return;
-  const main = sec.classList.contains("mainview"), name = main ? "MAPA" : ((h.querySelector("span") || {}).textContent || "").replace(/^>\s*/, "").trim(); if (!name) return;
+  const main = sec.classList.contains("mainview"), name = main ? TX("MAPA") : ((h.querySelector("span") || {}).textContent || "").replace(/^>\s*/, "").trim(); if (!name) return;
   const id = sec.dataset.panel || (main ? "mapa" : slug(name)); if (PANELS[id]) return;
   sec.dataset.panel = id; sec.dataset.pname = name; PANELS[id] = sec;
   if (!SOLO) h.insertAdjacentHTML("beforeend", `<button class="btn detach" data-detach="${id}" title="Odepnij do osobnego okna (np. na drugi monitor)">⧉</button>`);
@@ -590,7 +610,7 @@ function markDetached(id, on) {
   on ? DETACHED.add(id) : DETACHED.delete(id); sec.classList.toggle("detached", on);
   const h = sec.querySelector(":scope > .frame-h");
   if (h) { h.querySelectorAll(".reattach").forEach(b => b.remove());
-    if (on) h.insertAdjacentHTML("beforeend", `<button class="btn reattach" data-show="${id}">POKAŻ OKNO</button><button class="btn reattach" data-attach="${id}">PRZYPNIJ</button>`); }
+    if (on) h.insertAdjacentHTML("beforeend", `<button class="btn reattach" data-show="${id}">${TX("POKAŻ OKNO")}</button><button class="btn reattach" data-attach="${id}">${TX("PRZYPNIJ")}</button>`); }
   if (id === "mapa" && !on) setTimeout(() => { sizeMap(); redraw(); }, 50);
 }
 async function detach(id) {
@@ -600,7 +620,7 @@ async function detach(id) {
   try { if ("getScreenDetails" in window) { const sd = await window.getScreenDetails(), o = sd.screens.find(x => x !== sd.currentScreen);
     if (o) feat = `popup=yes,left=${o.availLeft},top=${o.availTop},width=${o.availWidth},height=${o.availHeight}`; } } catch (e) {}
   const w = window.open("/?panel=" + encodeURIComponent(id), "kronos7-" + id, feat);
-  if (!w) { $("#foot").textContent = "Przeglądarka zablokowała nowe okno. Kliknij ⧉ jeszcze raz albo zezwól na wyskakujące okna dla 127.0.0.1."; $("#foot").scrollIntoView({ block: "center" }); return; }
+  if (!w) { $("#foot").textContent = TX("Przeglądarka zablokowała nowe okno. Kliknij ⧉ jeszcze raz albo zezwól na wyskakujące okna dla 127.0.0.1."); $("#foot").scrollIntoView({ block: "center" }); return; }
   WINS[id] = w; ALIVE[id] = Date.now(); markDetached(id, true);
 }
 document.addEventListener("click", e => {
@@ -622,9 +642,9 @@ if (SOLO) {
   const sec = PANELS[SOLO];
   if (sec) {
     document.body.classList.add("solo"); sec.classList.add("solo-target"); document.body.appendChild(sec);
-    document.title = "KRONOS-7 · " + (sec.dataset.pname || SOLO);
-    document.body.insertAdjacentHTML("afterbegin", `<div class="solo-bar"><span>KRONOS-7 · <b>${esc(sec.dataset.pname || SOLO)}</b></span><span><span id="soloClock"></span> <button class="btn" id="soloFs">PEŁNY EKRAN</button> <button class="btn" id="soloBack">PRZYPNIJ Z POWROTEM</button></span></div>`);
-    setInterval(() => { $("#soloClock").textContent = new Date().toISOString().slice(11, 19) + " UTC  "; }, 1000);
+    document.title = TX("KRONOS-7 ·") + " " + (sec.dataset.pname || SOLO);
+    document.body.insertAdjacentHTML("afterbegin", `<div class="solo-bar"><span>${TX("KRONOS-7 ·")} <b>${esc(sec.dataset.pname || SOLO)}</b></span><span><span id="soloClock"></span> <button class="btn" id="soloFs">${TX("PEŁNY EKRAN")}</button> <button class="btn" id="soloBack">${TX("PRZYPNIJ Z POWROTEM")}</button></span></div>`);
+    setInterval(() => { $("#soloClock").textContent = new Date().toISOString().slice(11, 19) + " " + TX("UTC") + "  "; }, 1000);
     $("#soloBack").addEventListener("click", () => { if (BC) BC.postMessage({ t: "bye", id: SOLO }); window.close(); });
     $("#soloFs").addEventListener("click", () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => {}));
     const hello = () => BC && BC.postMessage({ t: "hello", id: SOLO }); hello(); setInterval(hello, 2000);
@@ -688,11 +708,11 @@ function chainPick(id) {
   const pathIds = longest(id, -1).reverse().concat([id], longest(id, 1));
   const ins = CE.filter(e => e.target.id === id), outs = CE.filter(e => e.source.id === id);
   $("#detail").innerHTML = `${chip(n.type, NCOL[n.type])}<h2 class="glow">${esc(n.label)}</h2>
-  ${dd([["ŚCIEŻKA", pathIds.map(x => x === id ? `<b>${esc(lab(x))}</b>` : esc(lab(x))).join(" → "), 1],
-    ["PRZYCZYNY", ins.length ? ins.map(e => `${esc(e.source.label)} <span class="dim">(${esc(e.label)})</span>`).join("<br>") : "punkt wyjścia łańcucha", 1],
-    ["SKUTKI", outs.length ? outs.map(e => `${esc(e.target.label)} <span class="dim">(${esc(e.label)})</span>`).join("<br>") : "brak dalszych skutków w grafie", 1]])}
-  <div class="dbtns">${n.ref ? `<button class="btn" data-open="${esc(n.ref)}">OTWÓRZ KARTĘ</button>` : ""}<button class="btn" id="chainReset">POKAŻ CAŁOŚĆ</button></div>
-  <p class="hint">Graf zbudowany przez lokalne AI z bieżących depesz${S.chain && S.chain.at ? ", " + new Date(S.chain.at).toLocaleString("pl-PL") : ""}. To hipoteza analityczna, nie fakt.</p>`;
+  ${dd([[TX("ŚCIEŻKA"), pathIds.map(x => x === id ? `<b>${esc(lab(x))}</b>` : esc(lab(x))).join(" → "), 1],
+    [TX("PRZYCZYNY"), ins.length ? ins.map(e => `${esc(e.source.label)} <span class="dim">(${esc(e.label)})</span>`).join("<br>") : TX("punkt wyjścia łańcucha"), 1],
+    [TX("SKUTKI"), outs.length ? outs.map(e => `${esc(e.target.label)} <span class="dim">(${esc(e.label)})</span>`).join("<br>") : TX("brak dalszych skutków w grafie"), 1]])}
+  <div class="dbtns">${n.ref ? `<button class="btn" data-open="${esc(n.ref)}">${TX("OTWÓRZ KARTĘ")}</button>` : ""}<button class="btn" id="chainReset">${TX("POKAŻ CAŁOŚĆ")}</button></div>
+  <p class="hint">${TX("Graf zbudowany przez lokalne AI z bieżących depesz")}${S.chain && S.chain.at ? ", " + new Date(S.chain.at).toLocaleString(LOC) : ""}${TX(". To hipoteza analityczna, nie fakt.")}</p>`;
   const ob = $("#detail [data-open]"); if (ob) ob.addEventListener("click", () => { setView("map"); openRef(ob.dataset.open); });
   $("#chainReset").addEventListener("click", () => { chainReset(); idleDetail(); });
 }
@@ -711,7 +731,7 @@ $$("[data-view]").forEach(b => b.addEventListener("click", () => { beep(640); se
 /* ------------------------------------------------------------ ODCZYT */
 function credHTML(i) {
   const col = (i.rel || "F") <= "B" && (i.info || 6) <= 3 ? "var(--phos)" : (i.info || 6) >= 4 ? "var(--red)" : "var(--amber)";
-  return `<span class="cred" style="color:${col}"><b>${esc(i.rel || "F")}${esc(i.info || 6)}</b><span>źródło: ${REL[i.rel] || "?"}; informacja: ${INFO[i.info] || "?"}${i.claim ? "; <span class='amber'>deklaracja jednej ze stron</span>" : ""}</span></span>`;
+  return `<span class="cred" style="color:${col}"><b>${esc(i.rel || "F")}${esc(i.info || 6)}</b><span>${TX("źródło:")} ${REL[i.rel] || "?"}${TX("; informacja:")} ${INFO[i.info] || "?"}${i.claim ? ("; " + "<span class='amber'>" + TX("deklaracja jednej ze stron") + "</span>") : ""}</span></span>`;
 }
 function itemLL(i) { if (i.lat != null && i.lon != null) return [i.lat, i.lon]; const c = A(S.conflicts).find(c => c.id === i.conflict || c.id === i.loc); return c ? [c.lat, c.lon] : null; }
 function openRef(ref) { if (A(S.conflicts).some(c => c.id === ref)) return go("c:" + ref); if (A(S.items).some(i => i.id === ref)) return go("n:" + ref); }
@@ -767,145 +787,145 @@ function pick(id, silent) {
   if (t === "c") {
     const c = A(S.conflicts).find(x => x.id === key); if (!c) return;
     const tr = TREND[c.trend] || TREND.ongoing, rel = A(S.items).filter(i => i.conflict === c.id), fr = frontOf(c.id);
-    const sc = A(c.scenarios).map(s => `<div><span class="t"><span>${esc(s.name)}</span><b class="amber">${s.prob}%</b></span><span class="bar"><i style="width:${Math.max(0, Math.min(100, s.prob))}%"></i></span><small>${esc(s.desc)}${A(s.signals).length ? "<br>Sygnały: " + s.signals.map(esc).join(" · ") : ""}</small></div>`).join("");
+    const sc = A(c.scenarios).map(s => `<div><span class="t"><span>${esc(s.name)}</span><b class="amber">${s.prob}%</b></span><span class="bar"><i style="width:${Math.max(0, Math.min(100, s.prob))}%"></i></span><small>${esc(s.desc)}${A(s.signals).length ? ("<br>" + TX("Sygnały:") + " ") + s.signals.map(esc).join(" · ") : ""}</small></div>`).join("");
     const tl = A(c.timeline).slice(-10).map(x => `<li><time>${esc(fmtDate(x.d))}</time>${esc(x.e)}</li>`).join("");
     h = `${chip(tr[0], tr[1])}<h2 class="glow">${esc(c.name)}</h2>` + dd([
-      ["CO", c.what], ["GDZIE", `${fmtLL(c.lat, c.lon)} · od ${esc(c.since)}`, 1], ["DLACZEGO", c.why], ["OSTATNIO", c.latest],
-      c.id === "iran" && S.iranStatus ? ["STATUS ROZEJMU", `${esc(S.iranStatus.summary)} ${srcLinks(S.iranStatus.src)}`, 1] : null,
-      ["SCENARIUSZE · 30 DNI", sc ? `<div class="scen">${sc}</div>` : '<span class="dim">Pojawią się po analizie lokalnego AI.</span>', 1],
-      tl ? ["OŚ CZASU", `<ul class="tl">${tl}</ul>`, 1] : null,
-      fr.length ? ["FRONT", `<ul class="mini">${fr.map(x => `<li><button data-go="f:${x.id}">▸ ${esc(x.name)} · ${A(x.moves).length} ruchów · stan ${esc(x.asOf)}</button></li>`).join("")}</ul>`, 1] : null,
-      rel.length ? [`DEPESZE (${rel.length})`, `<ul class="mini">${rel.map(r => `<li><button data-go="n:${r.id}">▸ ${esc(r.h)} <span class="dim">${esc(r.rel)}${esc(r.info)}</span></button></li>`).join("")}</ul>`, 1] : null,
-      ["ŹRÓDŁA", srcLinks(c.src) || "—", 1]]) +
-      `<div class="dbtns"><button class="btn" data-sit="${esc(c.name)}">SITREP</button>${(S.chain && A(S.chain.nodes).some(n => n.ref === c.id || n.id === c.id)) ? `<button class="btn" data-chain="${c.id}">W ŁAŃCUCHU</button>` : ""}</div>`;
+      [TX("CO"), c.what], [TX("GDZIE"), `${fmtLL(c.lat, c.lon)} ${TX("· od")} ${esc(c.since)}`, 1], [TX("DLACZEGO"), c.why], [TX("OSTATNIO"), c.latest],
+      c.id === "iran" && S.iranStatus ? [TX("STATUS ROZEJMU"), `${esc(S.iranStatus.summary)} ${srcLinks(S.iranStatus.src)}`, 1] : null,
+      [TX("SCENARIUSZE · 30 DNI"), sc ? `<div class="scen">${sc}</div>` : ("<span class=\"dim\">" + TX("Pojawią się po analizie lokalnego AI.") + "</span>"), 1],
+      tl ? [TX("OŚ CZASU"), `<ul class="tl">${tl}</ul>`, 1] : null,
+      fr.length ? [TX("FRONT"), `<ul class="mini">${fr.map(x => `<li><button data-go="f:${x.id}">▸ ${esc(x.name)} · ${A(x.moves).length} ${TX("ruchów · stan")} ${esc(x.asOf)}</button></li>`).join("")}</ul>`, 1] : null,
+      rel.length ? [`${TX("DEPESZE (")}${rel.length})`, `<ul class="mini">${rel.map(r => `<li><button data-go="n:${r.id}">▸ ${esc(r.h)} <span class="dim">${esc(r.rel)}${esc(r.info)}</span></button></li>`).join("")}</ul>`, 1] : null,
+      [TX("ŹRÓDŁA"), srcLinks(c.src) || "—", 1]]) +
+      `<div class="dbtns"><button class="btn" data-sit="${esc(c.name)}">${TX("SITREP")}</button>${(S.chain && A(S.chain.nodes).some(n => n.ref === c.id || n.id === c.id)) ? `<button class="btn" data-chain="${c.id}">${TX("W ŁAŃCUCHU")}</button>` : ""}</div>`;
   } else if (t === "n") {
     const i = A(S.items).find(x => x.id === key); if (!i) return; const ll = itemLL(i);
     h = `${chip((SEC[i.s] || i.s) + " · " + LVL[i.p], i.p === "crit" ? "var(--red)" : "var(--amber)")}<h2 class="glow">${esc(i.h)}</h2>` + dd([
-      ["CO", i.b], ll ? ["GDZIE", `${esc(i.place || "")} ${fmtLL(ll[0], ll[1])}`, 1] : null, ["DLACZEGO", i.why || "—"], ["KIEDY", i.t],
-      ["WIARYGODNOŚĆ", credHTML(i), 1], [`ŹRÓDŁA (${A(i.sources).length || 1})`, srcLinks(i.links || [[i.src, i.u]]), 1]]) +
-      `<div class="dbtns">${i.conflict ? `<button class="btn" data-go="c:${i.conflict}">KARTA KONFLIKTU</button>` : ""}${(S.chain && A(S.chain.nodes).some(n => n.ref === i.id)) ? `<button class="btn" data-chain="${i.id}">W ŁAŃCUCHU</button>` : ""}</div>`;
+      [TX("CO"), i.b], ll ? [TX("GDZIE"), `${esc(i.place || "")} ${fmtLL(ll[0], ll[1])}`, 1] : null, [TX("DLACZEGO"), i.why || "—"], [TX("KIEDY"), i.t],
+      [TX("WIARYGODNOŚĆ"), credHTML(i), 1], [`${TX("ŹRÓDŁA (")}${A(i.sources).length || 1})`, srcLinks(i.links || [[i.src, i.u]]), 1]]) +
+      `<div class="dbtns">${i.conflict ? `<button class="btn" data-go="c:${i.conflict}">${TX("KARTA KONFLIKTU")}</button>` : ""}${(S.chain && A(S.chain.nodes).some(n => n.ref === i.id)) ? `<button class="btn" data-chain="${i.id}">${TX("W ŁAŃCUCHU")}</button>` : ""}</div>`;
   } else if (t === "f") {
     const x = A(S.fronts).find(y => y.id === key); if (!x) return;
-    h = `${chip("FRONT · STAN " + x.asOf, "var(--amber)")}<h2 class="glow">${esc(x.name)}</h2>` + dd([
-      ["STRONY", Object.entries(x.sides || {}).map(([k, v]) => `<span class="sw" style="background:${COL(v[1])}"></span>${esc(v[0])}`).join("<br>") + `<br><span class="sw" style="background:var(--white)"></span>sporne`, 1],
-      ["SYTUACJA", x.note], [`RUCHY (${A(x.moves).length})`, `<ul class="mini">${A(x.moves).map((m, i) => `<li><button data-go="m:${x.id}:${i}"><span class="sw" style="background:${COL((x.sides[m.side] || [])[1])}"></span>${esc(m.when)} · ${esc(m.label)}${m.ai ? ' <span class="cyan">AI</span>' : ""}</button></li>`).join("")}</ul>`, 1],
-      ["ŹRÓDŁA", srcLinks(x.src), 1]]) + `<p class="hint">Linia zrekonstruowana z miejscowości w raportach; to szacunek, nie mapa sztabowa. Lokalne AI dopisuje natarcia i zmiany kontroli, ale nie przesuwa linii.</p>`;
+    h = `${chip(TX("FRONT · STAN") + " " + x.asOf, "var(--amber)")}<h2 class="glow">${esc(x.name)}</h2>` + dd([
+      [TX("STRONY"), Object.entries(x.sides || {}).map(([k, v]) => `<span class="sw" style="background:${COL(v[1])}"></span>${esc(v[0])}`).join("<br>") + `<br><span class="sw" style="background:var(--white)"></span>sporne`, 1],
+      [TX("SYTUACJA"), x.note], [`${TX("RUCHY (")}${A(x.moves).length})`, `<ul class="mini">${A(x.moves).map((m, i) => `<li><button data-go="m:${x.id}:${i}"><span class="sw" style="background:${COL((x.sides[m.side] || [])[1])}"></span>${esc(m.when)} · ${esc(m.label)}${m.ai ? (" " + "<span class=\"cyan\">" + TX("AI") + "</span>") : ""}</button></li>`).join("")}</ul>`, 1],
+      [TX("ŹRÓDŁA"), srcLinks(x.src), 1]]) + `<p class="hint">${TX("Linia zrekonstruowana z miejscowości w raportach; to szacunek, nie mapa sztabowa. Lokalne AI dopisuje natarcia i zmiany kontroli, ale nie przesuwa linii.")}</p>`;
   } else if (t === "m") {
     const x = A(S.fronts).find(y => y.id === key), m = x && A(x.moves)[+parts[2]]; if (!m) return; const sd = x.sides[m.side] || ["?", "phos"];
-    h = `${chip("NATARCIE · " + sd[0], COL(sd[1]))}<h2 class="glow">${esc(m.label)}</h2>` + dd([["CO", m.note], ["KIEDY", m.when],
-      ["KIERUNEK", `${fmtLL(m.from[0], m.from[1])} → ${fmtLL(m.to[0], m.to[1])}`], ["FRONT", `<ul class="mini"><li><button data-go="f:${x.id}">▸ ${esc(x.name)}</button></li></ul>`, 1],
-      ["ŹRÓDŁO", srcLinks([m.src]), 1]]) + (m.ai ? `<p class="hint">Wpis dodany przez lokalne AI na podstawie wiadomości; współrzędne przybliżone.</p>` : "");
+    h = `${chip(TX("NATARCIE ·") + " " + sd[0], COL(sd[1]))}<h2 class="glow">${esc(m.label)}</h2>` + dd([[TX("CO"), m.note], [TX("KIEDY"), m.when],
+      [TX("KIERUNEK"), `${fmtLL(m.from[0], m.from[1])} → ${fmtLL(m.to[0], m.to[1])}`], [TX("FRONT"), `<ul class="mini"><li><button data-go="f:${x.id}">▸ ${esc(x.name)}</button></li></ul>`, 1],
+      [TX("ŹRÓDŁO"), srcLinks([m.src]), 1]]) + (m.ai ? `<p class="hint">${TX("Wpis dodany przez lokalne AI na podstawie wiadomości; współrzędne przybliżone.")}</p>` : "");
   } else if (t === "fh") {
     const x = A(S.fronts).find(y => y.id === key), hd = x && A(x.holds)[+parts[2]]; if (!hd) return; const sd = hd[2] === "x" ? ["sporne", "white"] : (x.sides[hd[2]] || ["?", "phos"]);
-    h = `${chip("KONTROLA · " + sd[0], COL(sd[1]))}<h2 class="glow">${esc(hd[0])}</h2>` + dd([["GDZIE", fmtLL(hd[1][0], hd[1][1])], ["FRONT", `<ul class="mini"><li><button data-go="f:${x.id}">▸ ${esc(x.name)} (stan ${esc(x.asOf)})</button></li></ul>`, 1]]);
+    h = `${chip(TX("KONTROLA ·") + " " + sd[0], COL(sd[1]))}<h2 class="glow">${esc(hd[0])}</h2>` + dd([[TX("GDZIE"), fmtLL(hd[1][0], hd[1][1])], [TX("FRONT"), `<ul class="mini"><li><button data-go="f:${x.id}">▸ ${esc(x.name)} ${TX("(stan")} ${esc(x.asOf)})</button></li></ul>`, 1]]);
   } else if (t === "st") {
     const x = A(S.strikes)[+key]; if (!x) return;
-    h = `${chip("UDERZENIE · " + (x.side === "ru" ? "ROSJA" : "UKRAINA"), x.side === "ru" ? "var(--red)" : "var(--cyan)")}<h2 class="glow">${esc(x.target)}</h2>` + dd([["CO", x.note], ["KIEDY", x.when || fd(x.d)], ["GDZIE", fmtLL(x.lat, x.lon) + " (przybliżenie)"], ["ŹRÓDŁO", srcLinks([x.src]), 1]]);
+    h = `${chip(TX("UDERZENIE ·") + " " + (x.side === "ru" ? TX("ROSJA") : TX("UKRAINA")), x.side === "ru" ? "var(--red)" : "var(--cyan)")}<h2 class="glow">${esc(x.target)}</h2>` + dd([[TX("CO"), x.note], [TX("KIEDY"), x.when || fd(x.d)], [TX("GDZIE"), fmtLL(x.lat, x.lon) + " " + TX("(przybliżenie)")], [TX("ŹRÓDŁO"), srcLinks([x.src]), 1]]);
   } else if (t === "fo") {
     const x = A(S.forces)[+key]; if (!x) return; const kd = FKIND[x.kind] || ["", ""];
-    h = `${chip(kd[1], "var(--violet)")}<h2 class="glow">${esc(x.name)}</h2>` + dd([["GDZIE", `${esc(x.where)} · ${fmtLL(x.lat, x.lon)} (pozycja orientacyjna)`, 1], ["STAN NA", x.when], ["CO", x.note], ["ŹRÓDŁO", srcLinks([x.src]), 1]]);
+    h = `${chip(kd[1], "var(--violet)")}<h2 class="glow">${esc(x.name)}</h2>` + dd([[TX("GDZIE"), `${esc(x.where)} · ${fmtLL(x.lat, x.lon)} ${TX("(pozycja orientacyjna)")}`, 1], [TX("STAN NA"), x.when], [TX("CO"), x.note], [TX("ŹRÓDŁO"), srcLinks([x.src]), 1]]);
   } else if (t === "sh" || t === "p") {
     const x = A(S.shipping).find(y => y.id === key); if (!x) return; const st = SHIP[x.status] || SHIP.open, pw = (f.portwatch || {})[x.id];
-    h = `${chip("ŻEGLUGA · " + st[0], st[1])}<h2 class="glow">${esc(x.name)}</h2>${pw ? spark(pw.series.map(r => r[1]), 70) : ""}` + dd([["RUCH", x.metric],
-      pw ? ["AIS · IMF PORTWATCH", `Średnio ${pw.avg7} statków/dobę w ostatnim tygodniu (do ${esc(pw.last)})${pw.base ? `, rok temu ${pw.base}/dobę` : ""}. Wykres: ostatnie ${pw.series.length} dni. Liczy tylko statki z włączonym AIS; w strefach wojny wiele płynie bez niego, więc to dolna granica.`] : null,
-      ["OSTATNIO", x.latest], ["DLACZEGO", x.why], ["ŹRÓDŁA", srcLinks(x.src), 1]]);
+    h = `${chip(TX("ŻEGLUGA ·") + " " + st[0], st[1])}<h2 class="glow">${esc(x.name)}</h2>${pw ? spark(pw.series.map(r => r[1]), 70) : ""}` + dd([[TX("RUCH"), x.metric],
+      pw ? [TX("AIS · IMF PORTWATCH"), `${TX("Średnio")} ${pw.avg7} ${TX("statków/dobę w ostatnim tygodniu (do")} ${esc(pw.last)})${pw.base ? `${TX(", rok temu")} ${pw.base}${TX("/dobę")}` : ""}${TX(". Wykres: ostatnie")} ${pw.series.length} ${TX("dni. Liczy tylko statki z włączonym AIS; w strefach wojny wiele płynie bez niego, więc to dolna granica.")}`] : null,
+      [TX("OSTATNIO"), x.latest], [TX("DLACZEGO"), x.why], [TX("ŹRÓDŁA"), srcLinks(x.src), 1]]);
   } else if (t === "mk") {
     const m = A(MK && MK.items).find(x => x.id === key); if (!m) return; const up = m.change_pct >= 0;
-    h = `${chip("RYNEK · 5 DNI " + (up ? "+" : "") + (m.change_pct || 0).toFixed(2) + "%", up ? "var(--phos)" : "var(--red)")}<h2 class="glow">${esc(m.label)}: ${m.price != null ? m.price.toLocaleString("pl-PL") : "—"} ${esc(m.unit)}</h2>${spark(m.spark, 80)}` +
-      dd([["DLACZEGO", S.marketsNote || "Komentarz pojawi się po analizie AI."], ["ŹRÓDŁO", `${esc(m.source || "")} · ${MK.fetched ? new Date(MK.fetched).toLocaleTimeString("pl-PL") : ""}`, 1]]) + `<p class="hint">Notowania pobierane na żywo co 5 minut; mogą być opóźnione o kilkanaście minut.</p>`;
+    h = `${chip(TX("RYNEK · 5 DNI") + " " + (up ? "+" : "") + (m.change_pct || 0).toFixed(2) + "%", up ? "var(--phos)" : "var(--red)")}<h2 class="glow">${esc(m.label)}: ${m.price != null ? m.price.toLocaleString(LOC) : "—"} ${esc(m.unit)}</h2>${spark(m.spark, 80)}` +
+      dd([[TX("DLACZEGO"), S.marketsNote || TX("Komentarz pojawi się po analizie AI.")], [TX("ŹRÓDŁO"), `${esc(m.source || "")} · ${MK.fetched ? new Date(MK.fetched).toLocaleTimeString(LOC) : ""}`, 1]]) + `<p class="hint">${TX("Notowania pobierane na żywo co 5 minut; mogą być opóźnione o kilkanaście minut.")}</p>`;
   } else if (t === "cal") {
     const e = A(S.calendar)[+key]; if (!e) return;
-    h = `${chip(CAT[e.cat] || e.cat || "WYDARZENIE", "var(--amber)")}<h2 class="glow">${esc(e.t)}</h2>` + dd([["KIEDY", `${fmtDate(e.d)} · ${countdown(e.d)}`], ["DLACZEGO WAŻNE", e.note], ["ŹRÓDŁO", srcLinks([e.src]), 1],
-      e.ref ? ["DEPESZA", `<ul class="mini"><li><button data-go="n:${esc(e.ref)}">▸ otwórz</button></li></ul>`, 1] : null]);
+    h = `${chip(CAT[e.cat] || e.cat || TX("WYDARZENIE"), "var(--amber)")}<h2 class="glow">${esc(e.t)}</h2>` + dd([[TX("KIEDY"), `${fmtDate(e.d)} · ${countdown(e.d)}`], [TX("DLACZEGO WAŻNE"), e.note], [TX("ŹRÓDŁO"), srcLinks([e.src]), 1],
+      e.ref ? [TX("DEPESZA"), `<ul class="mini"><li><button data-go="n:${esc(e.ref)}">${TX("▸ otwórz")}</button></li></ul>`, 1] : null]);
   } else if (t === "h") {
-    const x = A(S.hazards)[+key]; if (!x) return; const kind = { quake: "TRZĘSIENIE ZIEMI", volcano: "WULKAN", storm: "CYKLON TROPIKALNY", flood: "POWÓDŹ", fire: "POŻAR" }[x.kind] || x.kind;
-    h = `${chip(kind, "var(--amber)")}<h2 class="glow">${esc(x.name_pl || x.name)}</h2>` + dd([["CO", x.note], ["GDZIE", fmtLL(x.lat, x.lon)], ["SIŁA / KIEDY", `${x.mag} · ${x.when}`], ["ŹRÓDŁO", srcLinks([x.src]), 1]]);
+    const x = A(S.hazards)[+key]; if (!x) return; const kind = { quake: TX("TRZĘSIENIE ZIEMI"), volcano: TX("WULKAN"), storm: TX("CYKLON TROPIKALNY"), flood: TX("POWÓDŹ"), fire: TX("POŻAR") }[x.kind] || x.kind;
+    h = `${chip(kind, "var(--amber)")}<h2 class="glow">${esc((LANG === "en" ? x.name || x.name_pl : x.name_pl || x.name))}</h2>` + dd([[TX("CO"), x.note], [TX("GDZIE"), fmtLL(x.lat, x.lon)], [TX("SIŁA / KIEDY"), `${x.mag} · ${x.when}`], [TX("ŹRÓDŁO"), srcLinks([x.src]), 1]]);
   } else if (t === "s") {
     const s = satrecs[+key]; if (!s) return; const p = s.last || {};
-    h = `${chip("OBIEKT ORBITALNY", "var(--cyan)")}<h2 class="glow">${esc(s.name)}</h2>` + dd([["POZYCJA", p.lat != null ? fmtLL(p.lat, p.lon) : "–"], ["WYSOKOŚĆ", p.alt ? Math.round(p.alt) + " km" : "–"],
-      ["TOR", "Linia przerywana: najbliższe ok. 95 minut lotu."], ["DANE", "TLE (AMSAT, CelesTrak), propagacja SGP4 na żywo."]]);
+    h = `${chip(TX("OBIEKT ORBITALNY"), "var(--cyan)")}<h2 class="glow">${esc(s.name)}</h2>` + dd([[TX("POZYCJA"), p.lat != null ? fmtLL(p.lat, p.lon) : "–"], [TX("WYSOKOŚĆ"), p.alt ? Math.round(p.alt) + " km" : "–"],
+      [TX("TOR"), TX("Linia przerywana: najbliższe ok. 95 minut lotu.")], [TX("DANE"), TX("TLE (AMSAT, CelesTrak), propagacja SGP4 na żywo.")]]);
   } else if (t === "sc") {
     let r = null; Object.values(SATG).some(g => (r = g.recs.find(x => String(x.norad) === key))); if (!r && SATCLICK && String(SATCLICK.norad) === key) r = SATCLICK;
-    if (!r) return; const inf = satInfo(r), grp = Object.entries(SATG).filter(([, g]) => g.recs.some(x => x.norad === r.norad)).map(([id]) => (SATCAT && (SATCAT.groups.find(x => x.id === id) || {}).label || id).split(" (")[0]);
-    h = chip("SATELITA", GCOL[Object.keys(SATG).find(id => SATG[id].recs.includes(r))] || "var(--cyan)") + `<h2 class="glow">${esc(r.name)}</h2>` + dd([
-      ["GRUPA", grp.join(", ")], ["POZYCJA", r.last ? fmtLL(r.last.lat, r.last.lon) : null], ["WYSOKOŚĆ", inf.alt != null ? inf.alt + " km" : null], ["ORBITA", inf.orbit],
-      ["OKRES OBIEGU", inf.per ? Math.round(inf.per) + " min" : null], ["INKLINACJA", inf.inc.toFixed(1) + "°"], ["ROK STARTU", inf.year], ["NORAD", r.norad],
-      ["SZCZEGÓŁY", L("https://www.n2yo.com/satellite/?s=" + r.norad, "n2yo.com"), 1]]) +
-      `<div class="dbtns"><button class="btn" id="pinSc">PRZYPNIJ (TRASA I NAZWA)</button></div>`;
-    setTimeout(() => { const b = $("#pinSc"); if (b) b.addEventListener("click", async () => { if (!SATSEL.pins.includes(r.norad)) { SATSEL.pins.push(r.norad); saveSatSel(); await applySats(); } b.textContent = "PRZYPIĘTY"; }); });
+    if (!r) return; const inf = satInfo(r), grp = Object.entries(SATG).filter(([, g]) => g.recs.some(x => x.norad === r.norad)).map(([id]) => TX(SATCAT && (SATCAT.groups.find(x => x.id === id) || {}).label || id).split(" (")[0]);
+    h = chip(TX("SATELITA"), GCOL[Object.keys(SATG).find(id => SATG[id].recs.includes(r))] || "var(--cyan)") + `<h2 class="glow">${esc(r.name)}</h2>` + dd([
+      [TX("GRUPA"), grp.join(", ")], [TX("POZYCJA"), r.last ? fmtLL(r.last.lat, r.last.lon) : null], [TX("WYSOKOŚĆ"), inf.alt != null ? inf.alt + " km" : null], [TX("ORBITA"), inf.orbit],
+      [TX("OKRES OBIEGU"), inf.per ? Math.round(inf.per) + " min" : null], [TX("INKLINACJA"), inf.inc.toFixed(1) + "°"], [TX("ROK STARTU"), inf.year], [TX("NORAD"), r.norad],
+      [TX("SZCZEGÓŁY"), L("https://www.n2yo.com/satellite/?s=" + r.norad, TX("n2yo.com")), 1]]) +
+      `<div class="dbtns"><button class="btn" id="pinSc">${TX("PRZYPNIJ (TRASA I NAZWA)")}</button></div>`;
+    setTimeout(() => { const b = $("#pinSc"); if (b) b.addEventListener("click", async () => { if (!SATSEL.pins.includes(r.norad)) { SATSEL.pins.push(r.norad); saveSatSel(); await applySats(); } b.textContent = TX("PRZYPIĘTY"); }); });
   } else if (t === "vs") { const r = A(SEA.d && SEA.d.ships).find(x => String(x.mmsi) === key);
-    if (!r) h = chip("AIS", "var(--cyan)") + `<h2 class="glow">MMSI ${esc(key)}</h2><p class="hint">Statek przestał nadawać albo wypłynął poza zasięg odbiorników.</p>`;
-    else { const now = Date.now() + SEA.skew, p = seaPos(r, now), age = Math.round((now - r.ts) / 1000), NAV = ["w drodze (silnik)", "na kotwicy", "bez napędu", "ograniczona manewrowość", "ograniczony zanurzeniem", "zacumowany", "na mieliźnie", "połów", "w drodze (żagle)"];
-      h = chip("NA ŻYWO · " + (SCN[r.cat] || r.cat), SCOL[r.cat]) + `<h2 class="glow">${esc(r.flag_e || "")} ${esc(r.name || "MMSI " + r.mmsi)}</h2>` + dd([
-        ["BANDERA", (r.flag || "nieustalona") + (r.foc ? " (bandera wygody – armator zwykle z innego kraju)" : "")], ["TYP", r.kind],
-        ["CEL PODRÓŻY", r.dest], ["WYMIARY", r.length ? `${r.length} × ${r.width || "?"} m` : null], ["ZANURZENIE", r.draught ? r.draught + " m" : null],
-        ["PRĘDKOŚĆ", r.sog != null ? `${r.sog} w. (${Math.round(r.sog * 1.852)} km/h)` : null], ["KURS", r.cog != null ? Math.round(r.cog) + "°" : null],
-        ["STATUS", r.nav === 14 ? "ALARM AIS-SART" : NAV[r.nav]], ["POZYCJA", fmtLL(p[0], p[1]) + (r.zone ? " · " + r.zone : "")], ["OSTATNI ODCZYT", agoTxt(age)],
-        ["MMSI", r.mmsi], ["IMO", r.imo], ["ZNAK WYWOŁAWCZY", r.cs], ["ŹRÓDŁO", r.src], ["PODGLĄD", L(r.u, "MarineTraffic"), 1]]) +
-        `<p class="hint">Dane AIS nadaje sam statek, więc nazwa, typ i cel podróży mogą być nieaktualne lub fałszywe. Okręty zwykle wyłączają AIS. Linia przerywana to trasa z ostatnich godzin.</p>`; }
+    if (!r) h = chip(TX("AIS"), "var(--cyan)") + `<h2 class="glow">${TX("MMSI")} ${esc(key)}</h2><p class="hint">${TX("Statek przestał nadawać albo wypłynął poza zasięg odbiorników.")}</p>`;
+    else { const now = Date.now() + SEA.skew, p = seaPos(r, now), age = Math.round((now - r.ts) / 1000), NAV = [TX("w drodze (silnik)"), TX("na kotwicy"), TX("bez napędu"), TX("ograniczona manewrowość"), TX("ograniczony zanurzeniem"), "zacumowany", TX("na mieliźnie"), TX("połów"), TX("w drodze (żagle)")];
+      h = chip(TX("NA ŻYWO ·") + " " + (SCN[r.cat] || r.cat), SCOL[r.cat]) + `<h2 class="glow">${esc(r.flag_e || "")} ${esc(r.name || TX("MMSI") + " " + r.mmsi)}</h2>` + dd([
+        [TX("BANDERA"), (r.flag || "nieustalona") + (r.foc ? " " + TX("(bandera wygody – armator zwykle z innego kraju)") : "")], [TX("TYP"), r.kind],
+        [TX("CEL PODRÓŻY"), r.dest], [TX("WYMIARY"), r.length ? `${r.length} × ${r.width || "?"} m` : null], [TX("ZANURZENIE"), r.draught ? r.draught + " m" : null],
+        [TX("PRĘDKOŚĆ"), r.sog != null ? `${r.sog} w. (${Math.round(r.sog * 1.852)} km/h)` : null], [TX("KURS"), r.cog != null ? Math.round(r.cog) + "°" : null],
+        [TX("STATUS"), r.nav === 14 ? TX("ALARM AIS-SART") : NAV[r.nav]], [TX("POZYCJA"), fmtLL(p[0], p[1]) + (r.zone ? " · " + r.zone : "")], [TX("OSTATNI ODCZYT"), agoTxt(age)],
+        [TX("MMSI"), r.mmsi], [TX("IMO"), r.imo], [TX("ZNAK WYWOŁAWCZY"), r.cs], [TX("ŹRÓDŁO"), r.src], [TX("PODGLĄD"), L(r.u, TX("MarineTraffic")), 1]]) +
+        `<p class="hint">${TX("Dane AIS nadaje sam statek, więc nazwa, typ i cel podróży mogą być nieaktualne lub fałszywe. Okręty zwykle wyłączają AIS. Linia przerywana to trasa z ostatnich godzin.")}</p>`; }
   } else if (t === "ah") { const a = A(AIR.d && AIR.d.ac).find(x => x.hex === key);
-    if (!a) h = chip("ADS-B NA ŻYWO", "var(--cyan)") + `<h2 class="glow">${esc(key)}</h2><p class="hint">Samolot przestał nadawać albo zniknął z zasięgu odbiorników.</p>`;
+    if (!a) h = chip(TX("ADS-B NA ŻYWO"), "var(--cyan)") + `<h2 class="glow">${esc(key)}</h2><p class="hint">${TX("Samolot przestał nadawać albo zniknął z zasięgu odbiorników.")}</p>`;
     else { const now = Date.now() + AIR.skew, p = airPos(a, now), age = airAge(a, now);
-      h = chip("NA ŻYWO · " + (ACN[a.cat] || a.cat), ACOL[a.cat] || "var(--cyan)") + `<h2 class="glow">${esc(a.flag || "")} ${esc(a.cs || a.hex)} · ${esc(a.t || "?")}</h2>` + dd([
-        ["KRAJ", a.country ? a.country + (a.country === "NATO" ? " (rejestracja luksemburska)" : "") : "nieustalony"],
-        ["MODEL", [a.desc, a.model && a.model !== a.desc ? a.model : ""].filter(Boolean).join(" — ") || a.t],
-        ["OPERATOR", a.op], ["ROK PRODUKCJI", a.year], ["REJESTRACJA", a.reg], ["ADRES ICAO", a.hex.toUpperCase()], ["POZYCJA", fmtLL(p[0], p[1])], ["WYSOKOŚĆ", a.ground ? "na ziemi" : a.alt != null ? `${a.alt} ft (${Math.round(a.alt * .3048)} m)` : null],
-        ["PRĘDKOŚĆ", a.gs ? `${Math.round(a.gs)} kt (${Math.round(a.gs * 1.852)} km/h)` : null], ["KURS", a.trk != null ? Math.round(a.trk) + "°" : null],
-        ["WZNOSZENIE", a.vr ? (a.vr > 0 ? "+" : "") + a.vr + " ft/min" : null], ["SQUAWK", a.sq], ["OSTATNI ODCZYT", agoTxt(age) + (a.mlat ? " · pozycja z MLAT" : "")],
-        ["ŹRÓDŁO", L(a.u, (AIR.d.status || {}).src || "ADS-B"), 1]]) +
-        `<p class="hint">Pozycja aktualizowana co ${AIR.d.interval || 10} s, między odczytami przewidywana z kursu i prędkości. Linia za samolotem to trasa z ostatnich 30 minut.</p>`; }
+      h = chip(TX("NA ŻYWO ·") + " " + (ACN[a.cat] || a.cat), ACOL[a.cat] || "var(--cyan)") + `<h2 class="glow">${esc(a.flag || "")} ${esc(a.cs || a.hex)} · ${esc(a.t || "?")}</h2>` + dd([
+        [TX("KRAJ"), a.country ? a.country + (a.country === "NATO" ? " " + TX("(rejestracja luksemburska)") : "") : "nieustalony"],
+        [TX("MODEL"), [a.desc, a.model && a.model !== a.desc ? a.model : ""].filter(Boolean).join(" — ") || a.t],
+        [TX("OPERATOR"), a.op], [TX("ROK PRODUKCJI"), a.year], [TX("REJESTRACJA"), a.reg], [TX("ADRES ICAO"), a.hex.toUpperCase()], [TX("POZYCJA"), fmtLL(p[0], p[1])], [TX("WYSOKOŚĆ"), a.ground ? TX("na ziemi") : a.alt != null ? `${a.alt} ${TX("ft (")}${Math.round(a.alt * .3048)} m)` : null],
+        [TX("PRĘDKOŚĆ"), a.gs ? `${Math.round(a.gs)} ${TX("kt (")}${Math.round(a.gs * 1.852)} km/h)` : null], [TX("KURS"), a.trk != null ? Math.round(a.trk) + "°" : null],
+        [TX("WZNOSZENIE"), a.vr ? (a.vr > 0 ? "+" : "") + a.vr + " ft/min" : null], [TX("SQUAWK"), a.sq], [TX("OSTATNI ODCZYT"), agoTxt(age) + (a.mlat ? " " + TX("· pozycja z MLAT") : "")],
+        [TX("ŹRÓDŁO"), L(a.u, (AIR.d.status || {}).src || TX("ADS-B")), 1]]) +
+        `<p class="hint">${TX("Pozycja aktualizowana co")} ${AIR.d.interval || 10} ${TX("s, między odczytami przewidywana z kursu i prędkości. Linia za samolotem to trasa z ostatnich 30 minut.")}</p>`; }
   } else if (t === "ac") { const a = A(f.adsb && f.adsb.ac)[+key]; if (!a) return;
-    h = chip("ADS-B · " + (ACN[a.cat] || a.cat), "var(--cyan)") + `<h2 class="glow">${esc(a.cs || a.hex)} · ${esc(a.t)}</h2>` + dd([["POZYCJA", fmtLL(a.lat, a.lon)], ["WYSOKOŚĆ", a.alt != null ? a.alt + " ft" : null], ["KURS", a.trk + "°"], ["MIGAWKA", f.adsb.t], ["ŚLAD", L(a.u, "globe.adsb.lol"), 1]]) + `<p class="hint">Pozycja z chwili pobrania, nie na żywo. Nad strefami walk samoloty często lecą z wyłączonym transponderem.</p>`;
+    h = chip(TX("ADS-B ·") + " " + (ACN[a.cat] || a.cat), "var(--cyan)") + `<h2 class="glow">${esc(a.cs || a.hex)} · ${esc(a.t)}</h2>` + dd([[TX("POZYCJA"), fmtLL(a.lat, a.lon)], [TX("WYSOKOŚĆ"), a.alt != null ? a.alt + " ft" : null], [TX("KURS"), a.trk + "°"], [TX("MIGAWKA"), f.adsb.t], [TX("ŚLAD"), L(a.u, TX("globe.adsb.lol")), 1]]) + `<p class="hint">${TX("Pozycja z chwili pobrania, nie na żywo. Nad strefami walk samoloty często lecą z wyłączonym transponderem.")}</p>`;
   } else if (t === "gd") { const g = A(f.gdacs)[+key]; if (!g) return;
-    h = chip("GDACS · " + g.alert, g.lvl === "Red" ? "var(--red)" : "var(--amber)") + `<h2 class="glow">${esc(g.kind)}: ${esc(g.name)}</h2>` + dd([["GDZIE", g.country], ["OKRES", fd(g.from) + " – " + fd(g.to)], ["SKALA", g.sev], ["RAPORT", L(g.u, "gdacs.org"), 1]]);
+    h = chip(TX("GDACS ·") + " " + g.alert, g.lvl === "Red" ? "var(--red)" : "var(--amber)") + `<h2 class="glow">${esc(g.kind)}: ${esc(g.name)}</h2>` + dd([[TX("GDZIE"), g.country], [TX("OKRES"), fd(g.from) + " – " + fd(g.to)], [TX("SKALA"), g.sev], [TX("RAPORT"), L(g.u, TX("gdacs.org")), 1]]);
   } else if (t === "nhc") { const n = A(f.nhc)[+key]; if (!n) return;
-    h = chip("NHC · " + n.cls, "var(--red)") + `<h2 class="glow">${esc(n.name)}</h2>` + dd([["WIATR", `${n.kmh} km/h (${n.kt} kt), ${n.hpa} hPa`], ["POZYCJA", fmtLL(n.lat, n.lon)], ["RUCH", `${n.dir}° · ${Math.round((n.spd || 0) * 1.852)} km/h`], ["KOMUNIKAT", L(n.u, "nhc.noaa.gov"), 1]]);
+    h = chip(TX("NHC ·") + " " + n.cls, "var(--red)") + `<h2 class="glow">${esc(n.name)}</h2>` + dd([[TX("WIATR"), `${n.kmh} km/h (${n.kt} ${TX("kt),")} ${n.hpa} hPa`], [TX("POZYCJA"), fmtLL(n.lat, n.lon)], [TX("RUCH"), `${n.dir}° · ${Math.round((n.spd || 0) * 1.852)} km/h`], [TX("KOMUNIKAT"), L(n.u, TX("nhc.noaa.gov")), 1]]);
   } else if (t === "asp") { const a = A(S.airspace).find(x => x.id === key); if (!a) return; const l = ASL[a.level] || ASL.caution;
-    h = chip("PRZESTRZEŃ · " + l[0], l[1]) + `<h2 class="glow">${esc(a.name)}</h2>` + dd([["CO", a.note], ["ŹRÓDŁO", srcLinks([a.src]), 1]]);
+    h = chip(TX("PRZESTRZEŃ ·") + " " + l[0], l[1]) + `<h2 class="glow">${esc(a.name)}</h2>` + dd([[TX("CO"), a.note], [TX("ŹRÓDŁO"), srcLinks([a.src]), 1]]);
   } else if (t === "net") { const n = A(f.ioda)[+key]; if (!n) return;
-    h = chip("IODA · SYGNAŁ ZAKŁÓCENIA", "var(--red)") + `<h2 class="glow">${esc(n.name)}</h2>` + dd([["WSKAŹNIK", n.score + " (log)"], ["ZDARZEŃ", n.events], ["DETEKTORY", A(n.src).join(", ")], ["WYKRES", L(n.u, "ioda"), 1]]) + `<p class="hint">Wskaźnik sumuje spadki widoczności sieci z 48 godzin. W małym kraju może to być awaria jednego operatora; w państwach z wojną lub protestami często celowe wyłączenie.</p>`;
+    h = chip(TX("IODA · SYGNAŁ ZAKŁÓCENIA"), "var(--red)") + `<h2 class="glow">${esc(n.name)}</h2>` + dd([[TX("WSKAŹNIK"), n.score + " " + TX("(log)")], [TX("ZDARZEŃ"), n.events], [TX("DETEKTORY"), A(n.src).join(", ")], [TX("WYKRES"), L(n.u, "ioda"), 1]]) + `<p class="hint">${TX("Wskaźnik sumuje spadki widoczności sieci z 48 godzin. W małym kraju może to być awaria jednego operatora; w państwach z wojną lub protestami często celowe wyłączenie.")}</p>`;
   } else if (t === "hum") { const x = A(S.humanitarian)[+key]; if (!x) return;
-    h = chip("HUMANITARNE · " + x.where, "var(--amber)") + `<h2 class="glow">${esc(x.t)}</h2>` + dd([["CO", x.note], ["KIEDY", fd(x.d)], ["ŹRÓDŁO", srcLinks([x.src]), 1]]);
+    h = chip(TX("HUMANITARNE ·") + " " + x.where, "var(--amber)") + `<h2 class="glow">${esc(x.t)}</h2>` + dd([[TX("CO"), x.note], [TX("KIEDY"), fd(x.d)], [TX("ŹRÓDŁO"), srcLinks([x.src]), 1]]);
   } else if (t === "who") { const w = A(f.who)[+key]; if (!w) return;
-    h = chip("WHO · OGNISKO CHOROBY", "var(--red)") + `<h2 class="glow">${esc(w.dis)}</h2>` + dd([["GDZIE", w.country], ["KOMUNIKAT", fd(w.d)], ["ŹRÓDŁO", L(w.u, "WHO Disease Outbreak News"), 1]]);
+    h = chip(TX("WHO · OGNISKO CHOROBY"), "var(--red)") + `<h2 class="glow">${esc(w.dis)}</h2>` + dd([[TX("GDZIE"), w.country], [TX("KOMUNIKAT"), fd(w.d)], [TX("ŹRÓDŁO"), L(w.u, TX("WHO Disease Outbreak News")), 1]]);
   } else if (t === "rw") { const r = A(f.reliefweb)[+key]; if (!r) return;
-    h = chip("RELIEFWEB · " + r.country, "var(--amber)") + `<h2 class="glow">${esc(r.t)}</h2>` + dd([["DATA", fd(r.d)], ["RAPORT", L(r.u, "reliefweb.int"), 1]]);
+    h = chip(TX("RELIEFWEB ·") + " " + r.country, "var(--amber)") + `<h2 class="glow">${esc(r.t)}</h2>` + dd([[TX("DATA"), fd(r.d)], [TX("RAPORT"), L(r.u, TX("reliefweb.int")), 1]]);
   } else if (t === "nk") { const n = A(S.nuclear)[+key]; if (!n) return; const st = NKS[n.status] || NKS.unknown;
-    h = chip("ATOM · " + st[0], st[1]) + `<h2 class="glow">${esc(n.name)}</h2>` + dd([["STAN", n.note], ["GDZIE", fmtLL(n.lat, n.lon)], ["ŹRÓDŁO", srcLinks([n.src]), 1]]);
+    h = chip(TX("ATOM ·") + " " + st[0], st[1]) + `<h2 class="glow">${esc(n.name)}</h2>` + dd([[TX("STAN"), n.note], [TX("GDZIE"), fmtLL(n.lat, n.lon)], [TX("ŹRÓDŁO"), srcLinks([n.src]), 1]]);
   } else if (t === "ef") { const e = A(S.eastflank)[+key]; if (!e) return;
-    h = chip("FLANKA · " + (KND[e.kind] || e.kind), "var(--violet)") + `<h2 class="glow">${esc(e.t)}</h2>` + dd([["CO", e.note], ["KIEDY", fd(e.d)], ["ŹRÓDŁO", srcLinks([e.src]), 1]]);
+    h = chip(TX("FLANKA ·") + " " + (KND[e.kind] || e.kind), "var(--violet)") + `<h2 class="glow">${esc(e.t)}</h2>` + dd([[TX("CO"), e.note], [TX("KIEDY"), fd(e.d)], [TX("ŹRÓDŁO"), srcLinks([e.src]), 1]]);
   } else if (t === "fire") { const x = A(f.firms)[+key]; if (!x) return;
-    h = chip("NASA FIRMS · OGNISKO", "#ff7a2a") + `<h2 class="glow">${esc(x.reg)}</h2>` + dd([["POZYCJA", fmtLL(x.lat, x.lon) + " (komórka 0,2°)"], ["DETEKCJI", x.n], ["MOC (FRP)", x.frp + " MW"], ["DATA", fd(x.t)]]) + `<p class="hint">Satelita widzi każde gorące źródło: pożary rolnicze, pochodnie gazowe, ale też płonące rafinerie i składy po uderzeniach. Liczy się nagłe pojawienie w rejonie walk.</p>`;
+    h = chip(TX("NASA FIRMS · OGNISKO"), "#ff7a2a") + `<h2 class="glow">${esc(x.reg)}</h2>` + dd([[TX("POZYCJA"), fmtLL(x.lat, x.lon) + " " + TX("(komórka 0,2°)")], [TX("DETEKCJI"), x.n], [TX("MOC (FRP)"), x.frp + " " + TX("MW")], [TX("DATA"), fd(x.t)]]) + `<p class="hint">${TX("Satelita widzi każde gorące źródło: pożary rolnicze, pochodnie gazowe, ale też płonące rafinerie i składy po uderzeniach. Liczy się nagłe pojawienie w rejonie walk.")}</p>`;
   } else if (t === "pm") { const e = A(f.polymarket)[+key]; if (!e) return;
-    h = chip("POLYMARKET · RYNEK PREDYKCYJNY", "var(--cyan)") + `<h2 class="glow">${esc(e.t)}</h2>` + e.m.map(m => `<div class="pbar" style="padding:2px 0"><span>${esc(m.q)}</span><i><b style="width:${pct(m.p)}"></b></i><span>${pct(m.p)}</span></div>`).join("") +
-      dd([["ORYGINAŁ", e.orig], ["OBRÓT 24 H", "$" + (e.vol24 || 0).toLocaleString("pl-PL")], ["RYNEK", L(e.u, "polymarket.com"), 1]]) + `<p class="hint">Cena zakładu pokazuje oczekiwania graczy, a nie fakty. Warunki rozstrzygnięcia mogą różnić się od intuicyjnego znaczenia pytania.</p>`;
+    h = chip(TX("POLYMARKET · RYNEK PREDYKCYJNY"), "var(--cyan)") + `<h2 class="glow">${esc(e.t)}</h2>` + e.m.map(m => `<div class="pbar" style="padding:2px 0"><span>${esc(m.q)}</span><i><b style="width:${pct(m.p)}"></b></i><span>${pct(m.p)}</span></div>`).join("") +
+      dd([[TX("ORYGINAŁ"), e.orig], [TX("OBRÓT 24 H"), "$" + (e.vol24 || 0).toLocaleString(LOC)], [TX("RYNEK"), L(e.u, TX("polymarket.com")), 1]]) + `<p class="hint">${TX("Cena zakładu pokazuje oczekiwania graczy, a nie fakty. Warunki rozstrzygnięcia mogą różnić się od intuicyjnego znaczenia pytania.")}</p>`;
   } else if (t === "kev") { const v = A(f.kev)[+key]; if (!v) return;
-    h = chip("CISA KEV" + (v.ransom ? " · RANSOMWARE" : ""), v.ransom ? "var(--red)" : "var(--amber)") + `<h2 class="glow">${esc(v.vendor)} ${esc(v.product)}</h2>` + dd([["LUKA", v.name], ["CVE", v.cve], ["DODANA", fd(v.added)], ["TERMIN ŁATANIA (US GOV)", fd(v.due)], ["SZCZEGÓŁY", L(v.u, "NVD"), 1]]) + `<p class="hint">Katalog obejmuje tylko luki, o których CISA wie, że są już wykorzystywane w atakach.</p>`;
+    h = chip(TX("CISA KEV") + (v.ransom ? " " + TX("· RANSOMWARE") : ""), v.ransom ? "var(--red)" : "var(--amber)") + `<h2 class="glow">${esc(v.vendor)} ${esc(v.product)}</h2>` + dd([[TX("LUKA"), v.name], [TX("CVE"), v.cve], [TX("DODANA"), fd(v.added)], [TX("TERMIN ŁATANIA (US GOV)"), fd(v.due)], [TX("SZCZEGÓŁY"), L(v.u, TX("NVD")), 1]]) + `<p class="hint">${TX("Katalog obejmuje tylko luki, o których CISA wie, że są już wykorzystywane w atakach.")}</p>`;
   } else if (t === "sanc") { const x = A(S.sanctions)[+key]; if (!x) return;
-    h = chip("SANKCJE · " + x.who, "var(--amber)") + `<h2 class="glow">${esc(x.t)}</h2>` + dd([["CO", x.note], ["KIEDY", fd(x.d)], ["ŹRÓDŁO", srcLinks([x.src]), 1]]);
+    h = chip(TX("SANKCJE ·") + " " + x.who, "var(--amber)") + `<h2 class="glow">${esc(x.t)}</h2>` + dd([[TX("CO"), x.note], [TX("KIEDY"), fd(x.d)], [TX("ŹRÓDŁO"), srcLinks([x.src]), 1]]);
   } else if (t === "ofac") { const x = A(f.ofac)[+key]; if (!x) return;
-    h = chip("OFAC · USA", "var(--amber)") + `<h2 class="glow">${esc(x.t)}</h2>` + dd([["DATA", fd(x.d)], ["KOMUNIKAT", L(x.u, "ofac.treasury.gov"), 1]]) + `<p class="hint">Tytuł oryginalny z listy OFAC.</p>`;
+    h = chip(TX("OFAC · USA"), "var(--amber)") + `<h2 class="glow">${esc(x.t)}</h2>` + dd([[TX("DATA"), fd(x.d)], [TX("KOMUNIKAT"), L(x.u, TX("ofac.treasury.gov")), 1]]) + `<p class="hint">${TX("Tytuł oryginalny z listy OFAC.")}</p>`;
   } else if (t === "trv") { const x = A((f.travel || {}).us)[+key]; if (!x) return;
-    h = chip("USA · POZIOM " + x.lvl, x.lvl >= 4 ? "var(--red)" : "var(--amber)") + `<h2 class="glow">${esc(x.country)}</h2>` + dd([["ZALECENIE", x.lbl], ["ZMIANA", fd(x.d)], ["ŹRÓDŁO", L(x.u, "travel.state.gov"), 1]]);
+    h = chip(TX("USA · POZIOM") + " " + x.lvl, x.lvl >= 4 ? "var(--red)" : "var(--amber)") + `<h2 class="glow">${esc(x.country)}</h2>` + dd([[TX("ZALECENIE"), x.lbl], [TX("ZMIANA"), fd(x.d)], [TX("ŹRÓDŁO"), L(x.u, TX("travel.state.gov")), 1]]);
   } else if (t === "nbp") { const s = A((f.nbp || {})[key]); if (!s.length) return;
-    h = chip("NBP · KURS ŚREDNI", "var(--phos)") + `<h2 class="glow">${esc(key)}/PLN: ${s[s.length - 1][1].toFixed(4).replace(".", ",")}</h2>` + spark(s.map(x => x[1]), 80) + dd([["SESJE", s.map(x => x[0].slice(5) + ": " + x[1]).join(" · ")], ["ŹRÓDŁO", L("https://api.nbp.pl/", "api.nbp.pl"), 1]]);
+    h = chip(TX("NBP · KURS ŚREDNI"), "var(--phos)") + `<h2 class="glow">${esc(key)}${TX("/PLN:")} ${s[s.length - 1][1].toFixed(4).replace(".", ",")}</h2>` + spark(s.map(x => x[1]), 80) + dd([[TX("SESJE"), s.map(x => x[0].slice(5) + ": " + x[1]).join(" · ")], [TX("ŹRÓDŁO"), L("https://api.nbp.pl/", TX("api.nbp.pl")), 1]]);
   } else if (t === "ec") { const e = A(S.econ)[+key]; if (!e) return;
-    h = chip("GOSPODARKA", "var(--phos)") + `<h2 class="glow">${esc(e.k)}: ${esc(e.v)}</h2>` + dd([["CO", e.note], ["ŹRÓDŁO", srcLinks([e.src]), 1]]);
+    h = chip(TX("GOSPODARKA"), "var(--phos)") + `<h2 class="glow">${esc(e.k)}: ${esc(e.v)}</h2>` + dd([[TX("CO"), e.note], [TX("ŹRÓDŁO"), srcLinks([e.src]), 1]]);
   } else if (t === "aw") { const a = S.airwar, dy = a && A(a.days)[+key]; if (!dy) return; const tot = (dy.drones || 0) + (dy.missiles || 0);
-    h = chip("NOCNY ATAK · " + fd(dy.d), "var(--red)") + `<h2 class="glow">${tot} celów, zestrzelono ${dy.downed ?? "?"}</h2>` + dd([["DRONY", dy.drones], ["RAKIETY", dy.missiles == null ? "brak danych" : dy.missiles],
-      ["SKUTECZNOŚĆ OBRONY", dy.downed != null && tot ? Math.round(dy.downed / tot * 100) + "%" : null], ["CO", dy.note], ["TREND", a.note], ["ŹRÓDŁA", srcLinks(a.src), 1]]) + `<p class="hint">Dane Sił Powietrznych Ukrainy, czyli jednej strony konfliktu.</p>`;
+    h = chip(TX("NOCNY ATAK ·") + " " + fd(dy.d), "var(--red)") + `<h2 class="glow">${tot} ${TX("celów, zestrzelono")} ${dy.downed ?? "?"}</h2>` + dd([[TX("DRONY"), dy.drones], [TX("RAKIETY"), dy.missiles == null ? TX("brak danych") : dy.missiles],
+      [TX("SKUTECZNOŚĆ OBRONY"), dy.downed != null && tot ? Math.round(dy.downed / tot * 100) + "%" : null], [TX("CO"), dy.note], [TX("TREND"), a.note], [TX("ŹRÓDŁA"), srcLinks(a.src), 1]]) + `<p class="hint">${TX("Dane Sił Powietrznych Ukrainy, czyli jednej strony konfliktu.")}</p>`;
   } else if (t === "src") { const s = srcList()[+key]; if (!s) return;
-    h = chip("ŹRÓDŁO" + (s.rel ? " · WIARYGODNOŚĆ " + s.rel : ""), "var(--phos)") + `<h2 class="glow">${esc(s.name)}</h2>` + dd([["STAN", s.state], ["UWAGI", s.note], s.url ? ["ADRES", L(s.url, s.url), 1] : null]);
+    h = chip(TX("ŹRÓDŁO") + (s.rel ? " " + TX("· WIARYGODNOŚĆ") + " " + s.rel : ""), "var(--phos)") + `<h2 class="glow">${esc(s.name)}</h2>` + dd([[TX("STAN"), s.state], [TX("UWAGI"), s.note], s.url ? [TX("ADRES"), L(s.url, s.url), 1] : null]);
   } else return;
   $("#detail").innerHTML = h; bindDetail();
 }
 function idleDetail() {
   const hot = A(S.conflicts).filter(c => c.trend === "esc" || c.trend === "new");
-  $("#detail").innerHTML = `${chip("GOTOWY", "var(--phos)")}<h2 class="glow">Wybierz cel</h2>
-  <p class="hint">Kliknij obiekt na mapie albo pozycję w panelach. Teatr działań przybliża region; kółko myszy powiększa, ◎ wraca do świata. Na globusie przeciągnij, aby obrócić.</p>` +
-  dd([["NAJWYŻSZY PRIORYTET", `<ul class="mini">${hot.map(c => `<li><button data-go="c:${c.id}">▸ ${esc(c.name)}</button></li>`).join("") || "—"}</ul>`, 1],
-    A(S.fronts).length ? ["FRONTY", `<ul class="mini">${A(S.fronts).map(x => `<li><button data-go="f:${x.id}">▸ ${esc(x.name)}</button></li>`).join("")}</ul>`, 1] : null,
-    ["SKALA WIARYGODNOŚCI", "Litera: ocena źródła (A najlepsze, F nieznane). Cyfra: ocena informacji (1 potwierdzona przez inne źródła, 6 nie da się ocenić). Na przykład B2 to zwykle wiarygodne źródło i prawdopodobnie prawdziwa informacja."]]);
+  $("#detail").innerHTML = `${chip(TX("GOTOWY"), "var(--phos)")}<h2 class="glow">${TX("Wybierz cel")}</h2>
+  <p class="hint">${TX("Kliknij obiekt na mapie albo pozycję w panelach. Teatr działań przybliża region; kółko myszy powiększa, ◎ wraca do świata. Na globusie przeciągnij, aby obrócić.")}</p>` +
+  dd([[TX("NAJWYŻSZY PRIORYTET"), `<ul class="mini">${hot.map(c => `<li><button data-go="c:${c.id}">▸ ${esc(c.name)}</button></li>`).join("") || "—"}</ul>`, 1],
+    A(S.fronts).length ? [TX("FRONTY"), `<ul class="mini">${A(S.fronts).map(x => `<li><button data-go="f:${x.id}">▸ ${esc(x.name)}</button></li>`).join("")}</ul>`, 1] : null,
+    [TX("SKALA WIARYGODNOŚCI"), TX("Litera: ocena źródła (A najlepsze, F nieznane). Cyfra: ocena informacji (1 potwierdzona przez inne źródła, 6 nie da się ocenić). Na przykład B2 to zwykle wiarygodne źródło i prawdopodobnie prawdziwa informacja.")]]);
   bindDetail();
 }
 
@@ -921,13 +941,13 @@ function renderFeed() {
   const rows = items.filter(d => (filter === "all" || (filter === "watch" ? watchSet.has(d.key) : d.s === filter)) && (!unreadOnly || !readSet.has(d.key))
     && (!credOnly || ((d.rel || "F") <= "B" && (d.info || 6) <= 3)) && (!q || [d.h, d.b, d.why, d.src, d.place].join(" ").toLowerCase().includes(q)));
   $("#feed").innerHTML = rows.map(d => `<li class="msg${readSet.has(d.key) ? " read" : ""}${watchSet.has(d.key) ? " watch" : ""}${newSet.has(d.id) ? " new" : ""}" data-p="${d.p}"><i class="pri"></i>
-    <div class="meta"><span class="sec">${SEC[d.s] || d.s}</span><span>${esc(d.t)}</span><span class="lvl">${LVL[d.p]}</span><span class="credm" title="${esc((REL[d.rel] || "") + "; " + (INFO[d.info] || ""))}">${esc(d.rel || "F")}${esc(d.info || 6)}${d.claim ? " · DEKLARACJA" : ""}</span>${A(d.sources).length > 1 ? `<span>${d.sources.length} ŹRÓDŁA</span>` : ""}</div>
-    <h3 class="glow">${esc(d.h)}</h3><p>${esc(d.b)}</p>${d.why ? `<p class="why"><b>DLACZEGO ·</b> ${esc(d.why)}</p>` : ""}
-    <div class="acts"><span>ŹRÓDŁO: <a href="${esc(d.u)}" target="_blank" rel="noopener">${esc(d.src)}</a></span>
-      ${itemLL(d) ? `<button data-a="map" data-id="${d.id}">◎ NA MAPIE</button>` : ""}
-      <button data-a="read" data-k="${esc(d.key)}" aria-pressed="${readSet.has(d.key)}">✓ PRZECZYTANE</button>
-      <button data-a="watch" data-k="${esc(d.key)}" aria-pressed="${watchSet.has(d.key)}">◆ OBSERWUJ</button></div></li>`).join("") || '<li class="empty">BRAK REKORDÓW DLA TEGO FILTRA</li>';
-  $("#count").textContent = `${rows.length} / ${items.length} · NIEPRZECZYTANE ${items.filter(i => !readSet.has(i.key)).length}`;
+    <div class="meta"><span class="sec">${SEC[d.s] || d.s}</span><span>${esc(d.t)}</span><span class="lvl">${LVL[d.p]}</span><span class="credm" title="${esc((REL[d.rel] || "") + "; " + (INFO[d.info] || ""))}">${esc(d.rel || "F")}${esc(d.info || 6)}${d.claim ? " " + TX("· DEKLARACJA") : ""}</span>${A(d.sources).length > 1 ? `<span>${d.sources.length} ${TX("ŹRÓDŁA")}</span>` : ""}</div>
+    <h3 class="glow">${esc(d.h)}</h3><p>${esc(d.b)}</p>${d.why ? `<p class="why"><b>${TX("DLACZEGO ·")}</b> ${esc(d.why)}</p>` : ""}
+    <div class="acts"><span>${TX("ŹRÓDŁO:")} <a href="${esc(d.u)}" target="_blank" rel="noopener">${esc(d.src)}</a></span>
+      ${itemLL(d) ? `<button data-a="map" data-id="${d.id}">${TX("◎ NA MAPIE")}</button>` : ""}
+      <button data-a="read" data-k="${esc(d.key)}" aria-pressed="${readSet.has(d.key)}">${TX("✓ PRZECZYTANE")}</button>
+      <button data-a="watch" data-k="${esc(d.key)}" aria-pressed="${watchSet.has(d.key)}">${TX("◆ OBSERWUJ")}</button></div></li>`).join("") || ("<li class=\"empty\">" + TX("BRAK REKORDÓW DLA TEGO FILTRA") + "</li>");
+  $("#count").textContent = `${rows.length} / ${items.length} ${TX("· NIEPRZECZYTANE")} ${items.filter(i => !readSet.has(i.key)).length}`;
   $("#feed").querySelectorAll("button[data-a]").forEach(b => b.addEventListener("click", () => act(b.dataset.a, b.dataset.id, b.dataset.k)));
 }
 function act(a, id, key) {
@@ -944,7 +964,7 @@ function scrollMap() { if (document.body.classList.contains("compact")) return; 
 
 /* ------------------------------------------------------------ PANELE */
 function rowsInto(sel, html) {
-  const el = $(sel); el.innerHTML = html || '<li class="empty">BRAK DANYCH W TYM ODCZYCIE</li>';
+  const el = $(sel); el.innerHTML = html || ("<li class=\"empty\">" + TX("BRAK DANYCH W TYM ODCZYCIE") + "</li>");
   el.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => { go(b.dataset.go); const t = b.dataset.go.split(":")[0]; if (!["mk", "cal", "nbp", "ec", "pm", "kev", "sanc", "ofac", "aw", "src", "rw"].includes(t)) scrollMap(); else if (innerWidth < 1060) $("#detail").scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "nearest" }); }));
 }
 const isNewMod = (k, id) => A(((S.changes || {}).new_mods || {})[k]).includes(id);
@@ -953,30 +973,30 @@ function renderRail() {
   const b = A(MK && MK.items).find(m => m.id === "brent"), hz = A(S.shipping).find(s => s.id === "hormuz"), aw = S.airwar && A(S.airwar.days), last = aw && aw[aw.length - 1];
   const d = new Date(S.stamp);
   const cells = [
-    ["Poziom napięcia", `${t.level} · ${t.label}`, t.note, "red", null],
-    ["Konflikty", C.length, hot + " nowe lub eskalujące", "", null],
-    ["Fronty", A(S.fronts).length || "–", A(S.fronts).reduce((s, f) => s + A(f.moves).length, 0) + " ruchów w 30 dni", "amber", A(S.fronts).length ? "f:" + S.fronts[0].id : null],
-    ["Ropa Brent", b && !b.error ? "$" + b.price.toFixed(2) : "–", b && !b.error ? `${b.change_pct >= 0 ? "▲" : "▼"} ${Math.abs(b.change_pct).toFixed(2)}% · 5 dni · na żywo` : "łączenie…", b && b.change_pct >= 0 ? "red" : "", b ? "mk:brent" : null],
-    ["Ormuz", hz ? (SHIP[hz.status] || SHIP.open)[0] : "–", hz ? String(hz.metric || "").split(";")[0] : "", hz && hz.status !== "open" ? "amber" : "", hz ? "sh:hormuz" : null],
-    ["USA – Iran", S.iranStatus ? (S.iranStatus.ceasefire === "in_force" ? "ROZEJM" : "BEZ ROZEJMU") : "–", S.iranStatus ? "pauza do " + String(S.iranStatus.expires || "?").split(" (")[0] : "", S.iranStatus && S.iranStatus.ceasefire !== "in_force" ? "red" : "", S.iranStatus ? "c:iran" : null],
-    ["Noc nad Ukrainą", last ? ((last.drones || 0) + (last.missiles || 0)) + " celów" : "–", last ? "drony i rakiety · " + fd(last.d) : "", "amber", last ? "aw:" + (aw.length - 1) : null],
-    ["Natura", A(S.hazards).length + A(F().gdacs).length, `${A(S.hazards).filter(h => h.kind === "quake").length} wstrząsów ≥M5.5 · ${A(F().gdacs).length} alertów GDACS`, "amber", null],
-    ["Odczyt · AI", isNaN(d) ? "--" : d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" }) + " " + d.toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" }), (ARCH ? "archiwum · " : "") + (S.model ? "AI: " + S.model : S.seed ? "dane startowe" : "bez analizy AI"), "", null]];
+    [TX("Poziom napięcia"), `${t.level} · ${TX(t.label)}`, t.note, "red", null],
+    [TX("Konflikty"), C.length, hot + " " + TX("nowe lub eskalujące"), "", null],
+    [TX("Fronty"), A(S.fronts).length || "–", A(S.fronts).reduce((s, f) => s + A(f.moves).length, 0) + " " + TX("ruchów w 30 dni"), "amber", A(S.fronts).length ? "f:" + S.fronts[0].id : null],
+    [TX("Ropa Brent"), b && !b.error ? "$" + b.price.toFixed(2) : "–", b && !b.error ? `${b.change_pct >= 0 ? "▲" : "▼"} ${Math.abs(b.change_pct).toFixed(2)}${TX("% · 5 dni · na żywo")}` : TX("łączenie…"), b && b.change_pct >= 0 ? "red" : "", b ? "mk:brent" : null],
+    [TX("Ormuz"), hz ? (SHIP[hz.status] || SHIP.open)[0] : "–", hz ? String(hz.metric || "").split(";")[0] : "", hz && hz.status !== "open" ? "amber" : "", hz ? "sh:hormuz" : null],
+    [TX("USA – Iran"), S.iranStatus ? (S.iranStatus.ceasefire === "in_force" ? TX("ROZEJM") : TX("BEZ ROZEJMU")) : "–", S.iranStatus ? TX("pauza do") + " " + String(S.iranStatus.expires || "?").split(" (")[0] : "", S.iranStatus && S.iranStatus.ceasefire !== "in_force" ? "red" : "", S.iranStatus ? "c:iran" : null],
+    [TX("Noc nad Ukrainą"), last ? ((last.drones || 0) + (last.missiles || 0)) + " " + TX("celów") : "–", last ? TX("drony i rakiety ·") + " " + fd(last.d) : "", "amber", last ? "aw:" + (aw.length - 1) : null],
+    [TX("Natura"), A(S.hazards).length + A(F().gdacs).length, `${A(S.hazards).filter(h => h.kind === "quake").length} ${TX("wstrząsów ≥M5.5 ·")} ${A(F().gdacs).length} ${TX("alertów GDACS")}`, "amber", null],
+    [TX("Odczyt · AI"), isNaN(d) ? "--" : d.toLocaleDateString(LOC, { day: "2-digit", month: "2-digit" }) + " " + d.toLocaleTimeString(LOC, { hour: "2-digit", minute: "2-digit" }), (ARCH ? TX("archiwum ·") + " " : "") + (S.model ? TX("AI:") + " " + S.model : S.seed ? TX("dane startowe") : TX("bez analizy AI")), "", null]];
   $("#rail").innerHTML = cells.map(c => `<${c[4] ? `button class="stat" data-go="${c[4]}"` : 'div class="stat"'}><span class="k">${esc(c[0])}</span><span class="v ${c[3]}">${esc(c[1])}</span><span class="n" title="${esc(c[2])}">${esc(c[2])}</span></${c[4] ? "button" : "div"}>`).join("") + (SOLO ? "" : '<button class="btn detach" data-detach="status" title="Odepnij do osobnego okna (np. na drugi monitor)">⧉</button>');
   $("#rail").querySelectorAll("[data-go]").forEach(x => x.addEventListener("click", () => { go(x.dataset.go); if (!/^(mk|aw)/.test(x.dataset.go)) scrollMap(); }));
-  $("#banner").textContent = `PRIORYTET JEDEN · ${A(S.items).filter(i => i.p === "crit").length} ZDARZENIA KRYTYCZNE · ` + C.filter(c => c.trend === "esc").map(c => c.name.toUpperCase()).join(" / ");
-  $("#ticker").textContent = A(S.items).map(x => "■ " + (SEC[x.s] || "") + " // " + x.h.toUpperCase()).join("   ") + "   ■ KONIEC TRANSMISJI";
+  $("#banner").textContent = `${TX("PRIORYTET JEDEN ·")} ${A(S.items).filter(i => i.p === "crit").length} ${TX("ZDARZENIA KRYTYCZNE ·")} ` + C.filter(c => c.trend === "esc").map(c => c.name.toUpperCase()).join(" / ");
+  $("#ticker").textContent = A(S.items).map(x => "■ " + (SEC[x.s] || "") + " // " + x.h.toUpperCase()).join("   ") + "   " + TX("■ KONIEC TRANSMISJI");
 }
-const MODNAME = { strikes: ["uderzenia", "#strikes"], eastflank: ["flanka NATO", "#ef"], forces: ["ruchy sił", "#forces"], airspace: ["przestrzeń", "#sky"], nuclear: ["atom", "#nuke"], sanctions: ["sankcje", "#sanc"], humanitarian: ["humanitarne", "#hum"], econ: ["gospodarka", "#mktNote"] };
+const MODNAME = { strikes: [TX("uderzenia"), "#strikes"], eastflank: [TX("flanka NATO"), "#ef"], forces: [TX("ruchy sił"), "#forces"], airspace: [TX("przestrzeń"), "#sky"], nuclear: [TX("atom"), "#nuke"], sanctions: [TX("sankcje"), "#sanc"], humanitarian: [TX("humanitarne"), "#hum"], econ: [TX("gospodarka"), "#mktNote"] };
 function renderChanges() {
   const ch = S.changes || {}, el = $("#changes");
   const items = A(S.items).filter(i => A(ch.new_items).includes(i.id)).slice(0, 8);
   const trends = A(ch.trend_changes).map(t => { const c = A(S.conflicts).find(x => x.id === t.id); return c ? `<button class="pill" data-go="c:${c.id}">${esc(c.name)}: ${(TREND[t.from] || ["?"])[0]} → <b>${(TREND[t.to] || ["?"])[0]}</b></button>` : ""; }).join("");
-  const nc = A(ch.new_conflicts).map(id => { const c = A(S.conflicts).find(x => x.id === id); return c ? `<button class="pill" data-go="c:${c.id}"><b>NOWY</b> ${esc(c.name)}</button>` : ""; }).join("");
+  const nc = A(ch.new_conflicts).map(id => { const c = A(S.conflicts).find(x => x.id === id); return c ? `<button class="pill" data-go="c:${c.id}"><b>${TX("NOWY")}</b> ${esc(c.name)}</button>` : ""; }).join("");
   const mods = Object.entries(ch.new_mods || {}).filter(([k, v]) => A(v).length && MODNAME[k]).map(([k, v]) => `<button class="pill" data-scroll="${MODNAME[k][1]}"><b>+${v.length}</b> ${MODNAME[k][0]}</button>`).join("")
-    + (ch.new_moves ? `<button class="pill" data-scroll="#fronts"><b>+${ch.new_moves}</b> ruchy na frontach</button>` : "");
-  el.innerHTML = `<div class="row"><h2>&gt; CO NOWEGO${ch.since ? ` OD ${esc(new Date(ch.since).toLocaleString("pl-PL", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }))}` : ""}</h2>
-    <span class="n">${A(ch.new_items).length} nowych depesz · ${A(ch.trend_changes).length} zmian statusu · ${A(ch.new_hazards).length} nowych zagrożeń</span></div>
+    + (ch.new_moves ? `<button class="pill" data-scroll="#fronts"><b>+${ch.new_moves}</b> ${TX("ruchy na frontach")}</button>` : "");
+  el.innerHTML = `<div class="row"><h2>&gt; ${TX("CO NOWEGO")}${ch.since ? ` ${TX("OD")} ${esc(new Date(ch.since).toLocaleString(LOC, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }))}` : ""}</h2>
+    <span class="n">${A(ch.new_items).length} ${TX("nowych depesz ·")} ${A(ch.trend_changes).length} ${TX("zmian statusu ·")} ${A(ch.new_hazards).length} ${TX("nowych zagrożeń")}</span></div>
     ${ch.summary ? `<p>${esc(ch.summary)}</p>` : ""}${nc || trends || mods ? `<div class="row">${nc}${trends}${mods}</div>` : ""}
     ${items.length ? `<div class="row">${items.map(i => `<button class="pill" data-go="n:${i.id}">${esc(i.h)}</button>`).join("")}</div>` : ""}`;
   el.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => { go(b.dataset.go); scrollMap(); }));
@@ -985,22 +1005,22 @@ function renderChanges() {
 function renderReg() {
   const list = [...A(S.conflicts)].sort((a, b) => TORDER[a.trend] - TORDER[b.trend]);
   rowsInto("#reg", list.map(c => { const t = TREND[c.trend] || TREND.ongoing; return `<li${A((S.changes || {}).new_conflicts).includes(c.id) ? ' class="newrow"' : ""}><button data-go="c:${c.id}"><span>${esc(c.name)}</span>${chip(t[0], t[1])}</button></li>`; }).join(""));
-  $("#regCount").textContent = list.length + " WĘZŁÓW";
-  $("#sitList").innerHTML = ["Świat", "Bliski Wschód", "Europa Wschodnia", "Flanka NATO", "Afryka", "Azja i Pacyfik", "Ameryki", "Szlaki morskie", "Cyberprzestrzeń"].concat(list.map(c => c.name)).map(x => `<option value="${esc(x)}">`).join("");
+  $("#regCount").textContent = list.length + " " + TX("WĘZŁÓW");
+  $("#sitList").innerHTML = [TX("Świat"), TX("Bliski Wschód"), TX("Europa Wschodnia"), TX("Flanka NATO"), TX("Afryka"), TX("Azja i Pacyfik"), TX("Ameryki"), TX("Szlaki morskie"), TX("Cyberprzestrzeń")].concat(list.map(c => c.name)).map(x => `<option value="${esc(x)}">`).join("");
 }
 function renderShip() {
   const s = A(S.shipping), ord = { closed: 0, restricted: 1, disrupted: 2, open: 3 }, pwAll = F().portwatch || {};
-  $("#shipCount").textContent = s.length ? s.filter(x => x.status !== "open").length + " Z " + s.length + " ZAKŁÓCONYCH" : "";
+  $("#shipCount").textContent = s.length ? s.filter(x => x.status !== "open").length + " Z " + s.length + " " + TX("ZAKŁÓCONYCH") : "";
   rowsInto("#ship", [...s].sort((a, b) => ord[a.status] - ord[b.status]).map(x => { const st = SHIP[x.status] || SHIP.open, pw = pwAll[x.id];
-    return `<li><button data-go="sh:${x.id}"><span class="t">${esc(x.name)}</span>${chip(st[0], st[1])}<span class="sub">${esc(x.metric)}</span>${pw ? `<span class="sub">AIS (PortWatch): śr. ${pw.avg7}/dobę${pw.base ? ` · rok temu ${pw.base}/dobę (${Math.round((pw.avg7 / pw.base - 1) * 100)}%)` : ""} · do ${esc(pw.last)}</span><span class="sub">${spark(pw.series.map(r => r[1]), 18)}</span>` : ""}</button></li>`; }).join(""));
+    return `<li><button data-go="sh:${x.id}"><span class="t">${esc(x.name)}</span>${chip(st[0], st[1])}<span class="sub">${esc(x.metric)}</span>${pw ? `<span class="sub">${TX("AIS (PortWatch): śr.")} ${pw.avg7}${TX("/dobę")}${pw.base ? ` ${TX("· rok temu")} ${pw.base}${TX("/dobę (")}${Math.round((pw.avg7 / pw.base - 1) * 100)}%)` : ""} ${TX("· do")} ${esc(pw.last)}</span><span class="sub">${spark(pw.series.map(r => r[1]), 18)}</span>` : ""}</button></li>`; }).join(""));
 }
 let calCat = store.get("calCat", "all");
 function renderCal() {
   const all = A(S.calendar).map((e, i) => Object.assign({ i }, e)), cats = ["all", ...new Set(all.map(e => e.cat).filter(Boolean))];
-  $("#calTabs").innerHTML = cats.map(c => `<button class="btn" data-c="${c}" aria-pressed="${c === calCat}">${c === "all" ? "WSZYSTKO" : CAT[c] || c}</button>`).join("");
+  $("#calTabs").innerHTML = cats.map(c => `<button class="btn" data-c="${c}" aria-pressed="${c === calCat}">${c === "all" ? TX("WSZYSTKO") : CAT[c] || c}</button>`).join("");
   $("#calTabs").querySelectorAll("button").forEach(b => b.addEventListener("click", () => { calCat = b.dataset.c; store.set("calCat", calCat); renderCal(); }));
   const list = all.filter(e => (calCat === "all" || e.cat === calCat) && (dayDiff(e.d) == null || dayDiff(e.d) >= -1)).sort((a, b) => { const ka = String(a.d).length === 7 ? a.d + "-32" : String(a.d), kb = String(b.d).length === 7 ? b.d + "-32" : String(b.d); return ka.localeCompare(kb); });
-  $("#calCount").textContent = list.length + " POZYCJI";
+  $("#calCount").textContent = list.length + " " + TX("POZYCJI");
   rowsInto("#cal", list.map(e => { const n = dayDiff(e.d); return `<li><button data-go="cal:${e.i}"><span><span class="cal-d">${esc(fmtDate(e.d))}</span> &nbsp;<span class="t">${esc(e.t)}</span></span><span class="${n != null && n <= 7 ? "amber" : "dim"}">${esc(countdown(e.d))}</span><span class="sub">${esc(CAT[e.cat] || e.cat || "")} · ${esc(e.note || "")}</span></button></li>`; }).join(""));
 }
 function renderTrend() {
@@ -1015,45 +1035,45 @@ function renderTrend() {
     el.append("path").attr("d", d3.area().x(d => x(d.t)).y0(y(1)).y1(d => y(d.v)).curve(d3.curveStepAfter)(h)).style("fill", "color-mix(in srgb,var(--red) 14%,transparent)");
     el.append("path").attr("d", d3.line().x(d => x(d.t)).y(d => y(d.v)).curve(d3.curveStepAfter)(h)).style("fill", "none").style("stroke", "var(--red)").attr("stroke-width", 1.6);
     const l = h[h.length - 1]; el.append("circle").attr("cx", x(l.t)).attr("cy", y(l.v)).attr("r", 3.5).style("fill", "var(--amber)");
-    const f = d => d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" });
+    const f = d => d.toLocaleDateString(LOC, { day: "2-digit", month: "2-digit" });
     el.append("text").attr("x", m.l).attr("y", hh - 4).style("fill", "var(--phos-dim)").style("font-size", "9px").text(f(h[0].t));
     el.append("text").attr("x", w - m.r).attr("y", hh - 4).attr("text-anchor", "end").style("fill", "var(--phos-dim)").style("font-size", "9px").text(f(l.t));
   }
-  $("#trendNote").textContent = h.length > 1 ? `${h.length} odczytów` : "historia rośnie z każdym odczytem";
+  $("#trendNote").textContent = h.length > 1 ? `${h.length} ${TX("odczytów")}` : TX("historia rośnie z każdym odczytem");
 }
 function renderMarkets() {
   const items = A(MK && MK.items);
   $("#markets").innerHTML = items.map(m => {
-    if (m.error) return `<div class="mkt"><span class="k">${esc(m.label)}</span><span class="v dim">—</span><span class="n">brak danych</span></div>`;
+    if (m.error) return `<div class="mkt"><span class="k">${esc(m.label)}</span><span class="v dim">—</span><span class="n">${TX("brak danych")}</span></div>`;
     const s = A(m.spark), mn = Math.min(...s), mx = Math.max(...s), up = m.change_pct >= 0;
     const pts = s.map((v, i) => `${(i / Math.max(1, s.length - 1)) * 100},${24 - ((v - mn) / ((mx - mn) || 1)) * 20}`).join(" ");
-    return `<button class="mkt" data-go="mk:${m.id}"><span class="k">${esc(m.label)}</span><span class="v">${m.price.toLocaleString("pl-PL", { maximumFractionDigits: m.price < 20 ? 4 : 2 })}</span>
+    return `<button class="mkt" data-go="mk:${m.id}"><span class="k">${esc(m.label)}</span><span class="v">${m.price.toLocaleString(LOC, { maximumFractionDigits: m.price < 20 ? 4 : 2 })}</span>
       <svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts}" style="fill:none;stroke:${up ? "var(--red)" : "var(--phos)"}" stroke-width="1.4" vector-effect="non-scaling-stroke"></polyline></svg>
       <span class="n"><span>${esc(m.unit)}</span><span class="${up ? "up" : "down"}">${up ? "▲" : "▼"} ${Math.abs(m.change_pct).toFixed(2)}%</span></span></button>`;
-  }).join("") || '<div class="mkt"><span class="n">Łączenie z danymi rynkowymi…</span></div>';
+  }).join("") || ("<div class=\"mkt\">" + "<span class=\"n\">" + TX("Łączenie z danymi rynkowymi…") + "</span>" + "</div>");
   const nb = F().nbp || {}, NBPL = { EUR: "EUR/PLN", GBP: "GBP/PLN", CHF: "CHF/PLN", UAH: "UAH/PLN" };
   $("#markets").insertAdjacentHTML("beforeend", Object.keys(NBPL).filter(c => A(nb[c]).length).map(c => { const s = nb[c], h = s.map(x => x[1]), ch = (h[h.length - 1] / h[0] - 1) * 100;
-    return `<button class="mkt" data-go="nbp:${c}"><span class="k">${NBPL[c]} · NBP</span><span class="v">${h[h.length - 1].toFixed(4).replace(".", ",")}</span>${spark(h, 26)}<span class="n"><span>${s.length} sesji</span><span class="${ch < 0 ? "down" : "up"}">${ch >= 0 ? "▲" : "▼"} ${Math.abs(ch).toFixed(1).replace(".", ",")}%</span></span></button>`; }).join(""));
+    return `<button class="mkt" data-go="nbp:${c}"><span class="k">${NBPL[c]} ${TX("· NBP")}</span><span class="v">${h[h.length - 1].toFixed(4).replace(".", ",")}</span>${spark(h, 26)}<span class="n"><span>${s.length} sesji</span><span class="${ch < 0 ? "down" : "up"}">${ch >= 0 ? "▲" : "▼"} ${Math.abs(ch).toFixed(1).replace(".", ",")}%</span></span></button>`; }).join(""));
   $("#markets").querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => { pick(b.dataset.go); if (innerWidth < 1060) $("#detail").scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "nearest" }); }));
-  $("#mktNote").innerHTML = (S.marketsNote ? `<b class="amber">DLACZEGO ·</b> ${esc(S.marketsNote)}` : "") + (A(S.econ).length ? `<ul class="mini" style="margin-top:6px">${A(S.econ).map((e, i) => `<li><button data-go="ec:${i}">▸ ${esc(e.k)}: <b>${esc(e.v)}</b></button></li>`).join("")}</ul>` : "");
+  $("#mktNote").innerHTML = (S.marketsNote ? `<b class="amber">${TX("DLACZEGO ·")}</b> ${esc(S.marketsNote)}` : "") + (A(S.econ).length ? `<ul class="mini" style="margin-top:6px">${A(S.econ).map((e, i) => `<li><button data-go="ec:${i}">▸ ${esc(e.k)}: <b>${esc(e.v)}</b></button></li>`).join("")}</ul>` : "");
   $("#mktNote").hidden = !(S.marketsNote || A(S.econ).length);
   $("#mktNote").querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => pick(b.dataset.go)));
-  $("#mkTime").textContent = MK && MK.fetched ? `${(items.find(m => m.source) || {}).source || ""} · ${new Date(MK.fetched).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" })}` : "na żywo";
+  $("#mkTime").textContent = MK && MK.fetched ? `${(items.find(m => m.source) || {}).source || ""} · ${new Date(MK.fetched).toLocaleTimeString(LOC, { hour: "2-digit", minute: "2-digit" })}` : TX("na żywo");
   renderRail();
 }
 async function loadMarkets() { try { MK = await api("/api/markets"); renderMarkets(); } catch (e) {} }
 
 function renderFronts() {
-  const fr = A(S.fronts); $("#frCount").textContent = fr.length ? fr.length + " TEATRÓW" : "";
-  $("#fronts").innerHTML = fr.length ? fr.map(f => `<ul class="rows"><li><button data-go="f:${f.id}"><span class="t">▸ ${esc(f.name)}</span>${chip("STAN " + f.asOf, "var(--amber)")}
+  const fr = A(S.fronts); $("#frCount").textContent = fr.length ? fr.length + " " + TX("TEATRÓW") : "";
+  $("#fronts").innerHTML = fr.length ? fr.map(f => `<ul class="rows"><li><button data-go="f:${f.id}"><span class="t">▸ ${esc(f.name)}</span>${chip(TX("STAN") + " " + f.asOf, "var(--amber)")}
       <span class="sub">${Object.entries(f.sides || {}).map(([k, v]) => `<span class="sw" style="background:${COL(v[1])}"></span>${esc(v[0].split(/[(,]/)[0])}`).join(" &nbsp;")}</span></button></li>
       ${A(f.moves).map((m, i) => `<li${m.ai ? ' class="newrow"' : ""}><button data-go="m:${f.id}:${i}"><span><span class="sw" style="background:${COL((f.sides[m.side] || [])[1])}"></span>${esc(m.label)}</span><span class="dim">${esc(m.when)}</span></button></li>`).join("")}</ul>`).join("")
-    : '<p class="empty">BRAK DANYCH O FRONTACH W TYM ODCZYCIE</p>';
+    : ("<p class=\"empty\">" + TX("BRAK DANYCH O FRONTACH W TYM ODCZYCIE") + "</p>");
   $("#fronts").querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => { go(b.dataset.go); scrollMap(); }));
 }
 function renderAirwar() {
   const a = S.airwar, el = $("#airwar");
-  if (!a || !A(a.days).length) { el.innerHTML = '<p class="empty">BRAK DANYCH W TYM ODCZYCIE</p>'; $("#awCount").textContent = ""; return; }
+  if (!a || !A(a.days).length) { el.innerHTML = ("<p class=\"empty\">" + TX("BRAK DANYCH W TYM ODCZYCIE") + "</p>"); $("#awCount").textContent = ""; return; }
   const ds = A(a.days), mx = Math.max(...ds.map(d => (d.drones || 0) + (d.missiles || 0)), 1), w = 300 / ds.length;
   const bars = ds.map((d, i) => { const tot = (d.drones || 0) + (d.missiles || 0), dn = Math.min(tot, d.downed || 0), hT = tot / mx * 118, hD = dn / mx * 118, x = i * w + w * .15, bw = w * .7;
     return `<g data-go="aw:${i}" style="cursor:pointer"><rect x="${x}" y="${128 - hT}" width="${bw}" height="${hT}" style="fill:var(--red)"/><rect x="${x}" y="${128 - hD}" width="${bw}" height="${hD}" style="fill:var(--phos-dim)"/>
@@ -1061,78 +1081,78 @@ function renderAirwar() {
       <text x="${x + bw / 2}" y="140" text-anchor="middle" style="fill:var(--phos-dim);font-family:var(--f-display);font-size:12px">${+d.d.slice(8)} ${MON[+d.d.slice(5, 7) - 1]}</text></g>`; }).join("");
   const last = ds[ds.length - 1], lt = (last.drones || 0) + (last.missiles || 0);
   el.innerHTML = `<svg viewBox="0 0 300 144" role="img" aria-label="Liczba dronów i rakiet na noc">${bars}</svg>
-    <div class="legend" style="border:0;padding:2px 0"><span><i style="background:var(--phos-dim)"></i>zestrzelone lub zneutralizowane</span><span><i style="background:var(--red)"></i>nieprzechwycone</span></div>
-    <div class="kpi"><div><span class="k">Ostatnia noc</span><div class="v">${lt}</div></div><div><span class="k">Rakiety</span><div class="v">${last.missiles ?? "–"}</div></div><div><span class="k">Obrona</span><div class="v">${lt ? Math.round((last.downed || 0) / lt * 100) + "%" : "–"}</div></div></div>
+    <div class="legend" style="border:0;padding:2px 0"><span><i style="background:var(--phos-dim)"></i>${TX("zestrzelone lub zneutralizowane")}</span><span><i style="background:var(--red)"></i>nieprzechwycone</span></div>
+    <div class="kpi"><div><span class="k">${TX("Ostatnia noc")}</span><div class="v">${lt}</div></div><div><span class="k">${TX("Rakiety")}</span><div class="v">${last.missiles ?? "–"}</div></div><div><span class="k">${TX("Obrona")}</span><div class="v">${lt ? Math.round((last.downed || 0) / lt * 100) + "%" : "–"}</div></div></div>
     <p class="note">${esc(a.note)}</p>`;
-  $("#awCount").textContent = ds.length + " NOCY";
+  $("#awCount").textContent = ds.length + " " + TX("NOCY");
   el.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => pick(b.dataset.go)));
 }
-function renderStrikes() { rowsInto("#strikes", A(S.strikes).map((s, i) => `<li${isNewMod("strikes", s.id) ? ' class="newrow"' : ""}><button data-go="st:${i}"><span class="t"><span class="sw" style="background:${s.side === "ru" ? "var(--red)" : "var(--cyan)"}"></span>${esc(s.target)}</span><span class="dim">${esc(s.when || fd(s.d))}</span><span class="sub">${s.side === "ru" ? "ROSJA → UKRAINA" : "UKRAINA → ROSJA"} · ${esc(s.note)}</span></button></li>`).join("")); }
-function renderForces() { const f = A(S.forces); $("#forceCount").textContent = f.length ? f.length + " POZYCJI" : "";
+function renderStrikes() { rowsInto("#strikes", A(S.strikes).map((s, i) => `<li${isNewMod("strikes", s.id) ? ' class="newrow"' : ""}><button data-go="st:${i}"><span class="t"><span class="sw" style="background:${s.side === "ru" ? "var(--red)" : "var(--cyan)"}"></span>${esc(s.target)}</span><span class="dim">${esc(s.when || fd(s.d))}</span><span class="sub">${s.side === "ru" ? TX("ROSJA → UKRAINA") : TX("UKRAINA → ROSJA")} · ${esc(s.note)}</span></button></li>`).join("")); }
+function renderForces() { const f = A(S.forces); $("#forceCount").textContent = f.length ? f.length + " " + TX("POZYCJI") : "";
   rowsInto("#forces", f.map((x, i) => { const kd = FKIND[x.kind] || ["", ""]; return `<li${isNewMod("forces", x.id) ? ' class="newrow"' : ""}><button data-go="fo:${i}"><span class="t">${esc(x.name)}</span><span class="chip violet">${esc(kd[1])}</span><span class="sub">${esc(x.where)} · ${esc(x.when)} · ${esc(x.note)}</span></button></li>`; }).join("")); }
-function renderEF() { const e = A(S.eastflank); $("#efCount").textContent = e.length ? e.length + " ZDARZEŃ" : "";
+function renderEF() { const e = A(S.eastflank); $("#efCount").textContent = e.length ? e.length + " " + TX("ZDARZEŃ") : "";
   rowsInto("#ef", e.map((x, i) => `<li${isNewMod("eastflank", x.id) ? ' class="newrow"' : ""}><button data-go="ef:${i}"><span class="t">${esc(x.t)}</span><span class="dim">${esc(fd(x.d))}</span><span class="sub">${esc(KND[x.kind] || x.kind)} · ${esc(x.note)}</span></button></li>`).join("")); }
 function renderSky() {
   const f = F(), gj = f.gpsjam || {}; let h = "";
   if (AIR.ok) {
     const d = AIR.d, ac = A(d.ac), st = d.status || {}, now = Date.now() + AIR.skew, cnt = {}; ac.forEach(a => cnt[a.cat] = (cnt[a.cat] || 0) + 1);
-    $("#airT").innerHTML = `<span class="livedot"></span>NA ŻYWO · ${esc(st.src || "")} · co ${d.interval} s`;
-    h += `<li class="hd">Samoloty wojskowe na żywo · ${ac.length} z ${st.total || "?"} nadających</li><li><button tabindex="-1" style="cursor:default"><span class="sub">${Object.entries(cnt).map(([k, v]) => `${ACN[k] || k}: ${v}`).join(" · ") || "brak"}</span></button></li>`;
+    $("#airT").innerHTML = `<span class="livedot"></span>${TX("NA ŻYWO ·")} ${esc(st.src || "")} ${TX("· co")} ${d.interval} s`;
+    h += `<li class="hd">${TX("Samoloty wojskowe na żywo ·")} ${ac.length} ${LANG === "en" ? "of" : "z"} ${st.total || "?"} ${TX("nadających")}</li><li><button tabindex="-1" style="cursor:default"><span class="sub">${Object.entries(cnt).map(([k, v]) => `${ACN[k] || k}: ${v}`).join(" · ") || TX("brak danych")}</span></button></li>`;
     const ev = A(d.events).slice(-8).reverse();
-    if (ev.length) h += `<li class="hd">Kontakty w obserwowanych rejonach</li>` + ev.map(e => `<li><button data-go="ah:${esc(e.hex)}"><span class="t">${esc(e.msg)}</span><span class="dim">${new Date(e.at).toISOString().slice(11, 16)}</span></button></li>`).join("");
+    if (ev.length) h += `<li class="hd">${TX("Kontakty w obserwowanych rejonach")}</li>` + ev.map(e => `<li><button data-go="ah:${esc(e.hex)}"><span class="t">${esc(e.msg)}</span><span class="dim">${new Date(e.at).toISOString().slice(11, 16)}</span></button></li>`).join("");
     const hot = ac.filter(a => NOTABLE.has(a.cat) && !a.ground).slice(0, 16);
-    h += `<li class="hd">Rozpoznanie, tankowce, bombowce · ${hot.length}</li>` + hot.map(a => { const p = airPos(a, now);
+    h += `<li class="hd">${TX("Rozpoznanie, tankowce, bombowce ·")} ${hot.length}</li>` + hot.map(a => { const p = airPos(a, now);
       return `<li><button data-go="ah:${esc(a.hex)}"><span class="t">${esc(a.flag || "")} ${esc(a.cs || a.hex)} · ${esc(a.desc || (a.model || "").split(" (")[0] || a.t)}</span><span class="chip" style="color:${ACOL[a.cat]};border-color:${ACOL[a.cat]}">${ACN[a.cat]}</span><span class="sub">${esc(a.country || "")}${a.op ? " · " + esc(a.op) : ""} · ${fmtLL(p[0], p[1])} · ${a.alt != null ? a.alt + " ft" : ""} · ${agoTxt(airAge(a, now))}</span></button></li>`; }).join("");
   } else {
-    const ad = f.adsb || {}, ac = A(ad.ac); $("#airT").textContent = ad.t ? "MIGAWKA " + ad.t + (AIR.err ? " · brak łącza na żywo" : "") : "";
+    const ad = f.adsb || {}, ac = A(ad.ac); $("#airT").textContent = ad.t ? TX("MIGAWKA") + " " + ad.t + (AIR.err ? " " + TX("· brak łącza na żywo") : "") : "";
     const cnt = {}; ac.forEach(a => cnt[a.cat] = (cnt[a.cat] || 0) + 1);
     const far = ac.map((a, i) => Object.assign({ i }, a)).filter(a => !(a.lat > 15 && a.lat < 72 && a.lon > -170 && a.lon < -50)).slice(0, 14);
-    h += `<li class="hd">Samoloty wojskowe (ADS-B, migawka) · ${ac.length} z ${ad.total || "?"}</li><li><button tabindex="-1" style="cursor:default"><span class="sub">${Object.entries(cnt).map(([k, v]) => `${ACN[k] || k}: ${v}`).join(" · ") || "brak"}</span></button></li>`;
+    h += `<li class="hd">${TX("Samoloty wojskowe (ADS-B, migawka) ·")} ${ac.length} ${LANG === "en" ? "of" : "z"} ${ad.total || "?"}</li><li><button tabindex="-1" style="cursor:default"><span class="sub">${Object.entries(cnt).map(([k, v]) => `${ACN[k] || k}: ${v}`).join(" · ") || TX("brak danych")}</span></button></li>`;
     h += far.map(a => `<li><button data-go="ac:${a.i}"><span class="t">${esc(a.cs || a.hex)} · ${esc(a.t)}</span><span class="chip cyan">${ACN[a.cat] || a.cat}</span><span class="sub">${fmtLL(a.lat, a.lon)} · ${a.alt != null ? a.alt + " ft" : ""}</span></button></li>`).join("");
   }
-  if (gj.regions) h += `<li class="hd">Zakłócenia GNSS · ${esc(gj.day || "")} · ${gj.n || 0} heksów</li>` + Object.entries(gj.regions).map(([k, v]) => `<li><button tabindex="-1" style="cursor:default"><span>${esc(k)}</span><span class="${v > 50 ? "red" : "amber"}">${v}</span></button></li>`).join("");
-  h += `<li class="hd">Przestrzeń powietrzna (EASA / FAA)</li>` + A(S.airspace).map(a => { const l = ASL[a.level] || ASL.caution; return `<li${isNewMod("airspace", a.id) ? ' class="newrow"' : ""}><button data-go="asp:${a.id}"><span class="t">${esc(a.name)}</span>${chip(l[0], l[1])}</button></li>`; }).join("");
+  if (gj.regions) h += `<li class="hd">${TX("Zakłócenia GNSS ·")} ${esc(gj.day || "")} · ${gj.n || 0} ${TX("heksów")}</li>` + Object.entries(gj.regions).map(([k, v]) => `<li><button tabindex="-1" style="cursor:default"><span>${esc(k)}</span><span class="${v > 50 ? "red" : "amber"}">${v}</span></button></li>`).join("");
+  h += `<li class="hd">${TX("Przestrzeń powietrzna (EASA / FAA)")}</li>` + A(S.airspace).map(a => { const l = ASL[a.level] || ASL.caution; return `<li${isNewMod("airspace", a.id) ? ' class="newrow"' : ""}><button data-go="asp:${a.id}"><span class="t">${esc(a.name)}</span>${chip(l[0], l[1])}</button></li>`; }).join("");
   rowsInto("#sky", h);
 }
 function renderPM() { const e = A(F().polymarket);
-  $("#pm").innerHTML = e.length ? e.map((x, i) => `<div class="pm-ev"><button data-pm="${i}">▸ ${esc(x.t)}</button>${x.m.slice(0, 4).map(m => `<div class="pbar"><span>${esc(m.q)}</span><i><b style="width:${pct(m.p)};background:${m.p >= .5 ? "var(--phos)" : m.p >= .2 ? "var(--amber)" : "var(--phos-dim)"}"></b></i><span>${pct(m.p)}</span></div>`).join("")}</div>`).join("") : '<p class="empty">BRAK DANYCH W TYM ODCZYCIE</p>';
+  $("#pm").innerHTML = e.length ? e.map((x, i) => `<div class="pm-ev"><button data-pm="${i}">▸ ${esc(x.t)}</button>${x.m.slice(0, 4).map(m => `<div class="pbar"><span>${esc(m.q)}</span><i><b style="width:${pct(m.p)};background:${m.p >= .5 ? "var(--phos)" : m.p >= .2 ? "var(--amber)" : "var(--phos-dim)"}"></b></i><span>${pct(m.p)}</span></div>`).join("")}</div>`).join("") : ("<p class=\"empty\">" + TX("BRAK DANYCH W TYM ODCZYCIE") + "</p>");
   $("#pm").querySelectorAll("[data-pm]").forEach(b => b.addEventListener("click", () => pick("pm:" + b.dataset.pm))); }
-function renderNet() { rowsInto("#net", A(F().ioda).slice(0, 15).map((x, i) => `<li><button data-go="net:${i}"><span class="t">${esc(x.name)}</span><span class="${x.score >= 8 ? "red" : x.score >= 6 ? "amber" : "dim"}">${x.score}</span><span class="sub">${x.events} zdarzeń · ${esc(A(x.src).join(", "))}</span></button></li>`).join("")); }
-function renderNuke() { const n = A(S.nuclear); $("#nkCount").textContent = n.length ? n.filter(x => x.status === "crit").length + " KRYTYCZNE" : "";
+function renderNet() { rowsInto("#net", A(F().ioda).slice(0, 15).map((x, i) => `<li><button data-go="net:${i}"><span class="t">${esc(x.name)}</span><span class="${x.score >= 8 ? "red" : x.score >= 6 ? "amber" : "dim"}">${x.score}</span><span class="sub">${x.events} ${TX("zdarzeń ·")} ${esc(A(x.src).join(", "))}</span></button></li>`).join("")); }
+function renderNuke() { const n = A(S.nuclear); $("#nkCount").textContent = n.length ? n.filter(x => x.status === "crit").length + " " + TX("KRYTYCZNE") : "";
   rowsInto("#nuke", n.map((x, i) => { const st = NKS[x.status] || NKS.unknown; return `<li${isNewMod("nuclear", x.id) ? ' class="newrow"' : ""}><button data-go="nk:${i}"><span class="t">${esc(x.name)}</span>${chip(st[0], st[1])}<span class="sub">${esc(x.note)}</span></button></li>`; }).join("")); }
-function renderSanc() { const s = A(S.sanctions), o = A(F().ofac); $("#sancCount").textContent = (s.length + o.length) + " POZYCJI";
-  rowsInto("#sanc", (s.length ? `<li class="hd">Najważniejsze (analiza)</li>` + s.map((x, i) => `<li${isNewMod("sanctions", x.id) ? ' class="newrow"' : ""}><button data-go="sanc:${i}"><span class="t">${esc(x.t)}</span><span class="chip amber">${esc(x.who)}</span><span class="sub">${esc(fd(x.d))} · ${esc(x.note)}</span></button></li>`).join("") : "")
-    + (o.length ? `<li class="hd">OFAC – lista działań (automat, po angielsku)</li>` + o.map((x, i) => `<li><button data-go="ofac:${i}"><span>${esc(x.t)}</span><span class="dim">${esc(fd(x.d))}</span></button></li>`).join("") : "")); }
-function renderKev() { rowsInto("#kev", A(F().kev).map((v, i) => `<li><button data-go="kev:${i}"><span class="t">${esc(v.vendor)} · ${esc(v.product)}</span><span class="${v.ransom ? "red" : "dim"}">${v.ransom ? "RANSOMWARE" : esc(fd(v.added))}</span><span class="sub">${esc(v.cve)} · ${esc(v.name)}</span></button></li>`).join("")); }
-function renderHum() { const h = A(S.humanitarian), f = F(), w = A(f.who), r = A(f.reliefweb); $("#humCount").textContent = (h.length + w.length) + " ALERTÓW";
-  rowsInto("#hum", (h.length ? `<li class="hd">Kryzysy humanitarne</li>` + h.map((x, i) => `<li${isNewMod("humanitarian", x.id) ? ' class="newrow"' : ""}><button data-go="hum:${i}"><span class="t">${esc(x.t)}</span><span class="dim">${esc(fd(x.d))}</span><span class="sub">${esc(x.where)} · ${esc(x.note)}</span></button></li>`).join("") : "")
-    + (w.length ? `<li class="hd">WHO – ogniska chorób</li>` + w.map((x, i) => `<li><button data-go="who:${i}"><span class="t">${esc(x.dis)}</span><span class="dim">${esc(fd(x.d))}</span><span class="sub">${esc(x.country)}</span></button></li>`).join("") : "")
-    + (r.length ? `<li class="hd">ReliefWeb – najnowsze raporty (po angielsku)</li>` + r.slice(0, 10).map((x, i) => `<li><button data-go="rw:${i}"><span>${esc(x.t)}</span><span class="dim">${esc(x.country)}</span></button></li>`).join("") : "")); }
+function renderSanc() { const s = A(S.sanctions), o = A(F().ofac); $("#sancCount").textContent = (s.length + o.length) + " " + TX("POZYCJI");
+  rowsInto("#sanc", (s.length ? `<li class="hd">${TX("Najważniejsze (analiza)")}</li>` + s.map((x, i) => `<li${isNewMod("sanctions", x.id) ? ' class="newrow"' : ""}><button data-go="sanc:${i}"><span class="t">${esc(x.t)}</span><span class="chip amber">${esc(x.who)}</span><span class="sub">${esc(fd(x.d))} · ${esc(x.note)}</span></button></li>`).join("") : "")
+    + (o.length ? `<li class="hd">${TX("OFAC – lista działań (automat, po angielsku)")}</li>` + o.map((x, i) => `<li><button data-go="ofac:${i}"><span>${esc(x.t)}</span><span class="dim">${esc(fd(x.d))}</span></button></li>`).join("") : "")); }
+function renderKev() { rowsInto("#kev", A(F().kev).map((v, i) => `<li><button data-go="kev:${i}"><span class="t">${esc(v.vendor)} · ${esc(v.product)}</span><span class="${v.ransom ? "red" : "dim"}">${v.ransom ? TX("RANSOMWARE") : esc(fd(v.added))}</span><span class="sub">${esc(v.cve)} · ${esc(v.name)}</span></button></li>`).join("")); }
+function renderHum() { const h = A(S.humanitarian), f = F(), w = A(f.who), r = A(f.reliefweb); $("#humCount").textContent = (h.length + w.length) + " " + TX("ALERTÓW");
+  rowsInto("#hum", (h.length ? `<li class="hd">${TX("Kryzysy humanitarne")}</li>` + h.map((x, i) => `<li${isNewMod("humanitarian", x.id) ? ' class="newrow"' : ""}><button data-go="hum:${i}"><span class="t">${esc(x.t)}</span><span class="dim">${esc(fd(x.d))}</span><span class="sub">${esc(x.where)} · ${esc(x.note)}</span></button></li>`).join("") : "")
+    + (w.length ? `<li class="hd">${TX("WHO – ogniska chorób")}</li>` + w.map((x, i) => `<li><button data-go="who:${i}"><span class="t">${esc(x.dis)}</span><span class="dim">${esc(fd(x.d))}</span><span class="sub">${esc(x.country)}</span></button></li>`).join("") : "")
+    + (r.length ? `<li class="hd">${TX("ReliefWeb – najnowsze raporty (po angielsku)")}</li>` + r.slice(0, 10).map((x, i) => `<li><button data-go="rw:${i}"><span>${esc(x.t)}</span><span class="dim">${esc(x.country)}</span></button></li>`).join("") : "")); }
 function renderTrv() { const T2 = F().travel || {};
-  rowsInto("#trv", (A(T2.us).length ? `<li class="hd">USA – podniesione do poziomu 3–4 (21 dni)</li>` + A(T2.us).map((x, i) => `<li><button data-go="trv:${i}"><span class="t">${esc(x.country)}</span><span class="${x.lvl >= 4 ? "red" : "amber"}">POZIOM ${x.lvl}</span><span class="sub">${esc(fd(x.d))} · ${esc(x.lbl)}</span></button></li>`).join("") : "")
-    + (A(T2.lvl4).length ? `<li class="hd">USA – „nie podróżuj” (${T2.lvl4.length})</li><li><button tabindex="-1" style="cursor:default"><span class="sub">${esc(T2.lvl4.join(", "))}</span></button></li>` : "")
-    + (A(T2.uk).length ? `<li class="hd">UK FCDO – ostatnio zaktualizowane</li>` + A(T2.uk).map(x => `<li><a class="rowlink" href="${esc(x.u)}" target="_blank" rel="noopener"><span>${esc(x.country)}</span><span class="dim">${esc(fd(x.d))}</span></a></li>`).join("") : "")); }
-function renderHaz() { const h = A(S.hazards), f = F(); $("#hazCount").textContent = (h.length + A(f.gdacs).length) + " ZDARZEŃ";
+  rowsInto("#trv", (A(T2.us).length ? `<li class="hd">${TX("USA – podniesione do poziomu 3–4 (21 dni)")}</li>` + A(T2.us).map((x, i) => `<li><button data-go="trv:${i}"><span class="t">${esc(x.country)}</span><span class="${x.lvl >= 4 ? "red" : "amber"}">${TX("POZIOM")} ${x.lvl}</span><span class="sub">${esc(fd(x.d))} · ${esc(x.lbl)}</span></button></li>`).join("") : "")
+    + (A(T2.lvl4).length ? `<li class="hd">${TX("USA – „nie podróżuj” (")}${T2.lvl4.length})</li><li><button tabindex="-1" style="cursor:default"><span class="sub">${esc(T2.lvl4.join(", "))}</span></button></li>` : "")
+    + (A(T2.uk).length ? `<li class="hd">${TX("UK FCDO – ostatnio zaktualizowane")}</li>` + A(T2.uk).map(x => `<li><a class="rowlink" href="${esc(x.u)}" target="_blank" rel="noopener"><span>${esc(x.country)}</span><span class="dim">${esc(fd(x.d))}</span></a></li>`).join("") : "")); }
+function renderHaz() { const h = A(S.hazards), f = F(); $("#hazCount").textContent = (h.length + A(f.gdacs).length) + " " + TX("ZDARZEŃ");
   const ic = { quake: "▲", volcano: "◆", storm: "●" };
-  rowsInto("#haz", h.map((x, i) => `<li><button data-go="h:${i}"><span><span class="amber">${ic[x.kind] || "•"}</span> ${esc(x.name_pl || x.name)}</span><span class="dim">${esc(x.mag)} · ${esc(x.when)}</span></button></li>`).join("")
-    + (A(f.gdacs).length ? `<li class="hd">Alerty GDACS (10 dni)</li>` + A(f.gdacs).map((g, i) => `<li><button data-go="gd:${i}"><span class="t">${esc(g.kind)}: ${esc(g.name)}</span><span class="${g.lvl === "Red" ? "red" : "amber"}">${esc(g.alert)}</span><span class="sub">${esc(String(g.country || "").slice(0, 90))}</span></button></li>`).join("") : "")
-    + (A(f.nhc).length ? `<li class="hd">NOAA NHC – aktywne cyklony</li>` + A(f.nhc).map((n, i) => `<li><button data-go="nhc:${i}"><span class="t">${esc(n.cls)} ${esc(n.name)}</span><span class="red">${n.kmh} km/h</span></button></li>`).join("") : "")); }
+  rowsInto("#haz", h.map((x, i) => `<li><button data-go="h:${i}"><span><span class="amber">${ic[x.kind] || "•"}</span> ${esc((LANG === "en" ? x.name || x.name_pl : x.name_pl || x.name))}</span><span class="dim">${esc(x.mag)} · ${esc(x.when)}</span></button></li>`).join("")
+    + (A(f.gdacs).length ? `<li class="hd">${TX("Alerty GDACS (10 dni)")}</li>` + A(f.gdacs).map((g, i) => `<li><button data-go="gd:${i}"><span class="t">${esc(g.kind)}: ${esc(g.name)}</span><span class="${g.lvl === "Red" ? "red" : "amber"}">${esc(g.alert)}</span><span class="sub">${esc(String(g.country || "").slice(0, 90))}</span></button></li>`).join("") : "")
+    + (A(f.nhc).length ? `<li class="hd">${TX("NOAA NHC – aktywne cyklony")}</li>` + A(f.nhc).map((n, i) => `<li><button data-go="nhc:${i}"><span class="t">${esc(n.cls)} ${esc(n.name)}</span><span class="red">${n.kmh} km/h</span></button></li>`).join("") : "")); }
 function renderLaunch() { const ll = A(F().ll2);
   rowsInto("#launch", ll.map(l => { const d = new Date(l.net), ok = l.past && /succ/i.test(l.st || ""), fail = l.past && /fail/i.test(l.st || "");
-    return `<li><button tabindex="-1" style="cursor:default"><span><b class="cal-d ${l.past ? "" : "amber"}">${d.getUTCDate()} ${MON[d.getUTCMonth()]}</b> &nbsp;${esc(l.name)}</span><span class="${fail ? "red" : ok ? "ok" : "dim"}">${l.past ? (ok ? "✓" : fail ? "✕" : esc(l.st)) : esc(l.st || "")}</span><span class="sub">${esc(l.prov || "")} · ${esc(l.pad || "")}${l.past ? "" : " · " + d.toISOString().slice(11, 16) + " UTC"}</span></button></li>`; }).join("")); }
+    return `<li><button tabindex="-1" style="cursor:default"><span><b class="cal-d ${l.past ? "" : "amber"}">${d.getUTCDate()} ${MON[d.getUTCMonth()]}</b> &nbsp;${esc(l.name)}</span><span class="${fail ? "red" : ok ? "ok" : "dim"}">${l.past ? (ok ? "✓" : fail ? "✕" : esc(l.st)) : esc(l.st || "")}</span><span class="sub">${esc(l.prov || "")} · ${esc(l.pad || "")}${l.past ? "" : " · " + d.toISOString().slice(11, 16) + " " + TX("UTC")}</span></button></li>`; }).join("")); }
 function srcList() {
   const st = A(F().status).map(s => ({ name: s.name, url: s.url, rel: s.rel, note: s.note, auto: "feed",
-    state: s.ok ? (s.stale ? "STARE (z " + s.stale + ")" : "OK · " + (s.n != null ? s.n + " rekordów · " : "") + s.t) : (s.stale ? "BŁĄD, pokazuję dane z " + s.stale : "BŁĄD: " + (s.err || "")), cls: s.ok && !s.stale ? "ok" : s.stale ? "stale" : "err" }));
-  const rss = A((STATUS && A(STATUS.sources).length ? STATUS.sources : S.sources_report)).map(s => ({ name: s.source, url: "", rel: "", note: "wiadomości analizowane przez lokalne AI", auto: "rss",
-    state: s.error ? "BŁĄD: " + s.error : "OK · " + s.count + " wiadomości", cls: s.error ? "err" : "ok" }));
+    state: s.ok ? (s.stale ? TX("STARE (z") + " " + s.stale + ")" : TX("OK ·") + " " + (s.n != null ? s.n + " " + TX("rekordów ·") + " " : "") + s.t) : (s.stale ? TX("BŁĄD, pokazuję dane z") + " " + s.stale : TX("BŁĄD:") + " " + (s.err || "")), cls: s.ok && !s.stale ? "ok" : s.stale ? "stale" : "err" }));
+  const rss = A((STATUS && A(STATUS.sources).length ? STATUS.sources : S.sources_report)).map(s => ({ name: s.source, url: "", rel: "", note: TX("wiadomości analizowane przez lokalne AI"), auto: "rss",
+    state: s.error ? TX("BŁĄD:") + " " + s.error : TX("OK ·") + " " + s.count + " " + TX("wiadomości"), cls: s.error ? "err" : "ok" }));
   return st.concat(rss);
 }
 function renderSrc() {
   const Ls = srcList(), f = F();
-  $("#srcCount").textContent = A(f.status).filter(s => s.ok).length + "/" + A(f.status).length + " FEEDÓW OK" + (f.t ? " · " + f.t.replace("T", " ") : "");
+  $("#srcCount").textContent = A(f.status).filter(s => s.ok).length + "/" + A(f.status).length + " " + TX("FEEDÓW OK") + (f.t ? " · " + f.t.replace("T", " ") : "");
   let h = "", last = "";
-  Ls.forEach((s, i) => { if (s.auto !== last) { h += s.auto === "feed" ? `<li class="hd">Feedy automatyczne · A = oficjalne lub naukowe, B = dobre z zastrzeżeniami, C = sygnał pomocniczy</li>` : `<li class="hd">Źródła wiadomości dla AI (ostatnia analiza)</li>`; last = s.auto; }
-    h += `<li><button data-go="src:${i}"><span class="t">${esc(s.name)}</span><span class="${s.cls}">● ${s.cls === "ok" ? "OK" : s.cls === "stale" ? "STARE" : "BŁĄD"}${s.rel ? " · " + esc(s.rel) : ""}</span><span class="sub">${esc(s.state)}</span></button></li>`; });
+  Ls.forEach((s, i) => { if (s.auto !== last) { h += s.auto === "feed" ? `<li class="hd">${TX("Feedy automatyczne · A = oficjalne lub naukowe, B = dobre z zastrzeżeniami, C = sygnał pomocniczy")}</li>` : `<li class="hd">${TX("Źródła wiadomości dla AI (ostatnia analiza)")}</li>`; last = s.auto; }
+    h += `<li><button data-go="src:${i}"><span class="t">${esc(s.name)}</span><span class="${s.cls}">● ${s.cls === "ok" ? TX("OK") : s.cls === "stale" ? TX("STARE") : TX("BŁĄD")}${s.rel ? " · " + esc(s.rel) : ""}</span><span class="sub">${esc(s.state)}</span></button></li>`; });
   rowsInto("#srcs", h);
 }
 
@@ -1141,42 +1161,42 @@ let seenFinished;
 function renderSys() {
   if (!STATUS) return;
   const e = STATUS.engine, hw = e.hardware, j = STATUS.job, pull = e.pull || {};
-  $("#sysState").textContent = e.ready ? "AI GOTOWE" : e.backend ? "BRAK MODELU" : "BRAK AI";
+  $("#sysState").textContent = e.ready ? TX("AI GOTOWE") : e.backend ? TX("BRAK MODELU") : TX("BRAK AI");
   $("#sys").innerHTML = `<dl>
-    <dt>GPU</dt><dd>${esc(hw.gpu_name)}${hw.vram_gb ? ` · ${hw.vram_gb} GB VRAM` : ""}</dd>
-    <dt>RAM</dt><dd>${hw.ram_gb} GB · ${hw.cores} wątków</dd>
-    <dt>SILNIK</dt><dd>${e.backend ? esc(e.backend === "ollama" ? "Ollama" : e.backend === "lmstudio" ? "LM Studio" : e.backend) : '<span class="red">nie wykryto: zainstaluj Ollamę (ollama.com) i uruchom ponownie</span>'}</dd>
-    <dt>MODEL</dt><dd>${e.model ? esc(e.model) : '<span class="red">brak</span>'}</dd>
-    <dt>ZALECANY</dt><dd>${esc(e.recommended)}${e.recommended_size_gb ? ` (${e.recommended_size_gb} GB)` : ""}<br><span class="dim">${esc(e.reason)}</span></dd>
-    <dt>NASTĘPNY</dt><dd>${STATUS.next ? new Date(STATUS.next).toLocaleString("pl-PL", { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "—"}</dd></dl>
-    ${e.suggest_pull ? `<div class="dbtns"><button class="btn" id="pullBtn" ${pull.active ? "disabled" : ""}>${pull.active ? `POBIERANIE ${pull.pct}%` : `POBIERZ ${esc(e.recommended)}`}</button></div>` : ""}
+    <dt>${TX("GPU")}</dt><dd>${esc(hw.gpu_name)}${hw.vram_gb ? ` · ${hw.vram_gb} ${TX("GB VRAM")}` : ""}</dd>
+    <dt>${TX("RAM")}</dt><dd>${hw.ram_gb} ${TX("GB ·")} ${hw.cores} ${TX("wątków")}</dd>
+    <dt>${TX("SILNIK")}</dt><dd>${e.backend ? esc(e.backend === "ollama" ? TX("Ollama") : e.backend === "lmstudio" ? TX("LM Studio") : e.backend) : ("<span class=\"red\">" + TX("nie wykryto: zainstaluj Ollamę (ollama.com) i uruchom ponownie") + "</span>")}</dd>
+    <dt>${TX("MODEL")}</dt><dd>${e.model ? esc(e.model) : '<span class="red">brak</span>'}</dd>
+    <dt>${TX("ZALECANY")}</dt><dd>${esc(e.recommended)}${e.recommended_size_gb ? ` (${e.recommended_size_gb} ${TX("GB)")}` : ""}<br><span class="dim">${esc(e.reason)}</span></dd>
+    <dt>${TX("NASTĘPNY")}</dt><dd>${STATUS.next ? new Date(STATUS.next).toLocaleString(LOC, { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "—"}</dd></dl>
+    ${e.suggest_pull ? `<div class="dbtns"><button class="btn" id="pullBtn" ${pull.active ? "disabled" : ""}>${pull.active ? `${TX("POBIERANIE")} ${pull.pct}%` : `${TX("POBIERZ")} ${esc(e.recommended)}`}</button></div>` : ""}
     ${pull.status && pull.status !== "gotowe" ? `<span class="dim">${esc(pull.status)}</span>` : ""}
-    <details><summary>DZIENNIK</summary><pre>${esc(A(STATUS.log).slice(-50).join("\n"))}</pre></details>`;
+    <details><summary>${TX("DZIENNIK")}</summary><pre>${esc(A(STATUS.log).slice(-50).join("\n"))}</pre></details>`;
   const pb = $("#pullBtn"); if (pb) pb.addEventListener("click", async () => { beep(1000); await api("/api/model/pull", {}); pollStatus(); });
-  $("#jobbar").hidden = !j.running; $("#jobfill").style.width = j.pct + "%"; $("#jobtext").textContent = `ANALIZA: ${j.step} · ${j.pct}%`;
-  $("#refreshBtn").disabled = j.running; $("#refreshBtn").textContent = j.running ? "ANALIZA TRWA…" : "ODŚWIEŻ ANALIZĘ";
+  $("#jobbar").hidden = !j.running; $("#jobfill").style.width = j.pct + "%"; $("#jobtext").textContent = `${TX("ANALIZA:")} ${j.step} · ${j.pct}%`;
+  $("#refreshBtn").disabled = j.running; $("#refreshBtn").textContent = j.running ? TX("ANALIZA TRWA…") : TX("ODŚWIEŻ ANALIZĘ");
   if (seenFinished === undefined) seenFinished = j.finished;
   else if (j.finished !== seenFinished) { seenFinished = j.finished; doneChime(); if (!ARCH) loadState(true); }
 }
 let pollT = null;
 async function pollStatus() {
   clearTimeout(pollT);
-  try { STATUS = await api("/api/status"); renderSys(); } catch (e) { $("#sysState").textContent = "SERWER NIEDOSTĘPNY"; }
+  try { STATUS = await api("/api/status"); renderSys(); } catch (e) { $("#sysState").textContent = TX("SERWER NIEDOSTĘPNY"); }
   const busy = STATUS && (STATUS.job.running || (STATUS.engine.pull || {}).active);
   pollT = setTimeout(pollStatus, busy ? 2500 : 20000);
 }
 $("#refreshBtn").addEventListener("click", async () => { beep(1100); await api("/api/refresh", {}); pollStatus(); });
 
 /* ------------------------------------------------------------ ZAPYTANIA I SITREP */
-const HINTS = ["Dlaczego Ormuz jest zamknięty?", "Co się zmieniło na froncie w Ukrainie?", "Jak wojna z Iranem wpływa na ceny w Europie?", "Co się dzieje na wschodniej flance NATO?", "Które konflikty eskalują i dlaczego?"];
+const HINTS = [TX("Dlaczego Ormuz jest zamknięty?"), TX("Co się zmieniło na froncie w Ukrainie?"), TX("Jak wojna z Iranem wpływa na ceny w Europie?"), TX("Co się dzieje na wschodniej flance NATO?"), TX("Które konflikty eskalują i dlaczego?")];
 $("#qHints").innerHTML = HINTS.map(h => `<button>${esc(h)}</button>`).join("");
 $("#qHints").querySelectorAll("button").forEach(b => b.addEventListener("click", () => { $("#q").value = b.textContent; ask(); }));
 async function streamTo(url, body, el, onDone, signal) {
-  el.hidden = false; el.textContent = "> PRZETWARZANIE…"; let text = ""; burble(true);
+  el.hidden = false; el.textContent = TX("> PRZETWARZANIE…"); let text = ""; burble(true);
   try { const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal });
     const rd = r.body.getReader(), dec = new TextDecoder();
-    for (;;) { const { done, value } = await rd.read(); if (done) break; const part = dec.decode(value, { stream: true }); if (part && burbleT) burble(false); chatter(part.length); if (/\n/.test(part)) sfx("carriage", .1); text += part; el.textContent = text.replace(/\n?REF:.*$/s, "") || "> PRZETWARZANIE…"; }
-  } catch (e) { burble(false); if (e.name === "AbortError") return; el.textContent = "Brak połączenia z serwerem KRONOS-7."; sfx("error"); return; }
+    for (;;) { const { done, value } = await rd.read(); if (done) break; const part = dec.decode(value, { stream: true }); if (part && burbleT) burble(false); chatter(part.length); if (/\n/.test(part)) sfx("carriage", .1); text += part; el.textContent = text.replace(/\n?REF:.*$/s, "") || TX("> PRZETWARZANIE…"); }
+  } catch (e) { burble(false); if (e.name === "AbortError") return; el.textContent = TX("Brak połączenia z serwerem KRONOS-7."); sfx("error"); return; }
   burble(false);
   el.textContent = text.replace(/\n?REF:.*$/s, "").trim(); sfx("carriage"); sfx("blip", 1568, .3); if (onDone) onDone(text);
 }
@@ -1195,11 +1215,11 @@ function sitOpen() { sitFocus = document.activeElement; $("#sitModal").hidden = 
 function sitClose() { burble(false); if (sitCtl) sitCtl.abort(); sitCtl = null; sitBusy = false; if ("speechSynthesis" in window) speechSynthesis.cancel(); $("#sitModal").hidden = true; if (sitFocus) sitFocus.focus(); }
 function sitButtons() { ["#sitCopy", "#sitSpeak", "#sitPrint", "#sitAgain"].forEach(b => $(b).disabled = sitBusy); }
 function sitrep() {
-  const r = $("#sitIn").value.trim() || "Świat"; beep(1000, .06);
+  const r = $("#sitIn").value.trim() || TX("Świat"); beep(1000, .06);
   if (sitCtl) sitCtl.abort(); sitCtl = new AbortController(); sitBusy = true; sitText = "";
   const t = new Date(), op = opCall();
-  $("#sitTitle").textContent = "> SITREP · " + r.toUpperCase();
-  $("#sitMeta").textContent = `${t.toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" })}${op ? " · dla " + op : ""} · rdzeń: ${(STATUS && STATUS.engine && STATUS.engine.model) || "brak AI"}`;
+  $("#sitTitle").textContent = TX("> SITREP ·") + " " + r.toUpperCase();
+  $("#sitMeta").textContent = `${t.toLocaleString(LOC, { dateStyle: "short", timeStyle: "short" })}${op ? " " + TX("· dla") + " " + op : ""} ${TX("· rdzeń:")} ${(STATUS && STATUS.engine && STATUS.engine.model) || TX("brak AI")}`;
   sitButtons(); if ($("#sitModal").hidden) sitOpen();
   streamTo("/api/sitrep", { region: r }, $("#sitOut"), text => {
     sitText = text.replace(/\n?REF:.*$/s, "").trim(); sitBusy = false; sitButtons(); sitCtl = null;
@@ -1214,14 +1234,14 @@ $("#sitModal").addEventListener("click", e => { if (e.target.id === "sitModal") 
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#sitModal").hidden) sitClose(); });
 $("#sitCopy").addEventListener("click", async () => {
   const txt = $("#sitTitle").textContent.replace(/^> /, "") + "\n" + $("#sitMeta").textContent + "\n\n" + $("#sitOut").textContent;
-  try { await navigator.clipboard.writeText(txt); $("#sitCopy").textContent = "SKOPIOWANO"; } catch (e) { $("#sitCopy").textContent = "BŁĄD SCHOWKA"; }
-  beep(1400, .05); setTimeout(() => $("#sitCopy").textContent = "KOPIUJ", 1500);
+  try { await navigator.clipboard.writeText(txt); $("#sitCopy").textContent = TX("SKOPIOWANO"); } catch (e) { $("#sitCopy").textContent = TX("BŁĄD SCHOWKA"); }
+  beep(1400, .05); setTimeout(() => $("#sitCopy").textContent = TX("KOPIUJ"), 1500);
 });
 $("#sitSpeak").addEventListener("click", () => {
   if (!("speechSynthesis" in window)) return;
   if (speechSynthesis.speaking) { speechSynthesis.cancel(); return; }
-  const u = new SpeechSynthesisUtterance($("#sitOut").textContent), v = plVoice(); u.lang = "pl-PL"; if (v) u.voice = v; u.rate = .95; u.pitch = .85;
-  u.onstart = () => $("#sitSpeak").textContent = "STOP"; u.onend = u.onerror = () => $("#sitSpeak").textContent = "CZYTAJ";
+  const u = new SpeechSynthesisUtterance($("#sitOut").textContent), v = plVoice(); u.lang = LOC; if (v) u.voice = v; u.rate = .95; u.pitch = .85;
+  u.onstart = () => $("#sitSpeak").textContent = TX("STOP"); u.onend = u.onerror = () => $("#sitSpeak").textContent = TX("CZYTAJ");
   speechSynthesis.cancel(); speechSynthesis.speak(u);
 });
 $("#sitPrint").addEventListener("click", () => { document.body.classList.add("print-sit"); window.print(); setTimeout(() => document.body.classList.remove("print-sit"), 500); });
@@ -1229,14 +1249,14 @@ $("#sitIn").addEventListener("keydown", e => { if (e.key === "Enter") sitrep(); 
 
 /* ------------------------------------------------------------ BRIEFING GŁOSOWY */
 let speaking = false;
-function plVoice() { return speechSynthesis.getVoices().find(x => /^pl/i.test(x.lang)) || null; }
+function plVoice() { const v = speechSynthesis.getVoices(); return LANG === "en" ? (v.find(x => /^en-GB/i.test(x.lang)) || v.find(x => /^en/i.test(x.lang)) || null) : (v.find(x => /^pl/i.test(x.lang)) || null); }
 $("#speakBtn").addEventListener("click", () => {
-  if (!("speechSynthesis" in window)) { $("#speakBtn").textContent = "BRAK SYNTEZY MOWY"; return; }
+  if (!("speechSynthesis" in window)) { $("#speakBtn").textContent = TX("BRAK SYNTEZY MOWY"); return; }
   if (speaking) { speechSynthesis.cancel(); return; }
-  const u = new SpeechSynthesisUtterance(S.briefing || "Brak briefingu. Uruchom analizę lokalnego AI."), v = plVoice();
-  u.lang = "pl-PL"; if (v) u.voice = v; u.rate = .95; u.pitch = .85;
-  u.onstart = () => { speaking = true; $("#speakBtn").setAttribute("aria-pressed", "true"); $("#speakBtn").textContent = "ZATRZYMAJ ODCZYT"; };
-  u.onend = u.onerror = () => { speaking = false; $("#speakBtn").setAttribute("aria-pressed", "false"); $("#speakBtn").textContent = v ? "ODCZYTAJ BRIEFING" : "ODCZYTAJ (BRAK GŁOSU PL)"; };
+  const u = new SpeechSynthesisUtterance(S.briefing || TX("Brak briefingu. Uruchom analizę lokalnego AI.")), v = plVoice();
+  u.lang = LOC; if (v) u.voice = v; u.rate = .95; u.pitch = .85;
+  u.onstart = () => { speaking = true; $("#speakBtn").setAttribute("aria-pressed", "true"); $("#speakBtn").textContent = TX("ZATRZYMAJ ODCZYT"); };
+  u.onend = u.onerror = () => { speaking = false; $("#speakBtn").setAttribute("aria-pressed", "false"); $("#speakBtn").textContent = v ? TX("ODCZYTAJ BRIEFING") : TX("ODCZYTAJ (BRAK GŁOSU PL)"); };
   beep(800, .1); speechSynthesis.cancel(); speechSynthesis.speak(u);
 });
 
@@ -1255,7 +1275,7 @@ document.addEventListener("keydown", e => { if (e.key === "Escape" && document.b
 /* ------------------------------------------------------------ ARCHIWUM */
 function fillArchive() {
   const list = A(CURRENT && CURRENT.archive), cur = $("#day").value;
-  $("#day").innerHTML = `<option value="">BIEŻĄCY</option>` + list.slice().reverse().map(n => { const m = n.match(/(\d{4})-(\d{2})-(\d{2})_(\d{2})(\d{2})/); return `<option value="${n}">${m ? `${m[3]}.${m[2]} ${m[4]}:${m[5]}` : n}</option>`; }).join("");
+  $("#day").innerHTML = `<option value="">${TX("BIEŻĄCY")}</option>` + list.slice().reverse().map(n => { const m = n.match(/(\d{4})-(\d{2})-(\d{2})_(\d{2})(\d{2})/); return `<option value="${n}">${m ? `${m[3]}.${m[2]} ${m[4]}:${m[5]}` : n}</option>`; }).join("");
   if (ARCH) $("#day").value = cur;
 }
 $("#day").addEventListener("change", async () => {
@@ -1267,7 +1287,7 @@ $("#archBack").addEventListener("click", backToCurrent);
 
 /* ------------------------------------------------------------ CAŁOŚĆ */
 function renderFoot() {
-  $("#foot").innerHTML = `Odczyt: ${esc(S.stamp ? new Date(S.stamp).toLocaleString("pl-PL") : "—")}. Online: wiadomości RSS, 16 feedów automatycznych (PortWatch, IODA, ADS-B, GDACS, CISA, FIRMS, Launch Library, NBP, GPSJam, WHO, NHC, ostrzeżenia podróżne, OFAC, ReliefWeb, Polymarket, CelesTrak), USGS, AMSAT oraz ceny rynkowe na żywo. Analiza, tłumaczenia, fronty, moduły i scenariusze: lokalny model AI${S.model ? " (" + esc(S.model) + ")" : ""}. Linie frontów, pozycje sił i punkty uderzeń są przybliżone. Poziom napięcia, stan szlaków, łańcuch przyczyn i scenariusze to oceny systemu, nie oficjalne wskaźniki.`;
+  $("#foot").innerHTML = `${TX("Odczyt:")} ${esc(S.stamp ? new Date(S.stamp).toLocaleString(LOC) : "—")}${TX(". Online: wiadomości RSS, 16 feedów automatycznych (PortWatch, IODA, ADS-B, GDACS, CISA, FIRMS, Launch Library, NBP, GPSJam, WHO, NHC, ostrzeżenia podróżne, OFAC, ReliefWeb, Polymarket, CelesTrak), USGS, AMSAT oraz ceny rynkowe na żywo. Analiza, tłumaczenia, fronty, moduły i scenariusze: lokalny model AI")}${S.model ? " (" + esc(S.model) + ")" : ""}${TX(". Linie frontów, pozycje sił i punkty uderzeń są przybliżone. Poziom napięcia, stan szlaków, łańcuch przyczyn i scenariusze to oceny systemu, nie oficjalne wskaźniki.")}`;
 }
 function renderPanels() {
   renderRail(); renderChanges(); tabs(); renderFeed(); renderReg(); renderShip(); renderCal(); renderTrend(); renderMarkets();
@@ -1275,7 +1295,7 @@ function renderPanels() {
 }
 function renderAll() { renderPanels(); buildMap(); buildChain(); setView(view); if (selected) pick(selected, true); else idleDetail(); }
 async function loadState(keepSel) {
-  try { CURRENT = await api("/api/state"); } catch (e) { $("#foot").textContent = "Nie można połączyć się z serwerem KRONOS-7. Uruchom start.bat."; return; }
+  try { CURRENT = await api("/api/state"); } catch (e) { $("#foot").textContent = TX("Nie można połączyć się z serwerem KRONOS-7. Uruchom start.bat."); return; }
   const before = (S && S.threat && S.threat.level) || 0, after = (CURRENT.threat && CURRENT.threat.level) || 0;
   if (!ARCH) { S = CURRENT; if (!keepSel) selected = null; fillArchive(); renderAll(); } else fillArchive();
   if (keepSel && after > before && before > 0) alarmBurst(after >= 4 ? 4 : 2);
@@ -1284,21 +1304,22 @@ async function loadState(keepSel) {
 /* ------------------------------------------------------------ OPERATOR */
 let SET = null;
 const opCall = () => (SET && SET.callsign) || "";
-function renderOp() { $("#opName").textContent = opCall() || "NIEZNANY"; }
-async function loadSettings() { try { SET = await api("/api/settings"); } catch (e) { SET = { callsign: "", configured: false }; } renderOp(); return SET; }
+function renderOp() { $("#opName").textContent = opCall() || TX("NIEZNANY"); }
+async function loadSettings() { try { SET = await api("/api/settings"); if (SET.language && SET.language !== LANG) { if (store.get("lang", null) == null) { store.set("lang", SET.language); location.reload(); } else if (!SOLO) saveSettings({ language: LANG }); } } catch (e) { SET = { callsign: "", configured: false }; } renderOp(); return SET; }
 async function saveSettings(body) {
   try { const r = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then(x => x.json());
-    if (r.settings) { SET = r.settings; renderOp(); } return r; } catch (e) { return { ok: false, error: "Brak połączenia z serwerem." }; }
+    if (r.settings) { SET = r.settings; renderOp(); } return r; } catch (e) { return { ok: false, error: TX("Brak połączenia z serwerem.") }; }
 }
 let lastFocus = null;
 async function openSettings() {
   beep(900); lastFocus = document.activeElement; await loadSettings();
   $("#setCall").value = SET.callsign || ""; $("#setName").value = SET.name || "";
   const t = A(SET.refresh_times); ["#setT1", "#setT2", "#setT3"].forEach((s2, i) => $(s2).value = t[i] || "");
-  $("#setModel").innerHTML = [`<option value="auto">AUTOMATYCZNIE (zalecany: ${esc(SET.recommended || "?")})</option>`].concat(A(SET.installed).map(m => `<option value="${esc(m)}">${esc(m)}</option>`)).join("");
+  $("#setModel").innerHTML = [`<option value="auto">${TX("AUTOMATYCZNIE (zalecany:")} ${esc(SET.recommended || "?")})</option>`].concat(A(SET.installed).map(m => `<option value="${esc(m)}">${esc(m)}</option>`)).join("");
   $("#setModel").value = A(SET.installed).includes(SET.model) ? SET.model : "auto";
   $("#setPull").checked = !!SET.auto_pull; $("#setMsg").textContent = "";
-  $("#setAis").value = ""; $("#setAis").placeholder = SET.ais_key ? `klucz ustawiony (${SET.ais_key}) – wklej nowy, aby zmienić` : "wklej klucz"; $("#setAisClr").hidden = !SET.ais_key;
+  $("#setLang").value = LANG;
+  $("#setAis").value = ""; $("#setAis").placeholder = SET.ais_key ? `${TX("klucz ustawiony (")}${SET.ais_key}${TX(") – wklej nowy, aby zmienić")}` : TX("wklej klucz"); $("#setAisClr").hidden = !SET.ais_key;
   $("#setVol").value = Math.round(SND.vol * 100); $("#setHum").checked = SND.hum; $("#setChat").checked = SND.chatter;
   $("#settings").hidden = false; $("#setCall").focus();
 }
@@ -1314,13 +1335,14 @@ function applySound() {
 $("#setVol").addEventListener("input", () => { applySound(); beep(1200, .06); });
 $("#setHum").addEventListener("change", applySound);
 $("#setChat").addEventListener("change", () => { applySound(); chatter(30); });
-$("#setAisClr").addEventListener("click", async () => { const r = await saveSettings({ ais_clear: true }); $("#setMsg").textContent = r.ok ? "Klucz usunięty." : r.error; $("#setAisClr").hidden = true; $("#setAis").placeholder = "wklej klucz"; });
+$("#setAisClr").addEventListener("click", async () => { const r = await saveSettings({ ais_clear: true }); $("#setMsg").textContent = r.ok ? TX("Klucz usunięty.") : r.error; $("#setAisClr").hidden = true; $("#setAis").placeholder = TX("wklej klucz"); });
 $("#setForm").addEventListener("submit", async e => {
   e.preventDefault(); applySound();
-  const r = await saveSettings({ aisstream_key: $("#setAis").value.trim(), callsign: $("#setCall").value, name: $("#setName").value, model: $("#setModel").value, auto_pull: $("#setPull").checked,
+  const newLang = $("#setLang").value;
+  const r = await saveSettings({ language: newLang, aisstream_key: $("#setAis").value.trim(), callsign: $("#setCall").value, name: $("#setName").value, model: $("#setModel").value, auto_pull: $("#setPull").checked,
     refresh_times: ["#setT1", "#setT2", "#setT3"].map(s2 => $(s2).value).filter(Boolean) });
-  if (r.ok) { beep(1400, .08); $("#setMsg").textContent = "Zapisano."; pollStatus(); setTimeout(closeSettings, 600); }
-  else { beep(300, .2, "sawtooth"); $("#setMsg").textContent = r.error || "Nie udało się zapisać."; }
+  if (r.ok) { beep(1400, .08); $("#setMsg").textContent = TX("Zapisano."); if (newLang !== LANG) { store.set("lang", newLang); setTimeout(() => location.reload(), 400); return; } pollStatus(); setTimeout(closeSettings, 600); }
+  else { beep(300, .2, "sawtooth"); $("#setMsg").textContent = r.error || TX("Nie udało się zapisać."); }
 });
 
 /* ------------------------------------------------------------ START */
@@ -1330,27 +1352,28 @@ function boot(done) {
   let seen = false; try { seen = sessionStorage.getItem("k7-boot") === "1"; } catch (e) { seen = true; }
   if (!needSetup && (seen || reduce)) return done();
   const B = $("#boot"); B.hidden = false; const e = STATUS ? STATUS.engine : null, C = CURRENT || {};
-  const lines = ["KRONOS-7 PLANETARY INTELLIGENCE · v3.6", "TEST PAMIĘCI ........ OK",
-    "PROCESOR GRAFICZNY .. " + (e ? e.hardware.gpu_name + (e.hardware.vram_gb ? " / " + e.hardware.vram_gb + " GB" : "") : "?"),
-    "RDZEŃ ANALITYCZNY ... " + (e && e.model ? e.model.toUpperCase() : "NIEAKTYWNY"),
-    "BAZA KONFLIKTÓW ..... " + A(C.conflicts).length + " WĘZŁÓW", "FRONTY .............. " + A(C.fronts).length + " TEATRÓW",
-    "FEEDY ............... " + A((C.feeds || {}).status).filter(s => s.ok).length + "/" + A((C.feeds || {}).status).length + " OK",
-    "ŁĄCZE ORBITALNE ..... " + (A(C.tle).length + A((C.feeds || {}).celestrak).length) + " OBIEKTÓW", ""];
+  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.7"), TX("TEST PAMIĘCI ........ OK"),
+    TX("PROCESOR GRAFICZNY ..") + " " + (e ? TX(e.hardware.gpu_name) + (e.hardware.vram_gb ? " / " + e.hardware.vram_gb + " " + TX("GB") : "") : "?"),
+    TX("RDZEŃ ANALITYCZNY ...") + " " + (e && e.model ? e.model.toUpperCase() : TX("NIEAKTYWNY")),
+    TX("BAZA KONFLIKTÓW .....") + " " + A(C.conflicts).length + " " + TX("WĘZŁÓW"), TX("FRONTY ..............") + " " + A(C.fronts).length + " " + TX("TEATRÓW"),
+    TX("FEEDY ...............") + " " + A((C.feeds || {}).status).filter(s => s.ok).length + "/" + A((C.feeds || {}).status).length + " " + TX("OK"),
+    TX("ŁĄCZE ORBITALNE .....") + " " + (A(C.tle).length + A((C.feeds || {}).celestrak).length) + " " + TX("OBIEKTÓW"), ""];
   let i = 0, stop = false; const T2 = $("#bootText"), Lg = $("#bootLogin"); powerUp();
   const finish = () => { if (stop) return; stop = true; B.hidden = true; try { sessionStorage.setItem("k7-boot", "1"); } catch (e) {} done(); };
-  const greet = () => { const n = SET && (SET.name || SET.callsign); Lg.innerHTML = `IDENTYFIKATOR OPERATORA: ${esc(opCall())}<br>DOSTĘP PRZYZNANY · WITAJ${n ? ", " + esc(n.toUpperCase()) : ", OPERATORZE"}`; setTimeout(finish, 900); };
+  const greet = () => { const n = SET && (SET.name || SET.callsign); Lg.innerHTML = `${TX("IDENTYFIKATOR OPERATORA:")} ${esc(opCall())}<br>${TX("DOSTĘP PRZYZNANY · WITAJ")}${n ? ", " + esc(n.toUpperCase()) : TX(", OPERATORZE")}`; setTimeout(finish, 900); };
   if (!needSetup) {
     $("#bootSkip").addEventListener("click", finish);
     document.addEventListener("keydown", function k(ev) { if (ev.key === "Escape") { finish(); document.removeEventListener("keydown", k); } });
   } else $("#bootSkip").hidden = true;
   const login = () => {
     if (needSetup) {
-      Lg.textContent = "BRAK ZAREJESTROWANEGO OPERATORA."; const f = $("#bootSetup"); f.hidden = false; $("#bootCall").focus();
+      Lg.textContent = TX("BRAK ZAREJESTROWANEGO OPERATORA."); const f = $("#bootSetup"); f.hidden = false; $("#bootCall").focus();
+      $$("#bootLang [data-l]").forEach(b => { b.setAttribute("aria-pressed", b.dataset.l === LANG); b.addEventListener("click", async () => { if (b.dataset.l === LANG) return; store.set("lang", b.dataset.l); await saveSettings({ language: b.dataset.l }); location.reload(); }); });
       f.addEventListener("submit", async ev => { ev.preventDefault(); const r = await saveSettings({ callsign: $("#bootCall").value });
-        if (r.ok) { f.hidden = true; beep(1400, .08); greet(); } else { beep(300, .2, "sawtooth"); $("#bootMsg").textContent = r.error || "Nie udało się zapisać."; } });
+        if (r.ok) { f.hidden = true; beep(1400, .08); greet(); } else { beep(300, .2, "sawtooth"); $("#bootMsg").textContent = r.error || TX("Nie udało się zapisać."); } });
       return;
     }
-    const id = opCall(); let j = 0; Lg.innerHTML = 'IDENTYFIKATOR OPERATORA: <span id="lg"></span><span class="cursor"></span>';
+    const id = opCall(); let j = 0; Lg.innerHTML = (TX("IDENTYFIKATOR OPERATORA:") + " " + "<span id=\"lg\">" + "</span>" + "<span class=\"cursor\">" + "</span>");
     (function type() { if (stop) return; if (j < id.length) { $("#lg").textContent += id[j++]; sfx("key"); setTimeout(type, 110); return; } setTimeout(() => { if (!stop) greet(); }, 300); })();
   };
   (function line() { if (stop) return; if (i < lines.length && !reduce) { chatter(lines[i].length); T2.textContent += lines[i++] + "\n"; sfx("carriage", lines[i - 1].length * .02); setTimeout(line, 150 + lines[i - 1].length * 20); return; } if (reduce) T2.textContent = lines.join("\n"); login(); })();

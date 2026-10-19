@@ -1,5 +1,6 @@
 """Wykrywanie sprzętu, wybór modelu i rozmowa z lokalnym AI (Ollama albo LM Studio)."""
 import json, os, platform, re, shutil, subprocess, sys, threading, urllib.request, urllib.error
+from . import i18n
 
 GB = 1024 ** 3
 
@@ -258,7 +259,7 @@ class Engine:
         if self.backend == "mock":
             from . import mock
             return mock.answer(system, user, schema)
-        msgs = [{"role": "system", "content": system + "\nOdpowiadaj wyłącznie poprawnym JSON zgodnym ze schematem."},
+        msgs = [{"role": "system", "content": system + "\nOdpowiadaj wyłącznie poprawnym JSON zgodnym ze schematem." + (i18n.AI_EN if i18n.en() else "")},
                 {"role": "user", "content": user}]
         last = None
         for attempt in range(retries + 1):
@@ -293,7 +294,7 @@ class Engine:
         if self.backend == "mock":
             from . import mock
             yield from mock.stream(user); return
-        msgs = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+        msgs = [{"role": "system", "content": system + (i18n.AI_EN if i18n.en() else "")}, {"role": "user", "content": user}]
         with self.lock:
             if self.backend == "ollama":
                 body = self._ollama_body(msgs, None, True, temperature)

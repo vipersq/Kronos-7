@@ -11,7 +11,8 @@ from collections import deque
 from datetime import datetime, timezone
 
 from . import registry as REG
-from .live_air import ZONES, zone_of
+from .live_air import ZONES, zone_of, zone_name
+from . import i18n
 
 UA = "KRONOS-7/3.4 (+https://github.com/vipersq/Kronos-7)"
 DT = "https://meri.digitraffic.fi/api/ais/v1"
@@ -113,7 +114,7 @@ class LiveSea:
         self.meta_at = 0
         self.last_view = 0
         self.status = {"digitraffic": {"ok": None, "err": None, "at": 0, "n": 0},
-                       "aisstream": {"ok": None, "err": "brak klucza API", "at": 0, "n": 0, "msgs": 0}}
+                       "aisstream": {"ok": None, "err": None, "at": 0, "n": 0, "msgs": 0}}
         self.lock = threading.Lock()
         self.ws = None
         self.ws_gen = 0
@@ -162,16 +163,19 @@ class LiveSea:
     def _events(self, rec):
         now = time.time()
         z = zone_of(rec["lat"], rec["lon"])
-        name = f"{rec.get('name') or rec['mmsi']} ({rec['kind']}, bandera: {rec['flag'] or '?'})"
+        if i18n.en():
+            name = f"{rec.get('name') or rec['mmsi']} ({REG.SHIP_KIND_EN.get(rec['kind'], rec['kind'])}, flag: {REG.COUNTRY_EN.get(rec['flag'], rec['flag']) or '?'})"
+        else:
+            name = f"{rec.get('name') or rec['mmsi']} ({rec['kind']}, bandera: {rec['flag'] or '?'})"
         ev = None
         if rec["cat"] in ("military", "law") and z:
             k = (rec["mmsi"], z)
             if now - self.seen_zone.get(k, 0) > 6 * 3600:
-                ev = {"kind": "zone", "msg": f"Jednostka {name} w rejonie: {z}"}
+                ev = {"kind": "zone", "msg": i18n.L(f"Jednostka {name} w rejonie: {z}", f"Vessel {name} in the {zone_name(z)} area")}
             self.seen_zone[k] = now
         nav = rec.get("nav")
         if nav in (6, 14) and rec.get("nav_ev") != nav:
-            ev = {"kind": "alarm", "msg": f"{name}: {REG.NAV_STATUS.get(nav)}" + (f" – {z}" if z else "")}
+            ev = {"kind": "alarm", "msg": f"{name}: {(REG.NAV_STATUS_EN if i18n.en() else REG.NAV_STATUS).get(nav)}" + (f" – {zone_name(z)}" if z else "")}
         rec["nav_ev"] = nav if nav in (6, 14) else None
         if ev:
             ev.update(at=int(now * 1000), mmsi=rec["mmsi"], zone=z)
@@ -214,7 +218,7 @@ class LiveSea:
         if self.ws:
             self.ws.close()
         st = self.status["aisstream"]
-        st.update(ok=None if key else None, err=None if key else "brak klucza API", n=0)
+        st.update(ok=None, err=None if key else i18n.L("brak klucza API", "no API key"), n=0)
         if key:
             threading.Thread(target=self.loop_ais, args=(self.ws_gen,), daemon=True, name="aisstream").start()
 
@@ -246,7 +250,7 @@ class LiveSea:
                     return
                 err = str(e)[:200]
                 if not got and "przerwane" in err:
-                    err = "aisstream.io zamknął połączenie bez danych – najpewniej nieprawidłowy klucz API"
+                    err = i18n.L("aisstream.io zamknął połączenie bez danych – najpewniej nieprawidłowy klucz API", "aisstream.io closed the connection without data – most likely an invalid API key")
                     delay = max(delay, 120)
                 st.update(ok=False, err=err)
                 self.log(f"Statki: aisstream.io – {err}. Ponowna próba za {delay} s.")

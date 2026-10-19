@@ -113,7 +113,7 @@ class Catalog:
                 self.loading = False
 
     def list_groups(self):
-        return [{"id": g, "label": l, "n": len(self.groups.get(g, []))} for g, l, _ in GROUPS]
+        return [{"id": g, "label": l, "n": len(self.groups.get(g, []))} for g, l, _ in GROUPS]   # etykiety tłumaczy interfejs
 
     def group(self, gid):
         self.ensure()

@@ -15,6 +15,7 @@
     <pre id="bootText"></pre>
     <div class="login" id="bootLogin"></div>
     <form class="boot-setup" id="bootSetup" hidden autocomplete="off">
+      <div class="seg boot-lang" id="bootLang"><button class="btn" type="button" data-l="pl">POLSKI</button><button class="btn" type="button" data-l="en">ENGLISH</button></div>
       <label for="bootCall">PODAJ IDENTYFIKATOR OPERATORA:</label>
       <div class="q-row"><span>&gt;</span><input id="bootCall" maxlength="20" placeholder="ZNAK, PSEUDONIM LUB INICJAŁY"><button class="btn" type="submit">ZATWIERDŹ</button></div>
       <p class="set-msg" id="bootMsg"></p>
@@ -75,6 +76,8 @@
   <form class="modal-in frame" id="setForm" autocomplete="off">
     <div class="frame-h"><span id="setTitle">&gt; KONFIGURACJA OPERATORA</span><button type="button" class="btn" id="setClose" aria-label="Zamknij">✕</button></div>
     <div class="set-body">
+      <label for="setLang">Język interfejsu i AI <small>Language / Język</small></label>
+      <select id="setLang"><option value="pl">POLSKI</option><option value="en">ENGLISH</option></select>
       <label for="setCall">Identyfikator operatora <small>znak wywoławczy, pseudonim lub inicjały; 1–20 znaków</small></label>
       <input id="setCall" maxlength="20" required placeholder="np. SP1ABC">
       <label for="setName">Jak system ma się do Ciebie zwracać <small>opcjonalnie, np. imię</small></label>
@@ -307,6 +310,7 @@
 <script src="vendor/topojson-client.min.js"></script>
 <script src="vendor/satellite.min.js"></script>
 <script src="vendor/land.js"></script>
+<script src="i18n.js"></script>
 <script src="sound.js"></script>
 <script src="app.js"></script>
 </body>

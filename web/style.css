@@ -399,3 +399,4 @@ body.solo>.mainview.solo-target .mapbox{height:100%}
 body.solo>.mainview.solo-target .detail{max-height:none}
 body.solo>.solo-target .detach{display:none}
 .grid:has(>section.detached){grid-template-columns:minmax(0,1fr)}
+.boot-lang{margin-bottom:10px}

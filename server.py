@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-from kronos import analyst, collector, live_air, live_sea, llm, sats  # noqa: E402
+from kronos import analyst, collector, i18n, live_air, live_sea, llm, sats  # noqa: E402
 
 DATA = ROOT / "data"; ARCH = DATA / "archive"; WEB = ROOT / "web"
 ARCH.mkdir(parents=True, exist_ok=True)
@@ -27,6 +27,8 @@ def load_settings():
 
 
 def apply_settings(st):
+    CFG["language"] = st.get("language") or CFG.get("language", "pl")
+    i18n.set_lang(CFG["language"])
     CFG["operator"] = {"callsign": st.get("callsign", ""), "name": st.get("name", "")}
     if st.get("refresh_times"): CFG["refresh_times"] = st["refresh_times"]
     if st.get("model"): CFG["ai"]["model"] = st["model"]
@@ -190,7 +192,8 @@ def settings_view():
             "refresh_times": CFG.get("refresh_times", []), "model": CFG["ai"].get("model", "auto"),
             "auto_pull": CFG["ai"].get("auto_pull", True), "installed": [m["name"] for m in st["installed"]],
             "recommended": st["recommended"], "configured": bool(CFG["operator"]["callsign"]),
-            "ais_key": ("…" + SETTINGS["aisstream_key"][-4:]) if SETTINGS.get("aisstream_key") else ""}
+            "ais_key": ("…" + SETTINGS["aisstream_key"][-4:]) if SETTINGS.get("aisstream_key") else "",
+            "language": CFG.get("language", "pl")}
 
 
 def save_settings(body):
@@ -199,19 +202,21 @@ def save_settings(body):
     if "callsign" in body:
         c = str(body["callsign"]).strip().upper()
         if not CALL_RE.match(c):
-            return False, "Identyfikator: 1–20 znaków, litery, cyfry oraz / - _ ."
+            return False, i18n.L("Identyfikator: 1–20 znaków, litery, cyfry oraz / - _ .", "Operator ID: 1–20 characters, letters, digits and / - _ .")
         new["callsign"] = c
+    if body.get("language") in ("pl", "en"):
+        new["language"] = body["language"]
     if "name" in body:
         new["name"] = str(body["name"]).strip()[:40]
     if "refresh_times" in body:
         t = [x for x in body["refresh_times"] if x]
         if len(t) > 4 or not all(TIME_RE.match(x) for x in t):
-            return False, "Godziny briefingów w formacie GG:MM, najwyżej 4."
+            return False, i18n.L("Godziny briefingów w formacie GG:MM, najwyżej 4.", "Briefing times as HH:MM, at most 4.")
         new["refresh_times"] = sorted(set(t))
     if "model" in body:
         m = str(body["model"]).strip()
         if m != "auto" and m not in [x["name"] for x in ENGINE.installed] and ENGINE.backend != "lmstudio":
-            return False, f"Model {m} nie jest zainstalowany."
+            return False, i18n.L(f"Model {m} nie jest zainstalowany.", f"Model {m} is not installed.")
         new["model"] = m
     if "auto_pull" in body:
         new["auto_pull"] = bool(body["auto_pull"])
@@ -220,7 +225,7 @@ def save_settings(body):
     elif str(body.get("aisstream_key") or "").strip():
         k = str(body["aisstream_key"]).strip()
         if not re.match(r"^[A-Za-z0-9_\-]{16,100}$", k):
-            return False, "Klucz aisstream.io wygląda nieprawidłowo (skopiuj go w całości ze strony aisstream.io)."
+            return False, i18n.L("Klucz aisstream.io wygląda nieprawidłowo (skopiuj go w całości ze strony aisstream.io).", "The aisstream.io key looks invalid (copy the whole key from aisstream.io).")
         new["aisstream_key"] = k
     SETTINGS = new
     SETTINGS_FILE.write_text(json.dumps(new, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -339,7 +344,7 @@ class H(BaseHTTPRequestHandler):
             q = (self._body().get("q") or "").strip()[:500]
             with STATE_LOCK: st = STATE
             op = CFG["operator"].get("name") or CFG["operator"].get("callsign") or "operator"
-            user = "DANE:\n" + analyst.context_for(st, q, ENGINE.ctx * 2) + f"\n\nZAPYTANIE OPERATORA ({op}): " + q
+            user = "DANE:\n" + analyst.context_for(st, q, ENGINE.ctx * 2) + f"\n\n" + i18n.L("ZAPYTANIE OPERATORA", "OPERATOR QUERY") + f" ({op}): " + q
             return self._stream(ENGINE.chat_stream(analyst.ASK_SYS, user))
         if p == "/api/sitrep":
             region = (self._body().get("region") or "").strip()[:120]
@@ -352,7 +357,7 @@ class H(BaseHTTPRequestHandler):
 def main():
     port = int(os.environ.get("KRONOS_PORT", CFG.get("port", 7707)))
     st = ENGINE.status()
-    log("KRONOS-7 v3.6 · start")
+    log("KRONOS-7 v3.7 · start")
     log(f"Sprzęt: {st['hardware']['gpu_name']} · VRAM {st['hardware']['vram_gb']} GB · RAM {st['hardware']['ram_gb']} GB")
     log(f"AI: {st['backend'] or 'brak (zainstaluj Ollamę)'} · model: {st['model'] or '—'} · zalecany: {st['recommended']}")
     log(st["reason"])

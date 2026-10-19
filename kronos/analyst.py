@@ -2,6 +2,7 @@
 import copy, hashlib, json, re
 from datetime import datetime, timedelta, timezone
 
+from . import i18n
 from . import collector, feeds, modules
 
 SYS = ("Jesteś analitykiem planetarnego systemu wywiadowczego KRONOS-7. Piszesz po polsku, rzeczowo i krótko, "
@@ -439,7 +440,7 @@ Jeśli nie ma takich wydarzeń, zwróć pustą listę.
         chg = st["changes"]
         prompt = f"""Oceń globalny poziom napięcia i przygotuj briefing.
 level: 1 (spokój) do 5 (kryzys globalny). label: jedno słowo (NISKI, UMIARKOWANY, PODWYŻSZONY, WYSOKI, KRYTYCZNY). note: główne ogniska, do 60 znaków.
-briefing: 120–170 słów po polsku do odczytania na głos przez komputer pokładowy; zacznij od "Raport KRONOS-7{(" dla operatora " + op) if op else ""}."; najważniejsze sprawy: co, gdzie, dlaczego. Bez list i skrótów trudnych do przeczytania.
+briefing: 120–170 słów po polsku do odczytania na głos przez komputer pokładowy; zacznij od "{i18n.L("Raport KRONOS-7" + (" dla operatora " + op if op else ""), "KRONOS-7 report" + (" for operator " + op if op else ""))}."; najważniejsze sprawy: co, gdzie, dlaczego. Bez list i skrótów trudnych do przeczytania.
 changes: 1–2 zdania, co zmieniło się od poprzedniego odczytu.
 markets: 1–2 zdania, co i DLACZEGO poruszyło rynkami (ropa, gaz, złoto, złoty, akcje), w powiązaniu z wydarzeniami.
 

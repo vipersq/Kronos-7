@@ -103,11 +103,11 @@ CALLSIGNS = {
 }
 
 
-def callsign_operator(cs):
+def callsign_operator(cs, en=False):
     cs = (cs or "").upper()
     for k in sorted(CALLSIGNS, key=len, reverse=True):
         if cs.startswith(k):
-            return CALLSIGNS[k]
+            return (CALLSIGNS_EN if en else CALLSIGNS)[k]
     return ""
 
 
@@ -188,3 +188,75 @@ def ship_type(code):
 
 NAV_STATUS = {0: "w drodze (na silniku)", 1: "na kotwicy", 2: "bez napędu", 3: "ograniczona manewrowość", 4: "ograniczona zanurzeniem",
               5: "zacumowany", 6: "na mieliźnie", 7: "połów", 8: "w drodze (pod żaglami)", 14: "AIS-SART (alarm)", 15: "brak danych"}
+
+
+# --- angielskie nazwy krajów (klucz: nazwa polska)
+COUNTRY_EN = dict(x.split("=", 1) for x in """Afganistan=Afghanistan|Albania=Albania|Algieria=Algeria|Andora=Andorra|Angola=Angola|Anguilla=Anguilla|Antigua i Barbuda=Antigua and Barbuda
+|Arabia Saudyjska=Saudi Arabia|Argentyna=Argentina|Armenia=Armenia|Aruba=Aruba|Australia=Australia|Austria=Austria|Azerbejdżan=Azerbaijan|Bahamy=Bahamas|Bahrajn=Bahrain
+|Bangladesz=Bangladesh|Barbados=Barbados|Belgia=Belgium|Belize=Belize|Benin=Benin|Bermudy=Bermuda|Bhutan=Bhutan|Białoruś=Belarus|Boliwia=Bolivia|Botswana=Botswana
+|Bośnia i Hercegowina=Bosnia and Herzegovina|Brazylia=Brazil|Brunei=Brunei|Brytyjskie Wyspy Dziewicze=British Virgin Islands|Burkina Faso=Burkina Faso|Burundi=Burundi
+|Bułgaria=Bulgaria|Chile=Chile|Chiny=China|Chorwacja=Croatia|Curaçao=Curaçao|Cypr=Cyprus|Czad=Chad|Czarnogóra=Montenegro|Czechy=Czechia|DR Konga=DR Congo|Dania=Denmark
+|Dominika=Dominica|Dominikana=Dominican Republic|Dżibuti=Djibouti|Egipt=Egypt|Ekwador=Ecuador|Erytrea=Eritrea|Estonia=Estonia|Eswatini=Eswatini|Etiopia=Ethiopia
+|Falklandy=Falkland Islands|Fidżi=Fiji|Filipiny=Philippines|Finlandia=Finland|Francja=France|Francja (Antarktyda)=France (Antarctica)|Gabon=Gabon|Gambia=Gambia|Ghana=Ghana
+|Gibraltar=Gibraltar|Grecja=Greece|Grenada=Grenada|Grenlandia=Greenland|Gruzja=Georgia|Gujana=Guyana|Gujana Francuska=French Guiana|Gwadelupa=Guadeloupe|Gwatemala=Guatemala
+|Gwinea=Guinea|Gwinea Bissau=Guinea-Bissau|Gwinea Równikowa=Equatorial Guinea|Haiti=Haiti|Hiszpania=Spain|Holandia=Netherlands|Honduras=Honduras|Hongkong=Hong Kong|Indie=India
+|Indonezja=Indonesia|Irak=Iraq|Iran=Iran|Irlandia=Ireland|Islandia=Iceland|Izrael=Israel|Jamajka=Jamaica|Japonia=Japan|Jemen=Yemen|Jordania=Jordan|Kajmany=Cayman Islands
+|Kambodża=Cambodia|Kamerun=Cameroon|Kanada=Canada|Katar=Qatar|Kazachstan=Kazakhstan|Kenia=Kenya|Kirgistan=Kyrgyzstan|Kiribati=Kiribati|Kolumbia=Colombia|Komory=Comoros
+|Kongo=Congo|Korea Płd.=South Korea|Korea Płn.=North Korea|Kostaryka=Costa Rica|Kuba=Cuba|Kuwejt=Kuwait|Laos=Laos|Lesotho=Lesotho|Liban=Lebanon|Liberia=Liberia|Libia=Libya
+|Liechtenstein=Liechtenstein|Litwa=Lithuania|Luksemburg=Luxembourg|Macedonia Płn.=North Macedonia|Madagaskar=Madagascar|Makau=Macau|Malawi=Malawi|Malediwy=Maldives
+|Malezja=Malaysia|Mali=Mali|Malta=Malta|Mariany Płn.=Northern Mariana Islands|Maroko=Morocco|Martynika=Martinique|Mauretania=Mauritania|Mauritius=Mauritius|Meksyk=Mexico
+|Mikronezja=Micronesia|Mjanma=Myanmar|Monako=Monaco|Mongolia=Mongolia|Montserrat=Montserrat|Mozambik=Mozambique|Mołdawia=Moldova|NATO=NATO|Namibia=Namibia|Nauru=Nauru
+|Nepal=Nepal|Niemcy=Germany|Niger=Niger|Nigeria=Nigeria|Nikaragua=Nicaragua|Niue=Niue|Norwegia=Norway|Nowa Kaledonia=New Caledonia|Nowa Zelandia=New Zealand|Oman=Oman
+|Pakistan=Pakistan|Palau=Palau|Palestyna=Palestine|Panama=Panama|Papua-Nowa Gwinea=Papua New Guinea|Paragwaj=Paraguay|Peru=Peru|Polinezja Francuska=French Polynesia
+|Polska=Poland|Portoryko=Puerto Rico|Portugalia=Portugal|Portugalia (Azory)=Portugal (Azores)|Portugalia (Madera)=Portugal (Madeira)|RPA=South Africa
+|Rep. Środkowoafrykańska=Central African Republic|Republika Zielonego Przylądka=Cape Verde|Reunion=Réunion|Rosja=Russia|Rumunia=Romania|Rwanda=Rwanda
+|Saint Kitts i Nevis=Saint Kitts and Nevis|Saint Lucia=Saint Lucia|Saint Vincent=Saint Vincent|Saint-Pierre=Saint-Pierre|Salwador=El Salvador|Samoa=Samoa
+|Samoa Amerykańskie=American Samoa|San Marino=San Marino|Senegal=Senegal|Serbia=Serbia|Seszele=Seychelles|Sierra Leone=Sierra Leone|Singapur=Singapore|Somalia=Somalia
+|Sri Lanka=Sri Lanka|Sudan=Sudan|Sudan Płd.=South Sudan|Surinam=Suriname|Syria=Syria|Szwajcaria=Switzerland|Szwecja=Sweden|Słowacja=Slovakia|Słowenia=Slovenia
+|Tadżykistan=Tajikistan|Tajlandia=Thailand|Tajwan=Taiwan|Tanzania=Tanzania|Timor Wschodni=East Timor|Togo=Togo|Tonga=Tonga|Trynidad i Tobago=Trinidad and Tobago
+|Tunezja=Tunisia|Turcja=Turkey|Turkmenistan=Turkmenistan|Turks i Caicos=Turks and Caicos|Tuvalu=Tuvalu|USA=USA|USA (Alaska)=USA (Alaska)|Uganda=Uganda|Ukraina=Ukraine
+|Urugwaj=Uruguay|Uzbekistan=Uzbekistan|Vanuatu=Vanuatu|Watykan=Vatican|Wenezuela=Venezuela|Wielka Brytania=United Kingdom|Wietnam=Vietnam
+|Wybrzeże Kości Słoniowej=Ivory Coast|Wyspa Świętej Heleny=Saint Helena|Wyspy Cooka=Cook Islands|Wyspy Dziewicze USA=US Virgin Islands|Wyspy Marshalla=Marshall Islands
+|Wyspy Owcze=Faroe Islands|Wyspy Salomona=Solomon Islands|Wyspy Świętego Tomasza=São Tomé and Príncipe|Węgry=Hungary|Włochy=Italy|ZEA=UAE|Zambia=Zambia|Zimbabwe=Zimbabwe
+|Łotwa=Latvia""".replace("\n", "").split("|"))
+
+SHIP_KIND_EN = {"tankowiec": "tanker", "tankowiec (ładunek niebezpieczny)": "tanker (hazardous cargo)", "statek towarowy": "cargo ship",
+                "statek towarowy (ładunek niebezpieczny)": "cargo ship (hazardous cargo)", "pasażerski / prom": "passenger / ferry",
+                "okręt / jednostka wojskowa": "warship / military vessel", "jednostka straży / policji": "coast guard / police vessel", "kuter rybacki": "fishing vessel",
+                "ratownictwo (SAR)": "search and rescue (SAR)", "holownik (holowanie)": "tug (towing)", "holownik": "tug", "pilotówka": "pilot boat",
+                "pogłębiarka / roboty podwodne": "dredger / underwater works", "jednostka nurkowa": "diving vessel", "jednostka portowa": "port tender",
+                "zwalczanie zanieczyszczeń": "anti-pollution", "transport medyczny": "medical transport", "jacht żaglowy": "sailing yacht", "jednostka rekreacyjna": "pleasure craft",
+                "jednostka szybka (HSC)": "high-speed craft (HSC)", "ekranoplan (WIG)": "wing-in-ground craft (WIG)", "inny": "other", "nieznany": "unknown"}
+NAV_STATUS_EN = {0: "under way (engine)", 1: "at anchor", 2: "not under command", 3: "restricted manoeuvrability", 4: "constrained by draught", 5: "moored",
+                 6: "aground", 7: "fishing", 8: "under way (sail)", 14: "AIS-SART (alarm)", 15: "no data"}
+AC_TYPES_EN = {
+    "K35R": "Boeing KC-135R Stratotanker (tanker)", "K35E": "Boeing KC-135E Stratotanker (tanker)", "KC46": "Boeing KC-46A Pegasus (tanker)", "K46": "Boeing KC-46A Pegasus (tanker)",
+    "KC10": "McDonnell Douglas KC-10 Extender (tanker)", "A332": "Airbus A330 / A330 MRTT (tanker or VIP transport)", "MRTT": "Airbus A330 MRTT (tanker)",
+    "R135": "Boeing RC-135 Rivet Joint / Cobra Ball (signals intelligence)", "E3TF": "Boeing E-3 Sentry AWACS (airborne early warning)", "E3CF": "Boeing E-3 Sentry AWACS (airborne early warning)",
+    "E6": "Boeing E-6B Mercury (submarine communications)", "E7": "Boeing E-7 Wedgetail (airborne early warning)", "P8": "Boeing P-8 Poseidon (maritime patrol, ASW)",
+    "Q4": "Northrop Grumman RQ-4 Global Hawk (reconnaissance drone)", "RQ4": "Northrop Grumman RQ-4 Global Hawk (reconnaissance drone)", "Q9": "General Atomics MQ-9 Reaper (drone)",
+    "MQ9": "General Atomics MQ-9 Reaper (drone)", "U2": "Lockheed U-2 Dragon Lady (strategic reconnaissance)", "E8": "Northrop Grumman E-8 JSTARS (ground surveillance)",
+    "P3": "Lockheed P-3 Orion (maritime patrol)", "E2": "Northrop Grumman E-2 Hawkeye (airborne early warning)", "B52": "Boeing B-52 Stratofortress (strategic bomber)",
+    "B1": "Rockwell B-1B Lancer (bomber)", "B2": "Northrop B-2 Spirit (stealth bomber)", "C17": "Boeing C-17 Globemaster III (strategic airlift)",
+    "C5M": "Lockheed C-5M Super Galaxy (strategic airlift)", "C5": "Lockheed C-5 Galaxy (strategic airlift)", "C30J": "Lockheed Martin C-130J Super Hercules (transport)",
+    "C130": "Lockheed C-130 Hercules (transport)", "A400": "Airbus A400M Atlas (transport)", "C295": "Airbus C295 (transport)", "CN35": "Airbus CN-235 (transport, patrol)",
+    "IL76": "Ilyushin Il-76 (transport)", "C27J": "Leonardo C-27J Spartan (transport)", "KC39": "Embraer KC-390 Millennium (transport, tanker)", "C2": "Kawasaki C-2 (transport)",
+    "F35": "Lockheed Martin F-35 Lightning II (fighter)", "F16": "General Dynamics F-16 Fighting Falcon (fighter)", "F15": "Boeing F-15 Eagle (fighter)", "F18": "Boeing F/A-18 Hornet (fighter)",
+    "F18S": "Boeing F/A-18E/F Super Hornet (fighter)", "EUFI": "Eurofighter Typhoon (fighter)", "RFAL": "Dassault Rafale (fighter)", "F22": "Lockheed Martin F-22 Raptor (fighter)",
+    "GRIF": "Saab JAS 39 Gripen (fighter)", "TOR": "Panavia Tornado", "H60": "Sikorsky UH-60 Black Hawk (helicopter)", "H47": "Boeing CH-47 Chinook (transport helicopter)",
+    "V22": "Bell Boeing V-22 Osprey (tiltrotor)", "EC35": "Airbus H135 (helicopter)", "EC45": "Airbus H145 (helicopter)", "NH90": "NHIndustries NH90 (helicopter)",
+    "A139": "Leonardo AW139 (helicopter)", "G115": "Grob G 115 (trainer)", "PC21": "Pilatus PC-21 (trainer)", "PC9": "Pilatus PC-9 (trainer)", "TEX2": "Beechcraft T-6 Texan II (trainer)",
+    "M346": "Leonardo M-346 Master (trainer)", "HAWK": "BAE Hawk (trainer)", "T38": "Northrop T-38 Talon (trainer)", "BE20": "Beechcraft King Air 200 (liaison)",
+    "B350": "Beechcraft King Air 350 (liaison, often reconnaissance)", "GLF4": "Gulfstream IV (VIP or reconnaissance)", "GLF5": "Gulfstream V (VIP or reconnaissance)",
+    "GLEX": "Bombardier Global Express (VIP or reconnaissance)", "B736": "Boeing 737-600", "B737": "Boeing 737-700 (VIP transport / C-40)", "B738": "Boeing 737-800",
+    "B752": "Boeing 757-200 (VIP transport / C-32)", "B748": "Boeing 747-8 (VIP)", "B742": "Boeing 747-200 (VC-25 / E-4B)", "E35L": "Embraer Legacy 600",
+    "TU95": "Tupolev Tu-95 (strategic bomber)", "T160": "Tupolev Tu-160 (strategic bomber)", "A50": "Beriev A-50 (airborne early warning)",
+}
+CALLSIGNS_EN = {
+    "RCH": "USAF Air Mobility Command (REACH)", "NATO": "NATO (AWACS, Geilenkirchen)", "FORTE": "USAF – RQ-4 Global Hawk", "HOMER": "US Navy – P-8 Poseidon",
+    "SPAR": "USAF – US government VIP flight", "SAM": "USAF – Special Air Mission (VIP)", "RRR": "Royal Air Force", "ASCOT": "Royal Air Force – transport",
+    "GAF": "Luftwaffe (Germany)", "CTM": "French Air and Space Force – transport", "FAF": "French Air and Space Force", "IAM": "Aeronautica Militare (Italy)",
+    "PLF": "Polish Air Force", "BAF": "Belgian Air Component", "NAF": "Royal Netherlands Air Force", "SVF": "Swedish Air Force", "HAF": "Hellenic Air Force",
+    "CFC": "Royal Canadian Air Force", "ASY": "Royal Australian Air Force", "MMF": "NATO Multinational MRTT Fleet", "CNV": "US Navy", "PAT": "US Army – priority flight",
+    "TUAF": "Turkish Air Force", "RFF": "Russian Air Force",
+}

@@ -2,7 +2,7 @@
 
 Lokalny terminal w stylu komputerów pokładowych z filmów science fiction. Pokazuje **co, gdzie i dlaczego** dzieje się na świecie. Dane online pobiera sam, a analizę robi model AI działający na Twoim komputerze (Ollama lub LM Studio), bez chmury i bez kluczy API.
 
-> **English:** KRONOS-7 is a local, retro sci-fi styled world-intelligence dashboard. It pulls news and open data feeds (shipping, outages, disasters, markets, satellites…), and a local LLM (auto-selected for your GPU via Ollama) clusters, rates and explains events in Polish. Run `start.bat` on Windows or `./start.sh` on Linux/macOS, then open http://127.0.0.1:7707. On first launch you set your operator callsign.
+> **English:** the whole interface and the AI output can be switched to English in the OPERATOR window (or on the first-run screen). KRONOS-7 is a local, retro sci-fi styled world-intelligence dashboard. It pulls news and open data feeds (shipping, outages, disasters, markets, satellites…), and a local LLM (auto-selected for your GPU via Ollama) clusters, rates and explains events in Polish. Run `start.bat` on Windows or `./start.sh` on Linux/macOS, then open http://127.0.0.1:7707. On first launch you set your operator callsign.
 
 ![Terminal](docs/screen-main.png)
 
@@ -126,6 +126,9 @@ Dane startowe w repozytorium (`data/seed.json`) to odczyt z 18.10.2026, 14:33. P
   - wysokość mapy.
 
   **PEŁNY EKRAN** ukrywa pasek przeglądarki.
+- **Język polski lub angielski:** wybierasz go w oknie **OPERATOR** albo na ekranie powitalnym.
+  - Zmienia się cały interfejs, nazwy krajów, typy statków i samolotów oraz głos briefingu.
+  - Po wybraniu angielskiego lokalne AI pisze po angielsku: briefing, SITREP, odpowiedzi, karty konfliktów. Dotyczy to następnych analiz; wcześniejsze odczyty zostają w języku, w którym powstały.
 - **Odpinanie paneli:** przycisk ⧉ w nagłówku każdego panelu (mapa, depesze, rynki, niebo, statki, status itd.) otwiera go w osobnym oknie, które przeciągasz na inny monitor.
   - W Chrome i Edge, po zgodzie na „zarządzanie oknami”, okno otwiera się od razu na drugim ekranie, na całą jego powierzchnię.
   - Kliknięcie w depeszę albo pozycję w panelu przybliża mapę także w odpiętym oknie.
