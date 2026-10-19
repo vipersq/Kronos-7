@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-from kronos import analyst, collector, llm  # noqa: E402
+from kronos import analyst, collector, live_air, llm  # noqa: E402
 
 DATA = ROOT / "data"; ARCH = DATA / "archive"; WEB = ROOT / "web"
 ARCH.mkdir(parents=True, exist_ok=True)
@@ -69,6 +69,7 @@ def save_state(st):
 
 STATE = load_state()
 ENGINE = llm.Engine(CFG, log)
+AIR = live_air.LiveAir(CFG, log)
 
 
 def progress(step, pct):
@@ -270,6 +271,9 @@ class H(BaseHTTPRequestHandler):
                                "sources": STATE.get("sources_report", [])})
         if p == "/api/settings":
             return self._json(settings_view())
+        if p == "/api/air":
+            m = re.search(r"since=(\d+)", self.path)
+            return self._json(AIR.snapshot(int(m.group(1)) if m else 0))
         if p == "/api/markets":
             return self._json(get_markets("force" in self.path))
         m = re.match(r"^/api/archive/([\w\-]+)$", p)
@@ -322,12 +326,14 @@ class H(BaseHTTPRequestHandler):
 def main():
     port = int(os.environ.get("KRONOS_PORT", CFG.get("port", 7707)))
     st = ENGINE.status()
-    log("KRONOS-7 v3.2 · start")
+    log("KRONOS-7 v3.4 · start")
     log(f"Sprzęt: {st['hardware']['gpu_name']} · VRAM {st['hardware']['vram_gb']} GB · RAM {st['hardware']['ram_gb']} GB")
     log(f"AI: {st['backend'] or 'brak (zainstaluj Ollamę)'} · model: {st['model'] or '—'} · zalecany: {st['recommended']}")
     log(st["reason"])
     srv = ThreadingHTTPServer(("127.0.0.1", port), H)
     threading.Thread(target=scheduler, daemon=True).start()
+    if CFG.get("live_air", {}).get("enabled", True) and os.environ.get("KRONOS_NO_LIVE") != "1":
+        AIR.start(); log(f"Samoloty wojskowe na żywo: co {AIR.interval} s, gdy terminal jest otwarty.")
     url = f"http://127.0.0.1:{port}"
     log(f"Terminal: {url}")
     if CFG.get("open_browser", True) and os.environ.get("KRONOS_NO_BROWSER") != "1":
