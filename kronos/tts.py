@@ -39,7 +39,11 @@ class TTS:
         self.log = log
         self.job = {"active": False, "what": "", "pct": 0, "err": None}
         self.procs = {}                       # voice -> (Popen, lock)
-        self.mode = "json"; self.last_err = None
+        self.last_err = None
+        try:   # zapamiętany tryb (na części komputerów z Windows działa tylko jednorazowy)
+            self.mode = "once" if (self.dir / "mode.txt").read_text().strip() == "once" else "json"
+        except Exception:
+            self.mode = "json"
         self.lock = threading.Lock()
 
     # ------------------------------------------------ instalacja
@@ -210,6 +214,8 @@ class TTS:
                 self.log(i18n.L(f"Głos: tryb stały Pipera nie działa ({self.last_err}) – przechodzę na tryb jednorazowy.",
                                 f"Voice: Piper persistent mode failed ({self.last_err}) – switching to one-shot mode."))
                 self.mode = "once"
+                try: (self.dir / "mode.txt").write_text("once")
+                except Exception: pass
         if b is None and self.mode == "once":
             b = self._synth_once(text, voice, ls, speaker)
         if b:
