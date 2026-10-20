@@ -1987,7 +1987,8 @@ function splitText(t) {   // kawałki ~300 znaków po zdaniach – pierwszy dźw
 }
 async function ttsChunk(text, voice) {
   try { const r = await fetch("/api/tts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, voice }) });
-    if (!r.ok) return null; return await audioCtx().decodeAudioData(await r.arrayBuffer()); } catch (e) { return null; }
+    if (!r.ok) { try { SPK.err = (await r.json()).error; } catch (e2) { SPK.err = "HTTP " + r.status; } return null; }
+    return await audioCtx().decodeAudioData(await r.arrayBuffer()); } catch (e) { SPK.err = String(e && e.message || e); return null; }
 }
 function fxChain(c) {   // „komputer pokładowy”: pasmo radiowe, lekka kompresja i krótki metaliczny pogłos
   const inp = c.createGain(), hp = c.createBiquadFilter(), lp = c.createBiquadFilter(), pk = c.createBiquadFilter(), comp = c.createDynamicsCompressor(), out = c.createGain();
@@ -2024,7 +2025,9 @@ async function speak(text, cb = {}) {
   for (let i = 0; i < parts.length; i++) {
     const buf = await next; if (my !== SPK.gen) return;
     next = i + 1 < parts.length ? ttsChunk(parts[i + 1], v) : null;
-    if (!buf) { browserSpeak(parts.slice(i).join(" "), my); return; }     // Piper nie odpowiedział – dokończ głosem przeglądarki
+    if (!buf) {     // Piper nie odpowiedział – dokończ głosem przeglądarki i powiedz dlaczego
+      airToast({ at: Date.now(), kind: "alarm", head: TX("GŁOS PIPER"), msg: TX("Piper nie zadziałał – czytam głosem przeglądarki.") + (SPK.err ? " " + SPK.err : "") }); loadTTS();
+      browserSpeak(parts.slice(i).join(" "), my); return; }
     await playSpeech(buf, my); if (my !== SPK.gen) return;
   }
   endSpeak(my);
@@ -2086,7 +2089,7 @@ function renderTTS() {
         : `<button class="btn" type="button" data-tget="${v.id}" data-tlang="${v.lang}"${j.active ? " disabled" : ""}>${TX("POBIERZ")}</button>`) + `</span></div>`; };
   const mine = A(TTSC.voices).filter(v => v.lang === (LANG === "en" ? "en" : "pl")), other = A(TTSC.voices).filter(v => v.lang !== (LANG === "en" ? "en" : "pl"));
   $("#ttsVoices").innerHTML = mine.concat(other).map(row).join("");
-  $("#ttsProg").textContent = j.active ? `${TX("Pobieranie:")} ${j.what} · ${j.pct}%` : j.err ? TX("Błąd pobierania:") + " " + j.err : ttsEngine() === "piper" ? TX("Teraz czyta: Piper –") + " " + ((A(TTSC.voices).find(v => v.id === ttsVoiceId()) || {}).label || "") : TX("Teraz czyta: głos przeglądarki –") + " " + ((browserVoice() || {}).name || TX("brak głosu dla tego języka"));
+  $("#ttsProg").textContent = j.active ? `${TX("Pobieranie:")} ${j.what} · ${j.pct}%` : j.err ? TX("Błąd pobierania:") + " " + j.err : TTSC.err ? TX("Błąd Pipera:") + " " + TTSC.err : ttsEngine() === "piper" ? TX("Teraz czyta: Piper –") + " " + ((A(TTSC.voices).find(v => v.id === ttsVoiceId()) || {}).label || "") : TX("Teraz czyta: głos przeglądarki –") + " " + ((browserVoice() || {}).name || TX("brak głosu dla tego języka"));
   const bv = "speechSynthesis" in window ? speechSynthesis.getVoices() : [];
   $("#ttsBrowser").innerHTML = `<option value="">${TX("automatycznie – najlepszy dla języka")}</option>` + bv.slice().sort((a, b) => (a.lang.slice(0, 2) === (LANG === "en" ? "en" : "pl") ? -1 : 1) - (b.lang.slice(0, 2) === (LANG === "en" ? "en" : "pl") ? -1 : 1) || a.lang.localeCompare(b.lang))
     .map(v => `<option value="${esc0(v.name)}"${v.name === c.browser_voice ? " selected" : ""}>${esc0(v.lang)} · ${esc0(v.name)}</option>`).join("");

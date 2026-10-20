@@ -39,6 +39,7 @@ class TTS:
         self.log = log
         self.job = {"active": False, "what": "", "pct": 0, "err": None}
         self.procs = {}                       # voice -> (Popen, lock)
+        self.mode = "json"; self.last_err = None
         self.lock = threading.Lock()
 
     # ------------------------------------------------ instalacja
@@ -54,7 +55,7 @@ class TTS:
 
     def status(self):
         en = i18n.en()
-        return {"engine": bool(self.exe()), "job": dict(self.job), "default": DEFAULT,
+        return {"engine": bool(self.exe()), "job": dict(self.job), "default": DEFAULT, "err": self.last_err, "mode": self.mode,
                 "voices": [{"id": k, "label": v[1 if en else 0], "lang": v[2], "mb": v[4], "installed": self.has_voice(k)} for k, v in VOICES.items()]}
 
     def _download(self, url, dest, label, base_pct=0, span=100):
@@ -107,6 +108,11 @@ class TTS:
             self.log(i18n.L(f"Głos: nie udało się pobrać ({e}).", f"Voice: download failed ({e})."))
 
     # ------------------------------------------------ synteza
+    # Dwa tryby: „stały proces” (--json-input, szybki) i „jednorazowy” (tekst na wejście, plik na wyjście).
+    # Jeśli tryb stały nie zadziała (różnie bywa w Windows), przechodzimy na jednorazowy i zapisujemy przyczynę.
+    def _flags(self):
+        return 0x08000000 if os.name == "nt" else 0          # CREATE_NO_WINDOW – bez migającej konsoli w Windows
+
     def _proc(self, voice):
         with self.lock:
             p = self.procs.get(voice)
@@ -116,42 +122,100 @@ class TTS:
             if not exe or not self.has_voice(voice):
                 return None
             self.tmp.mkdir(parents=True, exist_ok=True)
-            flags = 0x08000000 if os.name == "nt" else 0          # CREATE_NO_WINDOW – bez migającej konsoli w Windows
-            pr = subprocess.Popen([str(exe), "--model", str(self.vdir / f"{voice}.onnx"), "--json-input", "--quiet"],
-                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, cwd=str(exe.parent), creationflags=flags)
+            errf = open(self.dir / "piper.log", "ab")
+            pr = subprocess.Popen([str(exe), "--model", str(self.vdir / f"{voice}.onnx"), "--json-input"],
+                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errf, cwd=str(exe.parent), creationflags=self._flags())
             p = (pr, threading.Lock())
             self.procs[voice] = p
             return p
 
-    def synth(self, text, voice, rate=1.0, speaker=None):
-        """Zwraca WAV (bytes) albo None. rate > 1 = szybciej."""
-        text = " ".join(str(text or "").split())[:2000]
-        if not text:
-            return None
+    def _log_tail(self):
+        try:
+            return (self.dir / "piper.log").read_bytes()[-600:].decode("utf-8", "replace").strip().splitlines()[-1][:240]
+        except Exception:
+            return ""
+
+    def _wait_file(self, out, sec=3.0):
+        end = time.time() + sec
+        while time.time() < end:
+            if out.exists() and out.stat().st_size > 44:
+                time.sleep(.03); return True
+            time.sleep(.02)
+        return False
+
+    def _synth_json(self, text, voice, ls, speaker):
         p = self._proc(voice)
         if not p:
             return None
         pr, lk = p
         out = self.tmp / f"{uuid.uuid4().hex}.wav"
-        req = {"text": text, "output_file": str(out), "length_scale": round(1 / max(.5, min(2.0, rate or 1.0)), 3)}
+        req = {"text": text, "output_file": str(out), "length_scale": ls}
         if speaker is not None:
             req["speaker_id"] = int(speaker)
         with lk:
             try:
                 pr.stdin.write((json.dumps(req, ensure_ascii=False) + "\n").encode("utf-8")); pr.stdin.flush()
                 line = pr.stdout.readline()          # Piper wypisuje ścieżkę gotowego pliku
-            except (BrokenPipeError, OSError):
-                self.procs.pop(voice, None); return None
-        if not line:
-            self.procs.pop(voice, None); return None
-        for _ in range(50):
-            if out.exists() and out.stat().st_size > 44:
-                break
-            time.sleep(.02)
+            except (BrokenPipeError, OSError) as e:
+                self.procs.pop(voice, None); self.last_err = f"json: {e} {self._log_tail()}"; return None
+        if not line or not self._wait_file(out):
+            self.procs.pop(voice, None)
+            try: pr.kill()
+            except Exception: pass
+            self.last_err = "json: " + (self._log_tail() or "brak pliku wyjściowego"); return None
         try:
-            b = out.read_bytes()
+            return out.read_bytes()
         finally:
             out.unlink(missing_ok=True)
+
+    def _synth_once(self, text, voice, ls, speaker):
+        exe = self.exe()
+        if not exe or not self.has_voice(voice):
+            return None
+        self.tmp.mkdir(parents=True, exist_ok=True)
+        out = self.tmp / f"{uuid.uuid4().hex}.wav"
+        cmd = [str(exe), "--model", str(self.vdir / f"{voice}.onnx"), "--output_file", str(out), "--length_scale", str(ls)]
+        if speaker is not None:
+            cmd += ["--speaker", str(int(speaker))]
+        try:
+            r = subprocess.run(cmd, input=(text + "\n").encode("utf-8"), capture_output=True, timeout=120, cwd=str(exe.parent), creationflags=self._flags())
+        except Exception as e:
+            self.last_err = f"run: {e}"; return None
+        if not self._wait_file(out, 1.0):
+            err = (r.stderr or b"").decode("utf-8", "replace").strip().splitlines()
+            if r.returncode in (3221225781, -1073741515):
+                self.last_err = i18n.L("brakuje bibliotek Microsoft Visual C++ – zainstaluj „VC++ Redistributable x64” ze strony Microsoftu (aka.ms/vs/17/release/vc_redist.x64.exe)",
+                                       "Microsoft Visual C++ libraries missing – install 'VC++ Redistributable x64' (aka.ms/vs/17/release/vc_redist.x64.exe)")
+            else:
+                self.last_err = f"run (kod {r.returncode}): " + (err[-1][:240] if err else "brak pliku wyjściowego")
+            return None
+        try:
+            return out.read_bytes()
+        finally:
+            out.unlink(missing_ok=True)
+
+    def synth(self, text, voice, rate=1.0, speaker=None):
+        """Zwraca WAV (bytes) albo None (przyczyna w self.last_err). rate > 1 = szybciej."""
+        text = " ".join(str(text or "").split())[:2000]
+        if not text:
+            return None
+        ls = round(1 / max(.5, min(2.0, rate or 1.0)), 3)
+        b = None
+        if self.mode != "once":
+            try:
+                b = self._synth_json(text, voice, ls, speaker)
+            except Exception as e:
+                self.last_err = f"json: {e}"; b = None
+            if b is None and self.exe() and self.has_voice(voice):
+                self.log(i18n.L(f"Głos: tryb stały Pipera nie działa ({self.last_err}) – przechodzę na tryb jednorazowy.",
+                                f"Voice: Piper persistent mode failed ({self.last_err}) – switching to one-shot mode."))
+                self.mode = "once"
+        if b is None and self.mode == "once":
+            b = self._synth_once(text, voice, ls, speaker)
+        if b:
+            self.last_err = None
+        elif self.last_err:
+            self.log(i18n.L(f"Głos: Piper nie wygenerował mowy – {self.last_err}", f"Voice: Piper produced no speech – {self.last_err}"))
         return b
 
     def stop_all(self):

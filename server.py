@@ -735,7 +735,7 @@ class H(BaseHTTPRequestHandler):
             v = b.get("voice") if b.get("voice") in tts.VOICES else c["voice_en" if i18n.en() else "voice_pl"]
             wav = TTS.synth(b.get("text"), v, float(b.get("rate") or c["rate"]))
             if not wav:
-                return self._json({"error": "tts", "installed": TTS.has_voice(v), "engine": bool(TTS.exe())}, 503)
+                return self._json({"error": TTS.last_err or ("brak głosu" if not TTS.has_voice(v) else "tts"), "installed": TTS.has_voice(v), "engine": bool(TTS.exe())}, 503)
             self.send_response(200)
             self.send_header("Content-Type", "audio/wav"); self.send_header("Content-Length", str(len(wav))); self.send_header("Cache-Control", "no-store")
             self.end_headers(); self.wfile.write(wav); return
