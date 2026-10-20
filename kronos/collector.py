@@ -103,7 +103,8 @@ def news(cfg, log, max_age_h=48):
                 got.append({"title": e["title"], "summary": e["summary"], "url": e["link"],
                             "date": (e["date"] or _now()).isoformat(), "source": feed["name"],
                             "rating": feed.get("rating", "C"), "hint": feed.get("sector", "world")})
-            return feed["name"], got, None
+            got.sort(key=lambda x: x["date"], reverse=True)
+            return feed["name"], got[:feed.get("max_items", 25)], None      # najwyżej 25 najnowszych z jednego źródła – duże serwisy nie zagłuszają reszty
         except Exception as ex:
             return feed["name"], [], str(ex)[:120]
 

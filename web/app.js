@@ -1,4 +1,4 @@
-/* KRONOS-7 v3.14 — interfejs terminala. Dane: lokalny serwer (/api/*). */
+/* KRONOS-7 v3.15 — interfejs terminala. Dane: lokalny serwer (/api/*). */
 (function () {
 "use strict";
 const $ = s => document.querySelector(s);
@@ -32,6 +32,13 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem("k7-" + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem("k7-" + k, JSON.stringify(v)); } catch (e) {} }
 };
+/* tryb oszczędny (bez efektów, rzadsze rysowanie) i wstrzymanie animacji, gdy okno nie jest aktywne – mniej pracy dla karty graficznej */
+let ECO = !!store.get("eco", false), BGPAUSE = store.get("bgpause", true) !== false, BG = false;
+function setEco(on) { ECO = !!on; store.set("eco", ECO); document.body.classList.toggle("eco", ECO); if (typeof markStatic === "function") markStatic(); }
+function bgState() { BG = BGPAUSE && !document.hasFocus(); document.body.classList.toggle("bgp", BG); }
+document.body.classList.toggle("eco", ECO);
+window.addEventListener("blur", bgState); window.addEventListener("focus", bgState); setTimeout(bgState, 1500);
+document.addEventListener("keydown", e => { if ((e.key === "e" || e.key === "E") && !e.ctrlKey && !e.altKey && !e.metaKey && !/input|textarea|select/i.test(document.activeElement.tagName)) { setEco(!ECO); if (typeof beep === "function") beep(ECO ? 600 : 1200, .06); } });
 const api = (p, body) => fetch(p, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}).then(r => r.json());
 
 const SEC = { all: TX("WSZYSTKO"), conflict: TX("KONFLIKTY"), geo: TX("GEOPOLITYKA"), human: TX("HUMANITARNE"), nature: TX("NATURA"), space: TX("KOSMOS"), ai: TX("AI"), cyber: TX("CYBER"), watch: TX("OBSERWOWANE") };
@@ -461,19 +468,51 @@ const TCV2 = document.createElement("canvas"); TCV2.id = "tileCanvas2"; TCV2.cla
 const TC2 = TCV.getContext("2d"), TC3 = TCV2.getContext("2d"), TILES = new Map(); let tileDirty = false, tileSig = "";
 const ATTR = document.createElement("div"); ATTR.className = "mapattr"; ATTR.hidden = true; $("#mapbox").appendChild(ATTR);
 function tileUrl(u, z, x, y) { return u.replace("{z}", z).replace("{x}", x).replace("{y}", y).replace("{r}", DPR > 1 ? "@2x" : ""); }
-/* filtr (przyciemnienie satelity, odwrócenie OSM) nakładany raz na kafelek przy wczytaniu – potem rysowanie to zwykłe kopiowanie obrazka */
-function tileBake(im, flt) {
-  if (!flt) return im;
-  try { const c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight; const x = c.getContext("2d"); x.filter = flt; x.drawImage(im, 0, 0); return c; } catch (e) { return im; }
+/* filtr (przyciemnienie satelity, odwrócenie OSM) liczony raz na kafelek w osobnym wątku (Web Worker) jako macierz kolorów –
+   bez filtrów CSS, które bez akceleracji potrafią zablokować przeglądarkę na sekundy */
+function fltMatrix(f) {
+  let M = [1, 0, 0, 0, 1, 0, 0, 0, 1], o = [0, 0, 0];
+  const mul = (A, b2) => { const R = []; for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) R[i * 3 + j] = A[i * 3] * M[j] + A[i * 3 + 1] * M[3 + j] + A[i * 3 + 2] * M[6 + j];
+    const ro = [0, 1, 2].map(i => A[i * 3] * o[0] + A[i * 3 + 1] * o[1] + A[i * 3 + 2] * o[2] + b2[i]); M = R; o = ro; };
+  for (const m of String(f || "").matchAll(/([a-z-]+)\(([-\d.]+)(deg)?\)/g)) { const v = +m[2];
+    if (m[1] === "invert") mul([1 - 2 * v, 0, 0, 0, 1 - 2 * v, 0, 0, 0, 1 - 2 * v], [v, v, v]);
+    else if (m[1] === "brightness") mul([v, 0, 0, 0, v, 0, 0, 0, v], [0, 0, 0]);
+    else if (m[1] === "contrast") mul([v, 0, 0, 0, v, 0, 0, 0, v], [.5 - .5 * v, .5 - .5 * v, .5 - .5 * v]);
+    else if (m[1] === "saturate") mul([.213 + .787 * v, .715 - .715 * v, .072 - .072 * v, .213 - .213 * v, .715 + .285 * v, .072 - .072 * v, .213 - .213 * v, .715 - .715 * v, .072 + .928 * v], [0, 0, 0]);
+    else if (m[1] === "hue-rotate") { const r = v * Math.PI / 180, c = Math.cos(r), sn = Math.sin(r);
+      mul([.213 + c * .787 - sn * .213, .715 - c * .715 - sn * .715, .072 - c * .072 + sn * .928, .213 - c * .213 + sn * .143, .715 + c * .285 + sn * .140, .072 - c * .072 - sn * .283, .213 - c * .213 - sn * .787, .715 - c * .715 + sn * .715, .072 + c * .928 + sn * .072], [0, 0, 0]); } }
+  return M.concat(o.map(x => x * 255));
 }
+const TWORK = (() => { try {
+  if (!window.OffscreenCanvas || !window.createImageBitmap) return null;
+  const src = `onmessage = async e => { const { id, url, m } = e.data; try {
+      const r = await fetch(url); if (!r.ok) throw 0; const bm = await createImageBitmap(await r.blob());
+      if (!m) { postMessage({ id, bm }, [bm]); return; }
+      const c = new OffscreenCanvas(bm.width, bm.height), x = c.getContext("2d"); x.drawImage(bm, 0, 0); bm.close();
+      const d = x.getImageData(0, 0, c.width, c.height), p = d.data;
+      for (let i = 0; i < p.length; i += 4) { const R = p[i], G = p[i + 1], B = p[i + 2];
+        p[i] = m[0] * R + m[1] * G + m[2] * B + m[9]; p[i + 1] = m[3] * R + m[4] * G + m[5] * B + m[10]; p[i + 2] = m[6] * R + m[7] * G + m[8] * B + m[11]; }
+      x.putImageData(d, 0, 0); const out = c.transferToImageBitmap(); postMessage({ id, bm: out }, [out]);
+    } catch (err) { postMessage({ id, bad: 1 }); } };`;
+  const w = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" })));
+  w.onmessage = e => { const t = TWAIT.get(e.data.id); TWAIT.delete(e.data.id); if (!t) { if (e.data.bm) e.data.bm.close(); return; }
+    if (e.data.bad) { t.bad = 1; return; } t.px = e.data.bm; t.pw = e.data.bm.width; t.ph = e.data.bm.height; t.ok = 1; tileDirty = true; };
+  return w; } catch (e) { return null; } })();
+const TWAIT = new Map(), FLTM = {}; let twId = 0;
 function tileGet(key, url, flt) {
   let im = TILES.get(key);
   if (im) { if (im.ok && TILES.size > 200) { TILES.delete(key); TILES.set(key, im); } return im; }   // LRU
-  im = new Image(); im.decoding = "async";
-  im.onload = () => { (im.decode ? im.decode() : Promise.resolve()).catch(() => {}).then(() => { im.px = tileBake(im, flt); im.pw = im.naturalWidth; im.ph = im.naturalHeight; if (flt) { im.onerror = null; im.src = ""; } im.ok = 1; tileDirty = true; }); };
-  im.onerror = () => { im.bad = 1; };
-  im.src = url; TILES.set(key, im);
-  while (TILES.size > 420) { const k0 = TILES.keys().next().value, o = TILES.get(k0); TILES.delete(k0); if (o && !o.ok) o.src = ""; }
+  if (TWORK) { im = {}; const id = ++twId; TWAIT.set(id, im); im.id = id;
+    TWORK.postMessage({ id, url: new URL(url, location.href).href, m: flt ? (FLTM[flt] || (FLTM[flt] = fltMatrix(flt))) : null }); }
+  else { im = new Image(); im.decoding = "async"; const m = flt ? (FLTM[flt] || (FLTM[flt] = fltMatrix(flt))) : null;
+    im.onload = () => { (im.decode ? im.decode() : Promise.resolve()).catch(() => {}).then(() => { im.px = im; im.pw = im.naturalWidth; im.ph = im.naturalHeight;
+      if (m) { try { const c = document.createElement("canvas"); c.width = im.pw; c.height = im.ph; const x = c.getContext("2d"); x.drawImage(im, 0, 0); const d = x.getImageData(0, 0, c.width, c.height), p = d.data;
+        for (let i = 0; i < p.length; i += 4) { const R = p[i], G = p[i + 1], B = p[i + 2]; p[i] = m[0] * R + m[1] * G + m[2] * B + m[9]; p[i + 1] = m[3] * R + m[4] * G + m[5] * B + m[10]; p[i + 2] = m[6] * R + m[7] * G + m[8] * B + m[11]; }
+        x.putImageData(d, 0, 0); im.px = c; } catch (e) {} }
+      im.ok = 1; tileDirty = true; }); };
+    im.onerror = () => { im.bad = 1; }; im.src = url; }
+  TILES.set(key, im);
+  while (TILES.size > 420) { const k0 = TILES.keys().next().value, o = TILES.get(k0); TILES.delete(k0); if (o) { if (o.id) TWAIT.delete(o.id); if (o.px && o.px.close) o.px.close(); if (o.src && !o.ok) o.src = ""; } }
   return im;
 }
 function drawTiles(force) {
@@ -642,15 +681,20 @@ function drawSatSel(k) {
   CX.beginPath(); gp({ type: "LineString", coordinates: SELTRK.pts }); CX.setLineDash([4 / (vS * k), 3 / (vS * k)]); CX.lineWidth = 1.4 / (vS * k); CX.strokeStyle = "rgba(111,228,255,.85)"; CX.stroke(); CX.setLineDash([]);
   CX.restore(); CX.setTransform(DPR, 0, 0, DPR, 0, 0);
 }
+/* pętla rysowania: najwyżej 30 klatek/s (tryb oszczędny 10, okno w tle 2), rysuje tylko gdy coś się zmieniło */
+let lastFrame = 0;
 function frame(t) {
   requestAnimationFrame(frame);
   if (document.hidden || view !== "map" || mapHidden()) return;
+  const slow = ECO || BG;
+  if (t - lastFrame < (BG ? 500 : ECO ? 100 : 33)) return;
+  lastFrame = t;
   if (tileDirty) { tileDirty = false; drawTiles(true); }
-  if (t - drCache > 4000 && layerOn.vessel && SHIPS.size) staticDirty = true;
+  if (t - drCache > (BG ? 15000 : ECO ? 10000 : 4000) && layerOn.vessel && SHIPS.size) staticDirty = true;
   const live = (AIR.ok || REPLAY.on) && layerOn.air;
   const satSel = selected && /^(s|sc):/.test(selected);
-  const msPulse = layerOn.marsec && MS.d && t - lastDraw > 250 && A(MS.d.items).some(x => !x.warn && x.t > Date.now() - 2 * 864e5);
-  if (needDraw || staticDirty || msPulse || (live && t - lastDraw > 250) || (satSel && t - lastDraw > 2000)) { needDraw = false; lastDraw = t; drawCanvas(); }
+  const msPulse = !slow && layerOn.marsec && MS.d && t - lastDraw > 500 && A(MS.d.items).some(x => !x.warn && x.t > Date.now() - 2 * 864e5);
+  if (needDraw || staticDirty || msPulse || (live && t - lastDraw > (slow && !REPLAY.on ? 2000 : 250)) || (satSel && t - lastDraw > 2000)) { needDraw = false; lastDraw = t; drawCanvas(); }
 }
 requestAnimationFrame(frame);
 window.K7DBG = { draw: () => { const a = performance.now(); staticDirty = true; drawCanvas(); return performance.now() - a; }, air: () => { const a = performance.now(); drawCanvas(); return performance.now() - a; } };
@@ -1900,6 +1944,7 @@ async function openSettings() {
   $("#setModel").innerHTML = [`<option value="auto">${TX("AUTOMATYCZNIE (zalecany:")} ${esc(SET.recommended || "?")})</option>`].concat(A(SET.installed).map(m => `<option value="${esc(m)}">${esc(m)}</option>`)).join("");
   $("#setModel").value = A(SET.installed).includes(SET.model) ? SET.model : "auto";
   $("#setPull").checked = !!SET.auto_pull; $("#setMsg").textContent = "";
+  $("#setAiBg").value = SET.ai_bg || "after"; $("#setUnload").checked = !!SET.ai_unload; $("#setEco").checked = ECO; $("#setBgPause").checked = BGPAUSE;
   $("#setLang").value = LANG;
   $("#setScope").value = SET.ais_scope || "world";
   $("#setQth").value = SET.qth ? (SET.qth.loc || `${SET.qth.lat}, ${SET.qth.lon}`) : "";
@@ -1921,10 +1966,12 @@ $("#setVol").addEventListener("input", () => { applySound(); beep(1200, .06); })
 $("#setHum").addEventListener("change", applySound);
 $("#setChat").addEventListener("change", () => { applySound(); chatter(30); });
 $("#setAisClr").addEventListener("click", async () => { const r = await saveSettings({ ais_clear: true }); $("#setMsg").textContent = r.ok ? TX("Klucz usunięty.") : r.error; $("#setAisClr").hidden = true; $("#setAis").placeholder = TX("wklej klucz"); });
+$("#setEco").addEventListener("change", () => setEco($("#setEco").checked));
+$("#setBgPause").addEventListener("change", () => { BGPAUSE = $("#setBgPause").checked; store.set("bgpause", BGPAUSE); bgState(); });
 $("#setForm").addEventListener("submit", async e => {
   e.preventDefault(); applySound();
   const newLang = $("#setLang").value;
-  const r = await saveSettings({ ...notifyBody(), qth: $("#setQth").value, ais_scope: $("#setScope").value, language: newLang, aisstream_key: $("#setAis").value.trim(), callsign: $("#setCall").value, name: $("#setName").value, model: $("#setModel").value, auto_pull: $("#setPull").checked,
+  const r = await saveSettings({ ...notifyBody(), qth: $("#setQth").value, ais_scope: $("#setScope").value, language: newLang, aisstream_key: $("#setAis").value.trim(), callsign: $("#setCall").value, name: $("#setName").value, model: $("#setModel").value, auto_pull: $("#setPull").checked, ai_bg: $("#setAiBg").value, ai_unload: $("#setUnload").checked,
     refresh_times: ["#setT1", "#setT2", "#setT3"].map(s2 => $(s2).value).filter(Boolean) });
   if (r.ok) { beep(1400, .08); $("#setMsg").textContent = TX("Zapisano."); if (newLang !== LANG) { store.set("lang", newLang); setTimeout(() => location.reload(), 400); return; } pollStatus(); computePasses(); setTimeout(closeSettings, 600); }
   else { beep(300, .2, "sawtooth"); $("#setMsg").textContent = r.error || TX("Nie udało się zapisać."); }
@@ -2019,6 +2066,7 @@ function runCmd(c) {
       else if (mode === "flat") svg.transition().duration(reduce ? 0 : 160).call(zoom.scaleBy, Math.pow(1.3, +a || 0));
       else { rot = [rot[0] - (+a || 0) * 8, rot[1]]; globe.rotate(rot); redraw(); }
       break;
+    case "eco": setEco(a === "toggle" ? !ECO : a === "on"); break;
     case "replay":
       if (a === "toggle") REPLAY.on ? replayClose() : replayOpen();
       else if (a === "open") { if (!REPLAY.on) replayOpen(); }
@@ -2390,10 +2438,10 @@ $("#offGo").addEventListener("click", async () => { const world = $("#offArea").
   const r = await api("/api/tiles", { act: "start", group: $("#offGroup").value, bbox: world ? [-180, -85, 180, 85] : viewBBox(), zmax: +$("#offZoom").value, retina: DPR > 1 });
   if (!r.ok) $("#offMsg").textContent = r.error || TX("błąd"); else beep(1400, .08); offRefresh(); });
 $("#offStop").addEventListener("click", async () => { await api("/api/tiles", { act: "cancel" }); setTimeout(offRefresh, 800); });
-$("#offClear").addEventListener("click", async () => { await api("/api/tiles", { act: "clear", group: $("#offGroup").value }); TILES.clear(); tileSig = ""; markStatic(); offRefresh(); });
+$("#offClear").addEventListener("click", async () => { await api("/api/tiles", { act: "clear", group: $("#offGroup").value }); TILES.forEach(o => o.px && o.px.close && o.px.close()); TILES.clear(); tileSig = ""; markStatic(); offRefresh(); });
 
 /* ------------------------------------------------------------ okno ŹRÓDŁA I INTEGRACJE */
-const INTG_FIELDS = ["stadia_key", "kystverket", "ais_tcp", "aishub_user", "alerts_token", "ua_watch", "faa_id", "faa_secret", "notam_locs", "gfw_token", "tg_channels", "adsb_url", "ais_port", "aprs_on", "aprs_km", "ha_webhook",
+const INTG_FIELDS = ["stadia_key", "kystverket", "ais_tcp", "aishub_user", "alerts_token", "ua_watch", "faa_id", "faa_secret", "notam_locs", "gfw_token", "adsb_url", "ais_port", "aprs_on", "aprs_km", "ha_webhook",
   "imap_host", "imap_port", "imap_user", "imap_pass", "imap_folder", "imap_senders", "imap_days"];
 const INTG_SECRET = new Set(["alerts_token", "gfw_token", "faa_secret", "imap_pass"]);
 let INTG = null;
@@ -2403,8 +2451,24 @@ async function openIntg() {
     if (el.type === "checkbox") el.checked = !!INTG[k];
     else if (INTG_SECRET.has(k)) { el.value = ""; el.placeholder = INTG[k] ? TX("ustawiony") + " (" + INTG[k] + ") – " + TX("wpisz nowy, aby zmienić") : el.dataset.ph || ""; }
     else { el.value = INTG[k] || ""; if (INTG.defaults[k]) el.placeholder = INTG.defaults[k]; } });
-  renderIntgStatus(); $("#intgModal").hidden = false; $("#intgClose").focus();
+  renderTgCat(); renderIntgStatus(); $("#intgModal").hidden = false; $("#intgClose").focus();
 }
+/* katalog kanałów Telegram – lista z zaznaczaniem, pogrupowana regionami */
+function renderTgCat() {
+  const cat = A(INTG.tg_catalog), known = new Set(cat.map(c => c.ch.toLowerCase()));
+  const cur = String(INTG.tg_channels || INTG.defaults.tg_channels || "").split(/[,\s]+/).filter(Boolean), on = new Set(cur.map(x => x.toLowerCase()));
+  const groups = {}; cat.forEach(c => (groups[c.g] = groups[c.g] || []).push(c));
+  $("#tgCat").innerHTML = Object.entries(groups).map(([g, cs]) => `<p class="tgg" data-tgg="${g}" title="${TX("kliknij, aby zaznaczyć lub odznaczyć całą grupę")}">${TX((INTG.tg_groups || {})[g] || g)}</p>` + cs.map(c =>
+    `<label class="chk"><input type="checkbox" data-tg="${esc(c.ch)}"${on.has(c.ch.toLowerCase()) ? " checked" : ""}> <span>${esc(TX(c.name))} <small>@${esc(c.ch)} · ${esc(TX(c.type))}</small></span></label>`).join("")).join("");
+  $("#ig_tg_extra").value = cur.filter(x => !known.has(x.toLowerCase())).join(", ");
+  $("#tgCat").querySelectorAll("[data-tgg]").forEach(h => h.addEventListener("click", () => { const bs = [...$("#tgCat").querySelectorAll(`[data-tg]`)].filter(b => cat.find(c => c.ch === b.dataset.tg).g === h.dataset.tgg), v = !bs.every(b => b.checked); bs.forEach(b => b.checked = v); tgCount(); }));
+  $("#tgCat").querySelectorAll("[data-tg]").forEach(b => b.addEventListener("change", tgCount)); tgCount();
+}
+function tgCount() { $("#tgCount").textContent = TX("Zaznaczone:") + " " + $("#tgCat").querySelectorAll("[data-tg]:checked").length; }
+function tgValue() { return [...$("#tgCat").querySelectorAll("[data-tg]:checked")].map(b => b.dataset.tg).concat($("#ig_tg_extra").value.split(/[,\s]+/).map(x => x.trim().replace(/^@|.*\//g, "")).filter(Boolean)).join(", "); }
+$("#tgDef").addEventListener("click", () => { $("#tgCat").querySelectorAll("[data-tg]").forEach(b => b.checked = !!A(INTG.tg_catalog).find(c => c.ch === b.dataset.tg && c.on)); tgCount(); });
+$("#tgAll").addEventListener("click", () => { $("#tgCat").querySelectorAll("[data-tg]").forEach(b => b.checked = true); tgCount(); });
+$("#tgNone").addEventListener("click", () => { $("#tgCat").querySelectorAll("[data-tg]").forEach(b => b.checked = false); tgCount(); });
 function renderIntgStatus() {
   const st = (INTG && INTG.status) || {}, N = { ua_alerts: TX("Alarmy UA"), deepstate: "DeepStateMap", notam: "NOTAM (FAA)", gfw: "Global Fishing Watch", telegram: "Telegram OSINT",
     adsb: "ADS-B", ais: "AIS (UDP)", aprs: "APRS-IS", aishub: "AISHub", mail: TX("Poczta (IMAP)"), ha: "Home Assistant" };
@@ -2414,6 +2478,7 @@ function renderIntgStatus() {
 }
 async function saveIntg() {
   const body = {}; INTG_FIELDS.forEach(k => { const el = $("#ig_" + k); if (!el) return; body[k] = el.type === "checkbox" ? el.checked : el.value; });
+  if ($("#tgCat").children.length) body.tg_channels = tgValue();
   $("#igMsg").textContent = TX("Zapisuję…"); try { INTG = await api("/api/intg", body); $("#igMsg").textContent = TX("Zapisano. Źródła odświeżą się w ciągu minuty."); beep(1400, .08); } catch (e) { $("#igMsg").textContent = TX("Nie udało się zapisać."); }
   INTG_FIELDS.forEach(k => { if (INTG_SECRET.has(k)) { const el = $("#ig_" + k); el.value = ""; el.placeholder = INTG[k] ? TX("ustawiony") + " (" + INTG[k] + ")" : ""; } });
   renderIntgStatus(); setTimeout(async () => { try { INTG = await api("/api/intg"); renderIntgStatus(); } catch (e) {} pollIntel(); pollSdr(); }, 6000);
@@ -2476,7 +2541,7 @@ function boot(done) {
   let seen = false; try { seen = sessionStorage.getItem("k7-boot") === "1"; } catch (e) { seen = true; }
   if (!needSetup && (seen || reduce)) return done();
   const B = $("#boot"); B.hidden = false; const e = STATUS ? STATUS.engine : null, C = CURRENT || {};
-  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.14"), TX("TEST PAMIĘCI ........ OK"),
+  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.15"), TX("TEST PAMIĘCI ........ OK"),
     TX("PROCESOR GRAFICZNY ..") + " " + (e ? TX(e.hardware.gpu_name) + (e.hardware.vram_gb ? " / " + e.hardware.vram_gb + " " + TX("GB") : "") : "?"),
     TX("RDZEŃ ANALITYCZNY ...") + " " + (e && e.model ? e.model.toUpperCase() : TX("NIEAKTYWNY")),
     TX("BAZA KONFLIKTÓW .....") + " " + A(C.conflicts).length + " " + TX("WĘZŁÓW"), TX("FRONTY ..............") + " " + A(C.fronts).length + " " + TX("TEATRÓW"),

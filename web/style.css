@@ -528,3 +528,20 @@ body.xeneon .maptools .btn{font-size:15px;padding:1px 6px;white-space:nowrap}
 .off-body{padding:12px 16px;display:flex;flex-direction:column;gap:7px;overflow:auto}
 .off-body select{width:100%}
 .offbar{height:6px;background:var(--faint,#163321);border:1px solid var(--phos-dim)}.offbar>div{height:100%;width:0;background:var(--amber)}
+
+/* tryb oszczędny: bez poświaty, linii skanowania, winiety i płynnych animacji */
+body.eco::after,body.eco::before{display:none}
+body.eco *{text-shadow:none!important}
+body.eco #map .fline{filter:none}
+body.eco #map .pulse{display:none}
+body.eco .ticker-in,body.bgp .ticker-in{animation-timing-function:steps(240)}
+body.eco .livedot,body.eco.alert::before{animation:none}
+/* okno w tle: animacje stoją */
+body.bgp *:not(.ticker-in){animation-play-state:paused!important}
+.set-body .chk{flex-wrap:wrap}.set-body .chk small{flex-basis:100%;padding-left:24px;margin-top:-4px}
+
+.tgcat{max-height:calc(330*var(--u));overflow:auto;border:1px solid var(--phos-faint);padding:4px 8px}
+.tgcat .tgg{font-family:var(--f-display);letter-spacing:.12em;color:var(--phos-dim);margin:6px 0 2px;cursor:pointer}
+.tgcat .chk{font-size:calc(12*var(--u))!important;align-items:flex-start!important}.tgcat .chk small{color:var(--phos-dim)}
+.intg input[type=checkbox]{width:auto;flex:none;margin-top:3px}
+.intg .chk{justify-content:flex-start}.intg .chk>span{flex:1;min-width:0}

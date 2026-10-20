@@ -242,6 +242,16 @@ class Engine:
                 self.refresh()
         threading.Thread(target=run, daemon=True).start()
 
+    def unload(self):
+        """Zwalnia model z pamięci karty graficznej (Ollama: keep_alive=0). Przy następnym użyciu model wczyta się ponownie (kilka–kilkanaście sekund)."""
+        if self.backend != "ollama" or not self.model:
+            return False
+        try:
+            _http(self.cfg["ai"]["ollama_url"] + "/api/generate", {"model": self.model, "keep_alive": 0}, timeout=20)
+            return True
+        except Exception:
+            return False
+
     # --- wywołania
     def _ollama_body(self, messages, schema, stream, temperature):
         body = {"model": self.model, "messages": messages, "stream": stream,

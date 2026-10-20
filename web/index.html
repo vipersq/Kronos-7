@@ -111,8 +111,11 @@
         <p class="hint">Darmowy token do użytku niekomercyjnego: globalfishingwatch.org/our-apis → API Portal → Create token. Wykrycia radarowe (SAR) statków bez AIS, z kilkudniowym opóźnieniem.</p>
         <input id="ig_gfw_token" type="password" autocomplete="off" data-ph="token GFW" placeholder="token GFW">
         <p class="sat-h">TELEGRAM OSINT</p>
-        <label for="ig_tg_channels">Kanały publiczne <small>nazwy po przecinku (z adresu t.me/NAZWA); puste = domyślny zestaw</small></label>
-        <input id="ig_tg_channels" autocomplete="off">
+        <p class="hint">Zaznacz kanały do śledzenia (sprawdzone, aktywne). Więcej kanałów = więcej pracy dla AI przy analizie – najpierw przetwarzane są najnowsze wpisy ze źródeł oficjalnych i OSINT. <span id="tgCount"></span></p>
+        <div class="seg"><button type="button" class="btn" id="tgDef">DOMYŚLNE</button><button type="button" class="btn" id="tgAll">WSZYSTKIE</button><button type="button" class="btn" id="tgNone">ŻADNE</button></div>
+        <div class="tgcat" id="tgCat"></div>
+        <label for="ig_tg_extra">Inne kanały spoza listy <small>nazwy po przecinku (z adresu t.me/NAZWA); kanał musi mieć publiczny podgląd</small></label>
+        <input id="ig_tg_extra" autocomplete="off" spellcheck="false">
       </div>
       <div class="sat-col">
         <p class="sat-h">MOJE ODBIORNIKI (SDR)</p>
@@ -219,6 +222,13 @@
       <label for="setModel">Model AI</label>
       <select id="setModel"></select>
       <label class="chk"><input id="setPull" type="checkbox"> Automatycznie pobieraj zalecany model</label>
+      <fieldset class="set-group"><legend>Obciążenie karty graficznej</legend>
+        <label for="setAiBg">AI w tle (Telegram OSINT, alerty morskie) <small>razem z analizą = karta pracuje tylko w godzinach analizy; nowe posty do tego czasu widać bez streszczenia AI</small></label>
+        <select id="setAiBg"><option value="after">TYLKO RAZEM Z GŁÓWNĄ ANALIZĄ</option><option value="always">NA BIEŻĄCO (co ok. 10 min)</option></select>
+        <label class="chk"><input id="setUnload" type="checkbox"> Zwalniaj model z karty od razu po analizie <small>pamięć karty wolna np. do gier; pytania do AI po analizie startują kilka sekund dłużej</small></label>
+        <label class="chk"><input id="setEco" type="checkbox"> Tryb oszczędny na tym urządzeniu <small>bez poświaty, linii skanowania i animacji; mapa odświeżana rzadziej (samoloty co 2 s). Skrót: klawisz E</small></label>
+        <label class="chk"><input id="setBgPause" type="checkbox"> Gdy okno KRONOS nie jest aktywne – zatrzymaj animacje i zwolnij rysowanie <small>np. gdy grasz na drugim monitorze</small></label>
+      </fieldset>
       <label for="setAis">Klucz aisstream.io <small>statki na żywo z całego świata; darmowy klucz: aisstream.io → zaloguj przez GitHub → API Keys. Bez klucza widać tylko północny Bałtyk.</small></label>
       <div class="set-row"><input id="setAis" type="password" autocomplete="off" spellcheck="false" placeholder="wklej klucz"><button type="button" class="btn" id="setAisClr" hidden>USUŃ</button></div>
       <label for="setQth">QTH – Twoja lokalizacja <small>lokator Maidenhead (np. IO91) albo współrzędne „51.07, -1.79”; do przelotów satelitów</small></label>

@@ -103,7 +103,7 @@ AISTCP = sdr.AISTcp(log, intg_cfg, SEA)
 AISHUB = sdr.AISHub(log, intg_cfg, SEA)
 MAILIN = mailin.MailIn(DATA, log, intg_cfg, MARSEC)
 INTG_SECRET = ("alerts_token", "gfw_token", "faa_secret", "imap_pass")
-INTG_KEYS = {"alerts_token": 200, "gfw_token": 2000, "faa_id": 200, "faa_secret": 200, "notam_locs": 400, "tg_channels": 1000, "adsb_url": 300, "ais_port": 6,
+INTG_KEYS = {"alerts_token": 200, "gfw_token": 2000, "faa_id": 200, "faa_secret": 200, "notam_locs": 400, "tg_channels": 4000, "adsb_url": 300, "ais_port": 6,
              "aprs_on": 0, "aprs_km": 4, "ha_webhook": 400, "imap_host": 120, "imap_port": 5, "imap_user": 200, "imap_pass": 200, "imap_folder": 120,
              "imap_senders": 400, "imap_days": 3, "ua_watch": 400, "kystverket": 0, "ais_tcp": 300, "aishub_user": 80, "stadia_key": 80}
 
@@ -119,7 +119,9 @@ def intg_view():
             out[k] = ", ".join(v) if isinstance(v, list) else (v or "")
         else:
             out[k] = (v if v is not None else True) if k == "kystverket" else (v if v is not None else "")
-    out["defaults"] = {"notam_locs": ", ".join(intel.NOTAM_LOCS), "tg_channels": ", ".join(intel.TG_DEFAULT)}
+    out["defaults"] = {"notam_locs": ", ".join(intel.NOTAM_LOCS), "tg_channels": ", ".join(intel.TG_ON)}
+    out["tg_catalog"] = [{"ch": c[0], "name": c[1], "type": c[2], "g": c[3], "on": bool(c[4])} for c in intel.TG_CATALOG]
+    out["tg_groups"] = intel.TG_GROUPS
     out["status"] = intg_status()
     return out
 
@@ -142,7 +144,7 @@ def save_intg(body):
         if body.get("clear_" + k):
             c.pop(k, None); continue
         if k in ("notam_locs", "tg_channels"):
-            c[k] = [x.strip() for x in re.split(r"[,\s]+", str(v or "")) if x.strip()][:40]
+            c[k] = list(dict.fromkeys(x.strip() for x in re.split(r"[,\s]+", str(v or "")) if x.strip()))[:150 if k == "tg_channels" else 40]
         elif k in ("aprs_on", "kystverket"):
             c[k] = bool(v)
         else:
@@ -279,6 +281,14 @@ def run_refresh():
         JOB.update(running=True, started=datetime.now().isoformat(), error=None, pct=0, step="start")
         try:
             ENGINE.refresh()
+            if ENGINE.status().get("ready"):          # AI w tle (Telegram, alerty morskie) liczy się tu, razem z analizą – karta nie pracuje co 10 minut
+                JOB.update(step=i18n.L("AI: Telegram OSINT i alerty morskie", "AI: Telegram OSINT and maritime alerts"), pct=1)
+                try:
+                    n1 = TGOSINT.enrich(120, in_job=True); n2 = MARSEC.enrich(60, in_job=True)
+                    if n1 or n2:
+                        MARSEC.save(); log(i18n.L(f"AI w tle: {n1} wpisów z Telegrama, {n2} alertów morskich.", f"Background AI: {n1} Telegram posts, {n2} maritime alerts."))
+                except Exception as e:
+                    log(f"AI w tle: {e}")
             base = dict(STATE); base["marsec"] = MARSEC.brief(); base["osint_tg"] = TGOSINT.brief()
             st = analyst.Pipeline(CFG, ENGINE, log, progress).run(base)
             with STATE_LOCK:
@@ -298,6 +308,8 @@ def run_refresh():
             traceback.print_exc()
         finally:
             JOB.update(running=False, finished=datetime.now().isoformat())
+            if SETTINGS.get("ai_unload") and ENGINE.unload():
+                log(i18n.L("Model AI zwolniony z karty graficznej.", "AI model unloaded from the GPU."))
     threading.Thread(target=work, daemon=True).start()
     return True
 
@@ -387,7 +399,7 @@ def settings_view():
     st = ENGINE.status()
     return {"callsign": CFG["operator"]["callsign"], "name": CFG["operator"]["name"],
             "refresh_times": CFG.get("refresh_times", []), "model": CFG["ai"].get("model", "auto"),
-            "auto_pull": CFG["ai"].get("auto_pull", True), "installed": [m["name"] for m in st["installed"]],
+            "auto_pull": CFG["ai"].get("auto_pull", True), "ai_bg": SETTINGS.get("ai_bg", "after"), "ai_unload": bool(SETTINGS.get("ai_unload")), "installed": [m["name"] for m in st["installed"]],
             "recommended": st["recommended"], "configured": bool(CFG["operator"]["callsign"]),
             "ais_key": ("…" + SETTINGS["aisstream_key"][-4:]) if SETTINGS.get("aisstream_key") else "",
             "language": CFG.get("language", "pl"), "ais_scope": SETTINGS.get("ais_scope", "world"), "qth": SETTINGS.get("qth"),
@@ -490,7 +502,7 @@ CMDS = deque(maxlen=50)
 CMD_CV = threading.Condition()
 CMD_N = [0]
 UI = {"at": 0}
-CMD_OK = {"theater", "layer", "zoom", "replay", "briefing", "sitrep", "stop", "globe", "autozoom", "alert", "event", "sat", "voice", "audio", "ask", "view"}
+CMD_OK = {"theater", "layer", "zoom", "replay", "briefing", "sitrep", "stop", "globe", "autozoom", "alert", "event", "sat", "voice", "audio", "ask", "view", "eco"}
 
 
 def push_cmd(do, arg=""):
@@ -646,6 +658,10 @@ def save_settings(body):
         new["model"] = m
     if "auto_pull" in body:
         new["auto_pull"] = bool(body["auto_pull"])
+    if body.get("ai_bg") in ("after", "always"):
+        new["ai_bg"] = body["ai_bg"]
+    if "ai_unload" in body:
+        new["ai_unload"] = bool(body["ai_unload"])
     if body.get("ais_clear"):
         new.pop("aisstream_key", None)
     elif str(body.get("aisstream_key") or "").strip():
@@ -1089,7 +1105,7 @@ class H(BaseHTTPRequestHandler):
 def main():
     port = int(os.environ.get("KRONOS_PORT", CFG.get("port", 7707)))
     st = ENGINE.status()
-    log("KRONOS-7 v3.14 · start")
+    log("KRONOS-7 v3.15 · start")
     log(f"Sprzęt: {st['hardware']['gpu_name']} · VRAM {st['hardware']['vram_gb']} GB · RAM {st['hardware']['ram_gb']} GB")
     log(f"AI: {st['backend'] or 'brak (zainstaluj Ollamę)'} · model: {st['model'] or '—'} · zalecany: {st['recommended']}")
     log(st["reason"])
@@ -1105,8 +1121,8 @@ def main():
         log("Statki na żywo: Digitraffic (Bałtyk, bez klucza)" + (" + aisstream.io (świat)" if SETTINGS.get("aisstream_key") else "; świat po wpisaniu klucza aisstream.io w oknie OPERATOR"))
     HIST.start(AIR, SEA, lambda: STATE, lambda: MARKETS["data"], MARSEC)
     if os.environ.get("KRONOS_NO_LIVE") != "1" or os.environ.get("KRONOS_MARSEC") == "1":
-        MARSEC.start(ENGINE, lambda: JOB["running"])
-        TGOSINT.ai = ENGINE; TGOSINT.busy = lambda: JOB["running"]
+        MARSEC.start(ENGINE, lambda: JOB["running"], lambda: SETTINGS.get("ai_bg", "after"))
+        TGOSINT.ai = ENGINE; TGOSINT.busy = lambda: JOB["running"]; TGOSINT.bg = lambda: SETTINGS.get("ai_bg", "after")
         for src in (UAALERT, DEEPST, NOTAMS, DARKSAR, TGOSINT, LADSB, LAIS, APRSIS, MAILIN, AISTCP, AISHUB):
             src.start()
         HIST.extra = [("ua", UAALERT), ("osint", TGOSINT)]

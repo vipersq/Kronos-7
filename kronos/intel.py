@@ -290,13 +290,113 @@ class DarkSAR(Source):
 
 
 # ------------------------------------------------ Telegram OSINT (publiczny podgląd kanałów t.me/s/…)
-TG_DEFAULT = {   # kanał: (opis, rodzaj źródła – do oceny wiarygodności)
-    "kpszsu": ("Siły Powietrzne Ukrainy", "oficjalne UA"), "GeneralStaffZSU": ("Sztab Generalny ZSU", "oficjalne UA"),
-    "DeepStateUA": ("DeepState (UA, analitycy)", "OSINT UA"), "mod_russia": ("Ministerstwo Obrony Rosji", "oficjalne RU"),
-    "rybar": ("Rybar (rosyjski milbloger)", "milbloger RU"), "idfofficial": ("Siły Obronne Izraela", "oficjalne IL"),
-    "presstv": ("PressTV (media państwowe Iranu)", "propaganda IR"), "nexta_live": ("NEXTA (media BY/opozycja)", "media"),
-    "militarysummary": ("Military Summary", "agregator"), "war_monitor": ("War Monitor", "agregator"),
-}
+# Katalog publicznych kanałów Telegram (sprawdzone: mają podgląd t.me/s i publikują na bieżąco – X 2026).
+# (kanał, opis, rodzaj źródła – do oceny wiarygodności przez AI, grupa, domyślnie włączony)
+TG_GROUPS = {"ua": "UKRAINA", "ru": "ROSJA – OFICJALNE I MILBLOGERZY", "ruind": "ROSJA I BIAŁORUŚ – MEDIA NIEZALEŻNE", "by": "BIAŁORUŚ",
+             "me": "BLISKI WSCHÓD I IRAN", "osint": "OSINT I AGREGATORY (ŚWIAT)", "asia": "AZJA", "cyber": "CYBER"}
+TG_CATALOG = [
+    ("kpszsu", "Siły Powietrzne Ukrainy", "oficjalne UA", "ua", 1),
+    ("GeneralStaffZSU", "Sztab Generalny ZSU", "oficjalne UA", "ua", 1),
+    ("DIUkraine", "HUR – wywiad wojskowy Ukrainy", "oficjalne UA", "ua", 1),
+    ("SBUkr", "SBU – Służba Bezpieki Ukrainy", "oficjalne UA", "ua", 1),
+    ("DeepStateUA", "DeepState (analitycy, mapa frontu)", "OSINT UA", "ua", 1),
+    ("suspilnenews", "Suspilne – media publiczne", "media UA", "ua", 1),
+    ("ukrpravda_news", "Ukraińska Prawda", "media UA", "ua", 1),
+    ("KyivIndependent_official", "The Kyiv Independent (EN)", "media UA", "ua", 1),
+    ("CITeam", "Conflict Intelligence Team", "OSINT", "ua", 1),
+    ("dsns_telegram", "DSNS – służba ratunkowa", "oficjalne UA", "ua", 0),
+    ("VA_Kyiv", "Kijów – wojskowa administracja miasta", "władze obwodu UA", "ua", 0),
+    ("synegubov", "Charków – szef obwodu (Synehubow)", "władze obwodu UA", "ua", 0),
+    ("dnipropetrovskaODA", "Dniepr – administracja obwodu", "władze obwodu UA", "ua", 0),
+    ("zoda_gov_ua", "Zaporoże – administracja obwodu", "władze obwodu UA", "ua", 0),
+    ("khersonskaODA", "Chersoń – administracja obwodu", "władze obwodu UA", "ua", 0),
+    ("odeskaODA", "Odessa – administracja obwodu", "władze obwodu UA", "ua", 0),
+    ("uniannet", "UNIAN", "media UA", "ua", 0),
+    ("hromadske_ua", "Hromadske", "media UA", "ua", 0),
+    ("pravda_gerashchenko", "Anton Heraszczenko (EN)", "media UA", "ua", 0),
+    ("butusovplus", "Butusow Plus (dziennikarz wojskowy)", "media UA", "ua", 0),
+    ("Tsaplienko", "Andrij Capliienko (reporter wojenny)", "media UA", "ua", 0),
+    ("UkraineNow", "Ukraine NOW", "agregator UA", "ua", 0),
+    ("operativnoZSU", "Operatywnyj ZSU", "agregator UA", "ua", 0),
+    ("truexanewsua", "Trucha (szybkie, często niesprawdzone)", "agregator UA", "ua", 0),
+    ("insiderUKR", "Insider UA", "agregator UA", "ua", 0),
+    ("lachentyt", "Łaczen pysze", "agregator UA", "ua", 0),
+    ("wartranslated", "WarTranslated (tłumaczenia nagrań)", "OSINT", "ua", 0),
+    ("mod_russia", "Ministerstwo Obrony Rosji", "oficjalne RU", "ru", 1),
+    ("tass_agency", "TASS", "media państwowe RU", "ru", 1),
+    ("rybar", "Rybar (milbloger)", "milbloger RU", "ru", 1),
+    ("dva_majors", "Dwa Majora (milbloger)", "milbloger RU", "ru", 1),
+    ("MID_Russia", "MSZ Rosji", "oficjalne RU", "ru", 0),
+    ("medvedev_telegram", "Dmitrij Miedwiediew", "oficjalne RU", "ru", 0),
+    ("rian_ru", "RIA Nowosti", "media państwowe RU", "ru", 0),
+    ("rybar_in_english", "Rybar (EN)", "milbloger RU", "ru", 0),
+    ("boris_rozhin", "Colonelcassad (milbloger)", "milbloger RU", "ru", 0),
+    ("wargonzo", "WarGonzo (milbloger)", "milbloger RU", "ru", 0),
+    ("voenkorKotenok", "Wojenkor Kotionok", "milbloger RU", "ru", 0),
+    ("sashakots", "Aleksandr Koc (KP)", "milbloger RU", "ru", 0),
+    ("epoddubny", "Jewgienij Poddubny", "milbloger RU", "ru", 0),
+    ("RVvoenkor", "Operacja Z: wojenkorzy Russkoj Wiesny", "milbloger RU", "ru", 0),
+    ("milinfolive", "Wojenny Oswiedomitiel", "milbloger RU", "ru", 0),
+    ("yurasumy", "Jurij Podolaka", "milbloger RU", "ru", 0),
+    ("Sladkov_plus", "Aleksandr Sładkow", "milbloger RU", "ru", 0),
+    ("romanov_92", "Roman Sapońkow", "milbloger RU", "ru", 0),
+    ("SolovievLive", "Władimir Sołowjow", "propaganda RU", "ru", 0),
+    ("readovkanews", "Readovka", "media RU", "ru", 0),
+    ("breakingmash", "Mash (incydenty w Rosji)", "media RU", "ru", 0),
+    ("bazabazon", "Baza (incydenty w Rosji)", "media RU", "ru", 0),
+    ("shot_shot", "SHOT (incydenty w Rosji)", "media RU", "ru", 0),
+    ("gazetaru", "Gazeta.ru", "media RU", "ru", 0),
+    ("astrapress", "ASTRA (ataki dronów, incydenty w Rosji)", "media niezależne RU", "ruind", 1),
+    ("meduzalive", "Meduza", "media niezależne RU", "ruind", 1),
+    ("agentstvonews", "Agentstwo", "media niezależne RU", "ruind", 0),
+    ("moscowtimes_ru", "The Moscow Times", "media niezależne RU", "ruind", 0),
+    ("novaya_pishet", "Nowaja Gazieta", "media niezależne RU", "ruind", 0),
+    ("currenttime", "Nastojaszczeje Wriemia (RFE/RL)", "media niezależne RU", "ruind", 0),
+    ("radiosvoboda", "Radio Swoboda (RFE/RL)", "media niezależne RU", "ruind", 0),
+    ("bbcrussian", "BBC Russian", "media", "ruind", 0),
+    ("dwglavnoe", "DW po rosyjsku", "media", "ruind", 0),
+    ("rtvimain", "RTVI", "media RU", "ruind", 0),
+    ("svtvnews", "SVTV News", "media niezależne RU", "ruind", 0),
+    ("exilenova_plus", "Exilenova+", "agregator", "ruind", 0),
+    ("nexta_live", "NEXTA Live", "media BY (opozycja)", "by", 1),
+    ("nexta_tv", "NEXTA", "media BY (opozycja)", "by", 0),
+    ("zerkalo_io", "Zierkało (dawne TUT.by)", "media BY (niezależne)", "by", 0),
+    ("belamova", "Biełaruś hałownoho mozha", "media BY (opozycja)", "by", 0),
+    ("pul_1", "Puł Pierwogo (otoczenie Łukaszenki)", "propaganda BY", "by", 0),
+    ("idfofficial", "Siły Obronne Izraela (EN)", "oficjalne IL", "me", 1),
+    ("manniefabian", "Mannie Fabian (Times of Israel)", "media IL", "me", 1),
+    ("englishabuali", "Abu Ali Express (EN)", "OSINT IL", "me", 1),
+    ("presstv", "PressTV (media państwowe Iranu)", "propaganda IR", "me", 1),
+    ("idf_telegram", "Cahal – kanał oficjalny (hebr.)", "oficjalne IL", "me", 0),
+    ("AbuAliExpress", "Abu Ali Express (hebr.)", "OSINT IL", "me", 0),
+    ("amitsegal", "Amit Segal (komentator, hebr.)", "media IL", "me", 0),
+    ("irna_en", "IRNA (agencja państwowa Iranu, EN)", "media państwowe IR", "me", 0),
+    ("farsna", "Fars (bliska IRGC, pers.)", "propaganda IR", "me", 0),
+    ("tasnimnews_en", "Tasnim (bliska IRGC, EN)", "propaganda IR", "me", 0),
+    ("bbcpersian", "BBC Persian", "media", "me", 0),
+    ("almayadeen", "Al Mayadeen (pilne, arab.)", "media arabskie (pro-irańskie)", "me", 0),
+    ("alhadath_brk", "Al Hadath (pilne, arab.)", "media arabskie (saudyjskie)", "me", 0),
+    ("QudsNen", "Quds News Network", "media palestyńskie", "me", 0),
+    ("militarysummary", "Military Summary", "agregator", "osint", 1),
+    ("war_monitor", "Monitor (alerty o dronach i rakietach)", "agregator", "osint", 1),
+    ("rnintel", "Rerum Novarum (alerty, świat)", "agregator", "osint", 1),
+    ("clashreport", "Clash Report", "agregator", "osint", 1),
+    ("liveuamap", "Liveuamap", "OSINT", "osint", 1),
+    ("AMK_Mapping", "AMK Mapping (mapy frontów)", "OSINT", "osint", 1),
+    ("tankertrackers", "TankerTrackers (tankowce, sankcje)", "OSINT", "osint", 1),
+    ("warmonitors", "War Monitor (świat)", "agregator", "osint", 0),
+    ("warfareanalysis", "WarfareAnalysis", "agregator", "osint", 0),
+    ("insiderpaper", "Insider Paper (pilne, świat)", "agregator", "osint", 0),
+    ("Ateobreaking", "Ateo Breaking (pilne)", "agregator", "osint", 0),
+    ("intelslava", "Intel Slava (prorosyjski)", "agregator (pro-RU)", "osint", 0),
+    ("scmpnews", "South China Morning Post", "media", "asia", 0),
+    ("XHNews", "Xinhua (agencja państwowa Chin)", "media państwowe CN", "asia", 0),
+    ("vxunderground", "vx-underground (złośliwe oprogramowanie, wycieki)", "cyber", "cyber", 0),
+    ("kiber_boroshno", "KiberBoroszno (cyber UA)", "cyber", "cyber", 0),
+]
+TG_DEFAULT = {c[0]: (c[1], c[2]) for c in TG_CATALOG}          # opis i rodzaj dla każdego znanego kanału
+TG_ON = [c[0] for c in TG_CATALOG if c[4]]                      # zestaw domyślny
+TG_SKIP = re.compile(r"#реклама|#promo|реклам[аы]\b|erid:|подпишись|підпишись|подписывайтесь|розыгрыш|giveaway", re.I)
 
 
 class TgOsint(Source):
@@ -308,6 +408,7 @@ class TgOsint(Source):
         self.file = Path(data_dir) / "osint_tg.json"
         self.posts = OrderedDict()            # id -> post
         self.ai = None; self.busy = lambda: False
+        self.bg = lambda: "after"           # "after" – AI tylko razem z główną analizą; "always" – także po każdym pobraniu
         self.lock = threading.Lock()
         self.events = deque(maxlen=40)
         try:
@@ -320,12 +421,12 @@ class TgOsint(Source):
     def channels(self):
         ch = self.cfg().get("tg_channels")
         if isinstance(ch, list) and ch:
-            return [re.sub(r"[^A-Za-z0-9_]", "", c.split("/")[-1].lstrip("@")) for c in ch if c.strip()][:30]
-        return list(TG_DEFAULT)
+            return [re.sub(r"[^A-Za-z0-9_]", "", c.split("/")[-1].lstrip("@")) for c in ch if c.strip()][:150]
+        return list(TG_ON)
 
     def save(self):
         with self.lock:
-            s = json.dumps(list(self.posts.values())[-1500:], ensure_ascii=False)
+            s = json.dumps(list(self.posts.values())[-4000:], ensure_ascii=False)
         tmp = self.file.with_suffix(".tmp"); tmp.write_text(s, encoding="utf-8"); tmp.replace(self.file)
 
     def fetch(self, ch):
@@ -338,7 +439,7 @@ class TgOsint(Source):
             if not m or not t:
                 continue
             text = _txt(m.group(1))
-            if len(text) < 25:
+            if len(text) < 40 or TG_SKIP.search(text):          # krótkie wpisy i reklamy nie trafiają do AI
                 continue
             try:
                 ms = int(datetime.fromisoformat(t.group(1)).timestamp() * 1000)
@@ -365,22 +466,29 @@ class TgOsint(Source):
                 del self.posts[k]
         if errs and not new:
             raise RuntimeError("; ".join(errs)[:200])
-        self.enrich()
+        if self.bg() == "always":
+            self.enrich()
         self.loaded = True
         self.save()
         return new
 
-    def enrich(self, limit=60):
+    def enrich(self, limit=60, in_job=False):
         if not self.ai or not self.ai.status().get("ready"):
             return 0
         with self.lock:
             todo = [p for p in self.posts.values() if "ai" not in p and p["t"] > _now_ms() - 3 * 86400e3 and p.get("ai_fail", 0) < 2]
-        todo.sort(key=lambda p: -p["t"]); todo = todo[:limit]
+        tier = lambda p: (lambda ty: 0 if ("oficjalne" in ty or "OSINT" in ty) else 1 if "media" in ty else 3 if "propaganda" in ty else 2)(TG_DEFAULT.get(p["ch"], ("", "inne"))[1])
+        todo.sort(key=lambda p: -(p["t"] - tier(p) * 3 * 3600e3))   # nowsze najpierw; źródła oficjalne i OSINT mają kilka godzin „przewagi”
+        todo = todo[:limit]
         done = 0
         for i in range(0, len(todo), 8):
-            if self.busy():
+            if self.busy() and not in_job:
                 break
-            done += self._batch(todo[i:i + 8]); time.sleep(8)
+            done += self._batch(todo[i:i + 8])
+            if not in_job:
+                time.sleep(8)
+        if done and in_job:
+            self.save()
         return done
 
     def _batch(self, batch):

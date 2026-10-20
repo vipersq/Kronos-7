@@ -21,6 +21,50 @@ Lokalny terminal w stylu komputerów pokładowych z filmów science fiction. Pok
 - **Polecenia głosowe** (przycisk GŁOS albo Alt+V), np. „sitrep Bałtyk”, „pokaż Ormuz”, „odśwież”, „briefing”, „odtwórz”, „na żywo”, „warstwa kable”, „pełny ekran”; wszystko inne trafia jako pytanie do AI. W Chrome i Edge rozpoznawanie mowy przetwarzają serwery Google/Microsoft.
 - Wydajność: mapa rysowana na płótnie, obliczenia orbit i przelotów w osobnym wątku, zapis historii w tle.
 
+## Płynniej i chłodniej, więcej źródeł (v3.15)
+
+**Mapy lokalnie**
+- Kafelki podkładów (CIEMNA SZCZEGÓŁOWA, CIEMNA SZARA, SATELITA, OSM NOCNA) idą przez serwer KRONOS i zostają na dysku w `data/tiles`. Każdy kafelek pobiera się z internetu tylko raz, potem ładuje się z dysku od razu, także bez internetu.
+- Przycisk **⬇** przy wyborze podkładu otwiera okno **MAPY OFFLINE**:
+  - pobieranie całego świata (np. do poziomu 6, ok. 120 MB) albo widocznego obszaru (np. do poziomu 10–12),
+  - postęp pobierania i rozmiar pamięci,
+  - czyszczenie.
+- Pobieranie idzie w tle, ok. 8 kafelków na sekundę. OpenStreetMap nie pozwala na pobieranie hurtowe, więc dla OSM zapamiętywane są tylko obejrzane miejsca.
+- Przyciemnienie satelity i odwrócenie kolorów OSM liczone są raz na kafelek, w osobnym wątku przeglądarki. Przesuwanie i zoom nie blokują już strony.
+- Klucz Stadia Maps (jeśli go masz) jest teraz używany przez serwer, więc mapa szczegółowa działa też na telefonie w sieci domowej.
+
+**Mniej pracy dla karty graficznej**
+- Mapa rysowana jest najwyżej 30 razy na sekundę i tylko wtedy, gdy coś się zmieniło.
+- **Tryb oszczędny** (OPERATOR albo klawisz **E**, także `/api/cmd?do=eco&arg=toggle`, np. z akcji „Otwórz stronę” na Stream Decku):
+  - bez poświaty, linii skanowania, winiety i pulsujących znaczników,
+  - do 10 klatek na sekundę,
+  - samoloty odświeżane co 2 s.
+- **Okno w tle:** gdy okno KRONOS nie jest aktywne (np. grasz na drugim monitorze), animacje stoją, a mapa rysuje się najwyżej 2 razy na sekundę. Można to wyłączyć w OPERATOR.
+- **AI w tle tylko z analizą** (domyślnie): streszczenia postów z Telegrama i alertów morskich liczą się na początku głównej analizy, a nie co 10 minut. Do tego czasu nowe posty widać w oryginale. Dawne zachowanie: OPERATOR → „NA BIEŻĄCO”.
+- **Zwalnianie modelu po analizie** (opcja w OPERATOR): Ollama usuwa model z pamięci karty od razu po analizie, a nie po 5 minutach.
+
+**Więcej źródeł**
+- **Telegram OSINT:** katalog 98 sprawdzonych, aktywnych kanałów w grupach. Zaznaczasz je w oknie ŹRÓDŁA I INTEGRACJE, domyślnie włączonych jest 27. Można dopisać własne.
+  - Ukraina: Siły Powietrzne, Sztab, HUR, SBU, DeepState, administracje obwodów, media.
+  - Rosja: MO, MSZ, TASS, Rybar, Dwa Majora i inni milblogerzy; ASTRA, Meduza i inne media niezależne.
+  - Białoruś: NEXTA, Zierkało.
+  - Izrael, Iran i świat arabski: IDF, Abu Ali Express, PressTV, IRNA, Al Mayadeen.
+  - OSINT: Liveuamap, AMK Mapping, TankerTrackers, Rerum Novarum, Clash Report.
+  - Cyber.
+- Każdy kanał ma opisany rodzaj (oficjalne, media, milbloger, propaganda), a AI bierze go pod uwagę przy ocenie wiarygodności. Reklamy i bardzo krótkie wpisy są odrzucane, zanim trafią do AI. Najpierw przetwarzane są źródła oficjalne i OSINT.
+- **RSS:** 57 nowych sprawdzonych źródeł, razem 79.
+  - Analizy wojskowe: ISW, The War Zone, Defense One, Naval News, The Aviationist, Long War Journal, War on the Rocks, Bellingcat, OSW, Defence24.
+  - Komunikaty rządowe: MON Wielkiej Brytanii, Pentagon, Departament Stanu.
+  - Rosja i Ukraina: Kyiv Post, Ukrainska Pravda EN, Meduza, Moscow Times, Nowaja Gazieta Europe.
+  - Bliski Wschód: Times of Israel, Al-Monitor, Iran International, Middle East Eye, The National, Asharq Al-Awsat.
+  - Azja: The Diplomat, SCMP, Taipei Times, Japan Times, NHK, Yonhap, NK News, Dawn, The Hindu.
+  - Afryka: Africanews, AllAfrica.
+  - Ameryka Łacińska: InSight Crime, MercoPress.
+  - Polska: TVN24, RMF24.
+  - Żegluga: Maritime Executive, Splash247, Hellenic Shipping News.
+  - Cyber: Krebs, The Hacker News, SecurityWeek, Dark Reading.
+- Z jednego źródła brane jest najwyżej 25 najnowszych wiadomości, żeby duże serwisy nie zagłuszały reszty. Więcej źródeł to więcej potwierdzeń tego samego zdarzenia, a od tego zależy ocena wiarygodności.
+
 ## Wywiad+, odbiorniki, mapa szczegółowa (v3.14)
 
 Ustawienia: **OPERATOR → ŹRÓDŁA I INTEGRACJE…** (tam też stan każdego źródła).

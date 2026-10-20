@@ -474,7 +474,7 @@ class MarSec:
                     v["dup"] = None
 
     # -- analiza AI: krótki tytuł, streszczenie, rodzaj, ważność, rozstrzyganie duplikatów (każdy wpis tylko raz)
-    def enrich(self, limit=24):
+    def enrich(self, limit=24, in_job=False):
         if not self.ai or not self.ai.status().get("ready"):
             return 0
         with self.lock:
@@ -485,11 +485,12 @@ class MarSec:
             todo = todo[:limit]
         done = 0
         for i in range(0, len(todo), 6):
-            if self.busy():
+            if self.busy() and not in_job:
                 break                                 # trwa główna analiza – nie dokładamy pracy karcie graficznej
             batch = todo[i:i + 6]
             done += self._enrich_batch(batch)
-            time.sleep(10)                            # przerwa między porcjami – karta graficzna odpoczywa
+            if not in_job:
+                time.sleep(10)                        # przerwa między porcjami – karta graficzna odpoczywa
         if done:
             self.save()
         return done
@@ -593,13 +594,18 @@ class MarSec:
         while True:
             try:
                 self.fetch_all()
-                self.enrich(60)
+                if self.bg() == "always":
+                    self.enrich(60)
             except Exception as e:
                 self.log(f"MarSec: {e}")
             self.wake.wait(INTERVAL); self.wake.clear()
 
-    def start(self, ai=None, busy=None):
+    bg = staticmethod(lambda: "after")
+
+    def start(self, ai=None, busy=None, bg=None):
         self.ai = ai
+        if bg:
+            self.bg = bg
         if busy:
             self.busy = busy
         threading.Thread(target=self.loop, daemon=True, name="marsec").start()
