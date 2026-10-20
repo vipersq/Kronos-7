@@ -1,7 +1,7 @@
 """Lokalna synteza mowy: Piper (neuronowe głosy, działa offline na procesorze, bez instalowania pakietów Python).
 Program Piper i wybrane głosy pobierane są na żądanie do data/tts/. Jeden proces Piper na głos zostaje
 uruchomiony w tle (--json-input), więc kolejne zdania syntezuje się bez ponownego ładowania modelu."""
-import json, os, platform, subprocess, tarfile, threading, time, urllib.request, uuid, zipfile
+import hashlib, json, os, platform, subprocess, tarfile, threading, time, urllib.request, uuid, zipfile
 from pathlib import Path
 
 from . import i18n
@@ -20,6 +20,16 @@ VOICES = {
     "en_GB-alba-medium": ("Alba – żeński, szkocki", "Alba – female, Scottish", "en", "en/en_GB/alba/medium/en_GB-alba-medium", 63),
 }
 DEFAULT = {"pl": "pl_PL-darkman-medium", "en": "en_GB-alan-medium"}
+# Głosy neuronowe Microsoftu (te same co „Czytaj na głos” w Edge) – przez bibliotekę edge-tts, wymagają internetu
+MS_VOICES = {
+    "pl-PL-MarekNeural": ("Marek – męski", "Marek – male (Polish)", "pl"),
+    "pl-PL-ZofiaNeural": ("Zofia – żeński", "Zofia – female (Polish)", "pl"),
+    "en-GB-RyanNeural": ("Ryan – męski, brytyjski", "Ryan – male, British", "en"),
+    "en-GB-ThomasNeural": ("Thomas – męski, brytyjski", "Thomas – male, British", "en"),
+    "en-GB-SoniaNeural": ("Sonia – żeński, brytyjski", "Sonia – female, British", "en"),
+    "en-GB-LibbyNeural": ("Libby – żeński, brytyjski", "Libby – female, British", "en"),
+}
+MS_DEFAULT = {"pl": "pl-PL-MarekNeural", "en": "en-GB-RyanNeural"}
 
 
 def _asset():
@@ -57,6 +67,73 @@ class TTS:
         except Exception:
             self.mode = "json"
         self.lock = threading.Lock()
+        self.ms_err = None
+        self.ms_cache = {}
+
+    # ------------------------------------------------ głosy Microsoftu (edge-tts)
+    def ms_ok(self):
+        try:
+            import edge_tts  # noqa: F401
+            return True
+        except Exception:
+            return False
+
+    def ms_install(self):
+        if self.job["active"] or self.ms_ok():
+            return False
+        self.job.update(active=True, what="edge-tts", pct=10, err=None)
+        def run():
+            import importlib, site, sys
+            try:
+                flags = 0x08000000 if os.name == "nt" else 0
+                r = subprocess.run([sys.executable, "-m", "pip", "install", "--user", "--disable-pip-version-check", "--quiet", "edge-tts"],
+                                   capture_output=True, timeout=600, creationflags=flags)
+                if r.returncode != 0:
+                    raise RuntimeError((r.stderr or r.stdout or b"").decode("utf-8", "replace").strip().splitlines()[-1][:200] if (r.stderr or r.stdout) else f"pip {r.returncode}")
+                us = site.getusersitepackages()
+                if us not in sys.path:
+                    sys.path.append(us)
+                importlib.invalidate_caches()
+                if not self.ms_ok():
+                    raise RuntimeError("edge-tts zainstalowany, ale Python go nie widzi – uruchom KRONOS-a ponownie")
+                self.job.update(active=False, what="", pct=100)
+                self.log(i18n.L("Głos: zainstalowano obsługę głosów Microsoftu (edge-tts).", "Voice: Microsoft voices (edge-tts) installed."))
+            except Exception as e:
+                self.job.update(active=False, err=str(e)[:220])
+                self.log(i18n.L(f"Głos: nie udało się zainstalować edge-tts ({e}).", f"Voice: edge-tts install failed ({e})."))
+        threading.Thread(target=run, daemon=True, name="tts-ms-install").start()
+        return True
+
+    def synth_ms(self, text, voice, rate=1.0):
+        """MP3 (bytes) z serwera Microsoftu albo None (przyczyna w self.ms_err)."""
+        text = " ".join(str(text or "").split())[:3000]
+        if not text or voice not in MS_VOICES:
+            return None
+        pct = int(round((max(.5, min(2.0, rate or 1.0)) - 1) * 100))
+        key = hashlib.sha1(f"{voice}|{pct}|{text}".encode()).hexdigest()
+        if key in self.ms_cache:
+            return self.ms_cache[key]
+        try:
+            import asyncio, edge_tts
+            async def go():
+                c = edge_tts.Communicate(text, voice, rate=f"{pct:+d}%")
+                b = bytearray()
+                async for ch in c.stream():
+                    if ch.get("type") == "audio":
+                        b += ch["data"]
+                return bytes(b)
+            b = asyncio.run(asyncio.wait_for(go(), 40))
+        except Exception as e:
+            self.ms_err = (type(e).__name__ + ": " + str(e))[:240]
+            self.log(i18n.L(f"Głos Microsoft: błąd – {self.ms_err}", f"Microsoft voice: error – {self.ms_err}"))
+            return None
+        if not b:
+            self.ms_err = "brak dźwięku"; return None
+        self.ms_err = None
+        if len(self.ms_cache) > 80:
+            self.ms_cache.pop(next(iter(self.ms_cache)))
+        self.ms_cache[key] = b
+        return b
 
     # ------------------------------------------------ instalacja
     def exe(self):
@@ -72,6 +149,8 @@ class TTS:
     def status(self):
         en = i18n.en()
         return {"engine": bool(self.exe()), "job": dict(self.job), "default": DEFAULT, "err": self.last_err, "mode": self.mode,
+                "ms": {"installed": self.ms_ok(), "err": self.ms_err, "default": MS_DEFAULT,
+                       "voices": [{"id": k, "label": v[1 if en else 0], "lang": v[2]} for k, v in MS_VOICES.items()]},
                 "voices": [{"id": k, "label": v[1 if en else 0], "lang": v[2], "mb": v[4], "installed": self.has_voice(k)} for k, v in VOICES.items()]}
 
     def _download(self, url, dest, label, base_pct=0, span=100):

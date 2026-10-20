@@ -1,4 +1,4 @@
-/* KRONOS-7 v3.12 — interfejs terminala. Dane: lokalny serwer (/api/*). */
+/* KRONOS-7 v3.13 — interfejs terminala. Dane: lokalny serwer (/api/*). */
 (function () {
 "use strict";
 const $ = s => document.querySelector(s);
@@ -1975,11 +1975,14 @@ let TTSC = null;
 const SPK = { on: false, gen: 0, src: null, onend: null };
 async function loadTTS() { try { TTSC = await api("/api/tts/status"); } catch (e) {} return TTSC; }
 const ttsCfg = () => (TTSC && TTSC.cfg) || { engine: "auto", rate: 1, fx: true, pitch: .9 };
-function ttsVoiceId() { const c = ttsCfg(); return c[LANG === "en" ? "voice_en" : "voice_pl"]; }
-function ttsEngine() {
-  const c = ttsCfg(), v = ttsVoiceId(), ok = TTSC && TTSC.engine && A(TTSC.voices).some(x => x.id === v && x.installed);
-  return c.engine === "browser" || !ok ? "browser" : "piper";
+const msOk = () => !!(TTSC && TTSC.ms && TTSC.ms.installed);
+function ttsEngine() {   // "ms" – głosy Microsoftu przez serwer, "piper" – lokalny Piper, "browser" – głos przeglądarki
+  const c = ttsCfg(); if (c.engine === "browser") return "browser";
+  if ((c.engine === "ms" || c.engine === "auto") && msOk()) return "ms";
+  const v = c[LANG === "en" ? "voice_en" : "voice_pl"], ok = TTSC && TTSC.engine && A(TTSC.voices).some(x => x.id === v && x.installed);
+  return ok && c.engine !== "ms" ? "piper" : "browser";
 }
+function ttsVoiceId() { const c = ttsCfg(); return ttsEngine() === "ms" ? c[LANG === "en" ? "ms_en" : "ms_pl"] : c[LANG === "en" ? "voice_en" : "voice_pl"]; }
 function splitText(t) {   // kawałki ~300 znaków po zdaniach – pierwszy dźwięk po ułamku sekundy, kolejne liczą się w tle
   const sent = String(t || "").replace(/\s+/g, " ").match(/[^.!?…;:]+[.!?…;:]*\s*/g) || [], out = []; let cur = "";
   for (const x of sent) { if ((cur + x).length > 300 && cur) { out.push(cur.trim()); cur = ""; } cur += x; }
@@ -2020,7 +2023,7 @@ function browserSpeak(text, my) {
 async function speak(text, cb = {}) {
   stopSpeak(); const my = ++SPK.gen; SPK.on = true; SPK.onend = cb.onend || null; if (cb.onstart) cb.onstart();
   if (!TTSC) await loadTTS();
-  if (ttsEngine() !== "piper") return browserSpeak(text, my);
+  if (ttsEngine() === "browser") return browserSpeak(text, my);
   const v = ttsVoiceId(), parts = splitText(text); let next = ttsChunk(parts[0], v);
   for (let i = 0; i < parts.length; i++) {
     const buf = await next; if (my !== SPK.gen) return;
@@ -2088,8 +2091,14 @@ function renderTTS() {
       + (v.installed ? `${cur ? "" : `<button class="btn" type="button" data-tuse="${v.id}" data-tlang="${v.lang}">${TX("UŻYJ")}</button>`}<button class="btn" type="button" data-ttry="${v.id}" title="${TX("Odsłuchaj")}">▶</button><button class="btn" type="button" data-trm="${v.id}" title="${TX("Usuń głos")}">✕</button>`
         : `<button class="btn" type="button" data-tget="${v.id}" data-tlang="${v.lang}"${j.active ? " disabled" : ""}>${TX("POBIERZ")}</button>`) + `</span></div>`; };
   const mine = A(TTSC.voices).filter(v => v.lang === (LANG === "en" ? "en" : "pl")), other = A(TTSC.voices).filter(v => v.lang !== (LANG === "en" ? "en" : "pl"));
-  $("#ttsVoices").innerHTML = mine.concat(other).map(row).join("");
-  $("#ttsProg").textContent = j.active ? `${TX("Pobieranie:")} ${j.what} · ${j.pct}%` : j.err ? TX("Błąd pobierania:") + " " + j.err : TTSC.err ? TX("Błąd Pipera:") + " " + TTSC.err : ttsEngine() === "piper" ? TX("Teraz czyta: Piper –") + " " + ((A(TTSC.voices).find(v => v.id === ttsVoiceId()) || {}).label || "") : TX("Teraz czyta: głos przeglądarki –") + " " + ((browserVoice() || {}).name || TX("brak głosu dla tego języka"));
+  const ms = TTSC.ms || {}, L2 = LANG === "en" ? "en" : "pl", msOn = ttsEngine() === "ms";
+  const mrow = v => { const cur = msOn && c[v.lang === "en" ? "ms_en" : "ms_pl"] === v.id;
+    return `<div class="tts-row${cur ? " cur" : ""}"><span class="nm">${v.lang === "pl" ? "PL" : "EN"} · ${esc0(v.label)}</span><span class="st">${cur ? TX("WYBRANY") : "online"}</span><span class="bt">${cur ? "" : `<button class="btn" type="button" data-muse="${v.id}" data-tlang="${v.lang}">${TX("UŻYJ")}</button>`}<button class="btn" type="button" data-ttry="${v.id}" title="${TX("Odsłuchaj")}">▶</button></span></div>`; };
+  const msHtml = `<p class="sat-h">MICROSOFT · ${TX("głosy neuronowe online")}</p>` + (ms.installed
+    ? A(ms.voices).filter(v => v.lang === L2).concat(A(ms.voices).filter(v => v.lang !== L2)).map(mrow).join("")
+    : `<div class="tts-row"><span class="nm">${TX("Marek, Zofia (PL) · Ryan, Thomas, Sonia, Libby (EN)")}</span><span class="st">~5 MB</span><span class="bt"><button class="btn" type="button" id="msInst"${j.active ? " disabled" : ""}>${TX("ZAINSTALUJ")}</button></span></div>`);
+  $("#ttsVoices").innerHTML = msHtml + `<p class="sat-h">PIPER · ${TX("lokalnie, offline")}</p>` + mine.concat(other).map(row).join("");
+  $("#ttsProg").textContent = j.active ? `${TX("Pobieranie:")} ${j.what} · ${j.pct}%` : j.err ? TX("Błąd pobierania:") + " " + j.err : ttsEngine() === "ms" ? TX("Teraz czyta: Microsoft –") + " " + ((A(TTSC.ms.voices).find(v => v.id === ttsVoiceId()) || {}).label || "") + (TTSC.ms.err ? " · " + TX("ostatni błąd:") + " " + TTSC.ms.err : "") : TTSC.err ? TX("Błąd Pipera:") + " " + TTSC.err : ttsEngine() === "piper" ? TX("Teraz czyta: Piper –") + " " + ((A(TTSC.voices).find(v => v.id === ttsVoiceId()) || {}).label || "") : TX("Teraz czyta: głos przeglądarki –") + " " + ((browserVoice() || {}).name || TX("brak głosu dla tego języka"));
   const bv = "speechSynthesis" in window ? speechSynthesis.getVoices() : [];
   $("#ttsBrowser").innerHTML = `<option value="">${TX("automatycznie – najlepszy dla języka")}</option>` + bv.slice().sort((a, b) => (a.lang.slice(0, 2) === (LANG === "en" ? "en" : "pl") ? -1 : 1) - (b.lang.slice(0, 2) === (LANG === "en" ? "en" : "pl") ? -1 : 1) || a.lang.localeCompare(b.lang))
     .map(v => `<option value="${esc0(v.name)}"${v.name === c.browser_voice ? " selected" : ""}>${esc0(v.lang)} · ${esc0(v.name)}</option>`).join("");
@@ -2106,9 +2115,12 @@ $("#ttsTest").addEventListener("click", () => SPK.on ? stopSpeak() : speak(TTS_S
 $("#ttsVoices").addEventListener("click", async e => {
   const g = e.target.closest("[data-tget]"), u = e.target.closest("[data-tuse]"), t = e.target.closest("[data-ttry]"), r = e.target.closest("[data-trm]");
   if (g) { try { TTSC = await api("/api/tts/install", { voice: g.dataset.tget }); } catch (err) {} await ttsSave({ ["voice_" + g.dataset.tlang]: g.dataset.tget, engine: TTSC.cfg.engine === "browser" ? "auto" : TTSC.cfg.engine }); }
-  if (u) await ttsSave({ ["voice_" + u.dataset.tlang]: u.dataset.tuse });
+  if (u) await ttsSave({ ["voice_" + u.dataset.tlang]: u.dataset.tuse, engine: "piper" });
+  const mu = e.target.closest("[data-muse]"); if (mu) await ttsSave({ ["ms_" + mu.dataset.tlang]: mu.dataset.muse, engine: "ms" });
+  if (e.target.closest("#msInst")) { try { TTSC = await api("/api/tts/ms/install", {}); } catch (err) {} await ttsSave({ engine: "ms" }); }
   if (r) { try { TTSC = await api("/api/tts/remove", { voice: r.dataset.trm }); } catch (err) {} renderTTS(); }
-  if (t) { stopSpeak(); const buf = await ttsChunk(/^pl/.test(t.dataset.ttry) ? "KRONOS-7 gotowy. Poziom napięcia trzy." : "KRONOS-7 online. Tension level three.", t.dataset.ttry); if (buf) { const my = ++SPK.gen; SPK.on = true; await playSpeech(buf, my); endSpeak(my); } }
+  if (t) { stopSpeak(); const buf = await ttsChunk(/^pl/i.test(t.dataset.ttry) ? "KRONOS-7 gotowy. Poziom napięcia trzy." : "KRONOS-7 online. Tension level three.", t.dataset.ttry);
+    if (buf) { const my = ++SPK.gen; SPK.on = true; await playSpeech(buf, my); endSpeak(my); } else airToast({ at: Date.now(), kind: "alarm", head: TX("GŁOS"), msg: SPK.err || TX("błąd") }); }
 });
 async function openSnd() {
   $("#settings").hidden = true; await Promise.all([loadSounds(), loadTTS()]); renderSndSlots(); renderTTS(); $("#sndModal").hidden = false; $("#sndClose").focus();
@@ -2126,7 +2138,7 @@ function boot(done) {
   let seen = false; try { seen = sessionStorage.getItem("k7-boot") === "1"; } catch (e) { seen = true; }
   if (!needSetup && (seen || reduce)) return done();
   const B = $("#boot"); B.hidden = false; const e = STATUS ? STATUS.engine : null, C = CURRENT || {};
-  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.12"), TX("TEST PAMIĘCI ........ OK"),
+  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.13"), TX("TEST PAMIĘCI ........ OK"),
     TX("PROCESOR GRAFICZNY ..") + " " + (e ? TX(e.hardware.gpu_name) + (e.hardware.vram_gb ? " / " + e.hardware.vram_gb + " " + TX("GB") : "") : "?"),
     TX("RDZEŃ ANALITYCZNY ...") + " " + (e && e.model ? e.model.toUpperCase() : TX("NIEAKTYWNY")),
     TX("BAZA KONFLIKTÓW .....") + " " + A(C.conflicts).length + " " + TX("WĘZŁÓW"), TX("FRONTY ..............") + " " + A(C.fronts).length + " " + TX("TEATRÓW"),

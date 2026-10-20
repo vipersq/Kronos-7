@@ -248,7 +248,8 @@ def sounds_view():
     return {"files": files, "map": mp, "slots": list(SND_SLOTS), "max_mb": SND_MAX // (1024 * 1024)}
 
 
-TTS_DEF = {"engine": "auto", "voice_pl": tts.DEFAULT["pl"], "voice_en": tts.DEFAULT["en"], "rate": 1.0, "fx": True, "browser_voice": "", "pitch": 0.9}
+TTS_DEF = {"engine": "auto", "voice_pl": tts.DEFAULT["pl"], "voice_en": tts.DEFAULT["en"], "ms_pl": tts.MS_DEFAULT["pl"], "ms_en": tts.MS_DEFAULT["en"],
+           "rate": 1.0, "fx": False, "browser_voice": "", "pitch": 0.9}
 
 
 def tts_cfg():
@@ -262,7 +263,10 @@ def tts_view():
 def save_tts(body):
     global SETTINGS
     c = tts_cfg()
-    if body.get("engine") in ("auto", "piper", "browser"):
+    for k in ("ms_pl", "ms_en"):
+        if body.get(k) in tts.MS_VOICES:
+            c[k] = body[k]
+    if body.get("engine") in ("auto", "ms", "piper", "browser"):
         c["engine"] = body["engine"]
     for k in ("voice_pl", "voice_en"):
         if body.get(k) in tts.VOICES:
@@ -719,10 +723,13 @@ class H(BaseHTTPRequestHandler):
             return self._json({"ok": False}, 403)
         if (p in ("/api/settings", "/api/model/pull", "/api/model/rescan", "/api/notify/test") or p.startswith("/api/sounds/")) and not self._local():
             return self._json({"error": i18n.L("Ustawienia można zmieniać tylko na komputerze z KRONOS-em.", "Settings can only be changed on the computer running KRONOS.")}, 403)
-        if p in ("/api/tts/install", "/api/tts/remove", "/api/tts/settings") and not self._local():
+        if p in ("/api/tts/install", "/api/tts/remove", "/api/tts/settings", "/api/tts/ms/install") and not self._local():
             return self._json({"error": "local only"}, 403)
         if p == "/api/tts/install":
             TTS.install(self._body().get("voice"))
+            return self._json(tts_view())
+        if p == "/api/tts/ms/install":
+            TTS.ms_install()
             return self._json(tts_view())
         if p == "/api/tts/remove":
             TTS.remove_voice(self._body().get("voice"))
@@ -731,11 +738,21 @@ class H(BaseHTTPRequestHandler):
             save_tts(self._body())
             return self._json(tts_view())
         if p == "/api/tts":
-            b = self._body(); c = tts_cfg()
+            b = self._body(); c = tts_cfg(); rate = float(b.get("rate") or c["rate"])
+            eng = b.get("engine") or c["engine"]
+            mv = b.get("voice") if b.get("voice") in tts.MS_VOICES else c["ms_en" if i18n.en() else "ms_pl"]
+            if (eng == "ms" or (eng == "auto" and TTS.ms_ok()) or b.get("voice") in tts.MS_VOICES) and TTS.ms_ok():
+                mp3 = TTS.synth_ms(b.get("text"), mv, rate)
+                if mp3:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "audio/mpeg"); self.send_header("Content-Length", str(len(mp3))); self.send_header("Cache-Control", "no-store")
+                    self.end_headers(); self.wfile.write(mp3); return
+                if b.get("voice") in tts.MS_VOICES:
+                    return self._json({"error": "Microsoft: " + (TTS.ms_err or "?")}, 503)
             v = b.get("voice") if b.get("voice") in tts.VOICES else c["voice_en" if i18n.en() else "voice_pl"]
-            wav = TTS.synth(b.get("text"), v, float(b.get("rate") or c["rate"]))
+            wav = TTS.synth(b.get("text"), v, rate)
             if not wav:
-                return self._json({"error": TTS.last_err or ("brak głosu" if not TTS.has_voice(v) else "tts"), "installed": TTS.has_voice(v), "engine": bool(TTS.exe())}, 503)
+                return self._json({"error": ("Microsoft: " + TTS.ms_err + " · Piper: " if TTS.ms_err else "") + (TTS.last_err or "")  or ("brak głosu" if not TTS.has_voice(v) else "tts"), "installed": TTS.has_voice(v), "engine": bool(TTS.exe())}, 503)
             self.send_response(200)
             self.send_header("Content-Type", "audio/wav"); self.send_header("Content-Length", str(len(wav))); self.send_header("Cache-Control", "no-store")
             self.end_headers(); self.wfile.write(wav); return
@@ -809,7 +826,7 @@ class H(BaseHTTPRequestHandler):
 def main():
     port = int(os.environ.get("KRONOS_PORT", CFG.get("port", 7707)))
     st = ENGINE.status()
-    log("KRONOS-7 v3.12 · start")
+    log("KRONOS-7 v3.13 · start")
     log(f"Sprzęt: {st['hardware']['gpu_name']} · VRAM {st['hardware']['vram_gb']} GB · RAM {st['hardware']['ram_gb']} GB")
     log(f"AI: {st['backend'] or 'brak (zainstaluj Ollamę)'} · model: {st['model'] or '—'} · zalecany: {st['recommended']}")
     log(st["reason"])
