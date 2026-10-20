@@ -34,6 +34,18 @@ def _asset():
 class TTS:
     def __init__(self, data_dir, log=print):
         self.dir = Path(data_dir).resolve() / "tts"
+        # Piper w Windows potrafi się wysypać (kod 0xC0000409), gdy ścieżka zawiera polskie znaki lub inne spoza ASCII.
+        # Wtedy trzymamy program i głosy w C:\\ProgramData\\KRONOS7\\tts (zawsze bezpieczna ścieżka).
+        if os.name == "nt" and not str(self.dir).isascii():
+            safe = Path(os.environ.get("PROGRAMDATA") or "C:/ProgramData") / "KRONOS7" / "tts"
+            try:
+                if self.dir.is_dir() and not (safe / "piper").is_dir():
+                    import shutil
+                    shutil.copytree(self.dir, safe, dirs_exist_ok=True)
+                safe.mkdir(parents=True, exist_ok=True)
+                self.dir = safe
+            except Exception as e:
+                log(f"TTS: {e}")
         self.vdir = self.dir / "voices"
         self.tmp = self.dir / "tmp"
         self.log = log
@@ -127,7 +139,7 @@ class TTS:
                 return None
             self.tmp.mkdir(parents=True, exist_ok=True)
             errf = open(self.dir / "piper.log", "ab")
-            pr = subprocess.Popen([str(exe), "--model", str(self.vdir / f"{voice}.onnx"), "--json-input"],
+            pr = subprocess.Popen([str(exe), "--model", str(self.vdir / f"{voice}.onnx"), "--espeak_data", str(exe.parent / "espeak-ng-data"), "--json-input"],
                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errf, cwd=str(exe.parent), creationflags=self._flags())
             p = (pr, threading.Lock())
             self.procs[voice] = p
@@ -178,7 +190,7 @@ class TTS:
             return None
         self.tmp.mkdir(parents=True, exist_ok=True)
         out = self.tmp / f"{uuid.uuid4().hex}.wav"
-        cmd = [str(exe), "--model", str(self.vdir / f"{voice}.onnx"), "--output_file", str(out), "--length_scale", str(ls)]
+        cmd = [str(exe), "--model", str(self.vdir / f"{voice}.onnx"), "--espeak_data", str(exe.parent / "espeak-ng-data"), "--output_file", str(out), "--length_scale", str(ls)]
         if speaker is not None:
             cmd += ["--speaker", str(int(speaker))]
         try:
@@ -187,7 +199,12 @@ class TTS:
             self.last_err = f"run: {e}"; return None
         if not self._wait_file(out, 1.0):
             err = (r.stderr or b"").decode("utf-8", "replace").strip().splitlines()
-            if r.returncode in (3221225781, -1073741515):
+            if r.returncode in (3221226505, -1073740791) and not str(exe).isascii():
+                self.last_err = i18n.L("Piper nie lubi polskich znaków w ścieżce folderu – przenieś KRONOS-a do folderu bez polskich liter, np. C:\\KRONOS7",
+                                       "Piper fails with non-ASCII characters in the folder path – move KRONOS to e.g. C:\\KRONOS7")
+            elif r.returncode in (3221226505, -1073740791):
+                self.last_err = i18n.L(f"program Piper uległ awarii (0xC0000409). {err[-1][:200] if err else ''}", f"Piper crashed (0xC0000409). {err[-1][:200] if err else ''}")
+            elif r.returncode in (3221225781, -1073741515):
                 self.last_err = i18n.L("brakuje bibliotek Microsoft Visual C++ – zainstaluj „VC++ Redistributable x64” ze strony Microsoftu (aka.ms/vs/17/release/vc_redist.x64.exe)",
                                        "Microsoft Visual C++ libraries missing – install 'VC++ Redistributable x64' (aka.ms/vs/17/release/vc_redist.x64.exe)")
             else:
