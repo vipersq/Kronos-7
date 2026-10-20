@@ -91,6 +91,37 @@
     <p class="hint sat-note">Liczby obok typów pokazują, ile obiektów jest teraz w pamięci. Warstwy STATKI i LOTNICTWO włączasz pod mapą.</p>
   </div>
 </div>
+<div class="modal" id="sndModal" hidden role="dialog" aria-modal="true" aria-labelledby="sndTitle">
+  <div class="modal-in sit-modal frame snd-modal">
+    <div class="frame-h"><span id="sndTitle">&gt; DŹWIĘK I GŁOS</span><button type="button" class="btn" id="sndClose" aria-label="Zamknij">✕</button></div>
+    <div class="sat-body">
+      <div class="sat-col">
+        <p class="sat-h">GŁOS LEKTORA · briefing i SITREP</p>
+        <label for="ttsEngine">Silnik mowy</label>
+        <select id="ttsEngine"><option value="auto">AUTOMATYCZNIE – Piper, jeśli głos jest pobrany</option><option value="piper">PIPER – lokalny głos neuronowy</option><option value="browser">GŁOS PRZEGLĄDARKI / SYSTEMU</option></select>
+        <p class="hint">Piper to darmowy syntezator mowy działający offline na procesorze (nie zajmuje karty graficznej). Pierwsze pobranie: program ok. 25 MB + głos ok. 60 MB.</p>
+        <div class="tts-voices" id="ttsVoices"></div>
+        <p class="hint" id="ttsProg" aria-live="polite"></p>
+        <label for="ttsRate">Tempo czytania <small id="ttsRateV"></small></label>
+        <input id="ttsRate" type="range" min="0.6" max="1.6" step="0.05">
+        <label class="chk"><input id="ttsFx" type="checkbox"> Efekt „komputera pokładowego” (pasmo radiowe i metaliczny pogłos)</label>
+        <label for="ttsBrowser">Głos przeglądarki <small>gdy Piper jest wyłączony; w Edge najlepsze są głosy „Online (Natural)”, np. Zofia i Marek</small></label>
+        <select id="ttsBrowser"></select>
+        <div class="seg"><button class="btn" type="button" id="ttsTest">ODSŁUCHAJ</button></div>
+      </div>
+      <div class="sat-col">
+        <p class="sat-h">DŹWIĘKI TERMINALA · własne pliki</p>
+        <div id="sndSlots" class="snd-slots"></div>
+        <p class="sat-h">TWOJE PLIKI</p>
+        <label class="snd-drop" id="sndDrop"><input type="file" id="sndFile" multiple accept="audio/*,.mp3,.wav,.ogg,.oga,.opus,.m4a,.aac,.flac,.webm">Przeciągnij pliki tutaj albo kliknij, aby wybrać · MP3, WAV, OGG, M4A, FLAC · do 15 MB</label>
+        <p class="hint" id="sndMsg" aria-live="polite"></p>
+        <div class="tts-voices" id="sndFiles"></div>
+        <div class="seg"><button class="btn" type="button" id="sndReset">PRZYWRÓĆ DOMYŚLNE DŹWIĘKI</button></div>
+        <p class="hint">Pliki trafiają do folderu data/sounds w katalogu KRONOS-a – możesz je tam też wrzucać ręcznie. Ustawienia działają we wszystkich oknach i na telefonie.</p>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="modal" id="settings" hidden role="dialog" aria-modal="true" aria-labelledby="setTitle">
   <form class="modal-in frame" id="setForm" autocomplete="off">
     <div class="frame-h"><span id="setTitle">&gt; KONFIGURACJA OPERATORA</span><button type="button" class="btn" id="setClose" aria-label="Zamknij">✕</button></div>
@@ -130,6 +161,7 @@
       <input id="setVol" type="range" min="0" max="100" step="5">
       <label class="chk"><input id="setHum" type="checkbox"> Szum tła (buczenie maszynowni)</label>
       <label class="chk"><input id="setChat" type="checkbox"> Terkot drukowanego tekstu i „liczenie” rdzenia</label>
+      <button type="button" class="btn" id="sndOpen">DŹWIĘKI I GŁOS LEKTORA…</button>
       <p class="set-msg" id="setMsg" aria-live="polite"></p>
     </div>
     <div class="set-foot"><button type="submit" class="btn" id="setSave">ZAPISZ</button></div>

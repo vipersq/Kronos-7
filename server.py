@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-from kronos import analyst, collector, history, i18n, live_air, live_sea, llm, notify, report, satinfo, sats  # noqa: E402
+from kronos import analyst, collector, history, i18n, live_air, live_sea, llm, notify, report, satinfo, sats, tts  # noqa: E402
 
 DATA = ROOT / "data"; ARCH = DATA / "archive"; WEB = ROOT / "web"
 ARCH.mkdir(parents=True, exist_ok=True)
@@ -77,6 +77,8 @@ SEA = live_sea.LiveSea(CFG, log, DATA)
 SATS = sats.Catalog(DATA, log)
 SATINFO = satinfo.SatInfo(DATA, SATS, log)
 HIST = history.History(DATA, log)
+TTS = tts.TTS(DATA, log)
+atexit.register(TTS.stop_all)
 NOTIFY = notify.Notifier(log)
 NOTIFY.configure(SETTINGS)
 EMO = {"air": "✈", "sea": "⚓"}
@@ -215,6 +217,88 @@ def settings_view():
 
 
 CABLES_GZ = None
+
+# ------------------------------------------------ własne dźwięki operatora (data/sounds)
+SOUNDS = DATA / "sounds"
+SND_EXT = {".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg", ".oga": "audio/ogg", ".opus": "audio/ogg", ".m4a": "audio/mp4",
+           ".aac": "audio/aac", ".flac": "audio/flac", ".webm": "audio/webm"}
+SND_SLOTS = ("boot", "done", "threat", "klaxon", "contact", "emergency", "watch", "pass", "click", "key", "burble", "hum")
+SND_MAX = 15 * 1024 * 1024
+
+
+def snd_name(name):
+    """Bezpieczna nazwa pliku: bez katalogów, tylko litery/cyfry/-_. i znane rozszerzenie audio."""
+    name = os.path.basename(str(name or "")).strip()
+    stem, ext = os.path.splitext(name)
+    stem = re.sub(r"[^\w\-. ]", "_", stem, flags=re.UNICODE).strip(" .")[:60]
+    ext = ext.lower()
+    return f"{stem}{ext}" if stem and ext in SND_EXT else None
+
+
+def sounds_view():
+    files = []
+    if SOUNDS.is_dir():
+        for f in sorted(SOUNDS.iterdir(), key=lambda x: x.name.lower()):
+            if f.is_file() and f.suffix.lower() in SND_EXT:
+                files.append({"name": f.name, "size": f.stat().st_size})
+    names = {f["name"] for f in files}
+    mp = {k: v for k, v in (SETTINGS.get("sounds") or {}).items() if k in SND_SLOTS and (v.get("file") in names or v.get("off"))}
+    return {"files": files, "map": mp, "slots": list(SND_SLOTS), "max_mb": SND_MAX // (1024 * 1024)}
+
+
+TTS_DEF = {"engine": "auto", "voice_pl": tts.DEFAULT["pl"], "voice_en": tts.DEFAULT["en"], "rate": 1.0, "fx": True, "browser_voice": "", "pitch": 0.9}
+
+
+def tts_cfg():
+    return dict(TTS_DEF, **(SETTINGS.get("tts") or {}))
+
+
+def tts_view():
+    return dict(TTS.status(), cfg=tts_cfg())
+
+
+def save_tts(body):
+    global SETTINGS
+    c = tts_cfg()
+    if body.get("engine") in ("auto", "piper", "browser"):
+        c["engine"] = body["engine"]
+    for k in ("voice_pl", "voice_en"):
+        if body.get(k) in tts.VOICES:
+            c[k] = body[k]
+    for k, lo, hi in (("rate", .6, 1.6), ("pitch", .5, 1.5)):
+        if k in body:
+            try: c[k] = round(max(lo, min(hi, float(body[k]))), 2)
+            except (TypeError, ValueError): pass
+    if "fx" in body:
+        c["fx"] = bool(body["fx"])
+    if "browser_voice" in body:
+        c["browser_voice"] = str(body["browser_voice"])[:120]
+    new = dict(SETTINGS); new["tts"] = c
+    SETTINGS = new
+    SETTINGS_FILE.write_text(json.dumps(new, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def save_sound_map(mp):
+    global SETTINGS
+    clean = {}
+    for k, v in (mp or {}).items():
+        if k not in SND_SLOTS or not isinstance(v, dict):
+            continue
+        e = {}
+        if v.get("off"):
+            e["off"] = True
+        elif v.get("file") and snd_name(v["file"]) == v["file"]:
+            e["file"] = v["file"]
+        else:
+            continue
+        try:
+            e["vol"] = max(0, min(200, int(v.get("vol", 100))))
+        except (TypeError, ValueError):
+            e["vol"] = 100
+        clean[k] = e
+    new = dict(SETTINGS); new["sounds"] = clean
+    SETTINGS = new
+    SETTINGS_FILE.write_text(json.dumps(new, ensure_ascii=False, indent=2), encoding="utf-8")
 
 # ------------------------------------------------ Stream Deck: kolejka poleceń dla terminala i stan do wyświetlenia na przyciskach
 CMDS = deque(maxlen=50)
@@ -479,6 +563,22 @@ class H(BaseHTTPRequestHandler):
             return self._html(report.build(st, HIST, CFG.get("operator", {}).get("callsign") or ""))
         if p == "/api/cables":
             return self._cables()
+        if p == "/api/sounds":
+            return self._json(sounds_view())
+        if p == "/api/tts/status":
+            return self._json(tts_view())
+        m = re.match(r"^/sounds/([^/]+)$", p)
+        if m:
+            n = snd_name(urllib.parse.unquote(m.group(1)))
+            f = SOUNDS / n if n else None
+            if not f or not f.is_file():
+                self.send_error(404); return
+            b = f.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", SND_EXT[f.suffix.lower()])
+            self.send_header("Content-Length", str(len(b)))
+            self.send_header("Cache-Control", "max-age=86400")
+            self.end_headers(); self.wfile.write(b); return
         if p == "/api/deck":
             return self._json(deck_state())
         if p == "/api/cmd/wait":
@@ -607,8 +707,50 @@ class H(BaseHTTPRequestHandler):
                 self.end_headers(); self.wfile.write(b); return
             time.sleep(1.5)
             return self._json({"ok": False}, 403)
-        if p in ("/api/settings", "/api/model/pull", "/api/model/rescan", "/api/notify/test") and not self._local():
+        if (p in ("/api/settings", "/api/model/pull", "/api/model/rescan", "/api/notify/test") or p.startswith("/api/sounds/")) and not self._local():
             return self._json({"error": i18n.L("Ustawienia można zmieniać tylko na komputerze z KRONOS-em.", "Settings can only be changed on the computer running KRONOS.")}, 403)
+        if p in ("/api/tts/install", "/api/tts/remove", "/api/tts/settings") and not self._local():
+            return self._json({"error": "local only"}, 403)
+        if p == "/api/tts/install":
+            TTS.install(self._body().get("voice"))
+            return self._json(tts_view())
+        if p == "/api/tts/remove":
+            TTS.remove_voice(self._body().get("voice"))
+            return self._json(tts_view())
+        if p == "/api/tts/settings":
+            save_tts(self._body())
+            return self._json(tts_view())
+        if p == "/api/tts":
+            b = self._body(); c = tts_cfg()
+            v = b.get("voice") if b.get("voice") in tts.VOICES else c["voice_en" if i18n.en() else "voice_pl"]
+            wav = TTS.synth(b.get("text"), v, float(b.get("rate") or c["rate"]))
+            if not wav:
+                return self._json({"error": "tts", "installed": TTS.has_voice(v), "engine": bool(TTS.exe())}, 503)
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/wav"); self.send_header("Content-Length", str(len(wav))); self.send_header("Cache-Control", "no-store")
+            self.end_headers(); self.wfile.write(wav); return
+        if p == "/api/sounds/upload":
+            n = snd_name(urllib.parse.unquote((re.search(r"name=([^&]*)", self.path) or [None, ""])[1]))
+            size = int(self.headers.get("Content-Length") or 0)
+            if not n:
+                return self._json({"ok": False, "error": i18n.L("Nieobsługiwany format. Dozwolone: " + ", ".join(SND_EXT), "Unsupported format. Allowed: " + ", ".join(SND_EXT))}, 400)
+            if size <= 0 or size > SND_MAX:
+                self.rfile.read(min(size, SND_MAX + 1)) if size > 0 else None
+                return self._json({"ok": False, "error": i18n.L(f"Plik za duży (najwyżej {SND_MAX // 1048576} MB).", f"File too large (max {SND_MAX // 1048576} MB).")}, 400)
+            data = self.rfile.read(size)
+            SOUNDS.mkdir(parents=True, exist_ok=True)
+            (SOUNDS / n).write_bytes(data)
+            log(i18n.L(f"Dźwięki: dodano plik {n}.", f"Sounds: added file {n}."))
+            return self._json({"ok": True, "name": n, **sounds_view()})
+        if p == "/api/sounds/delete":
+            n = snd_name(self._body().get("name"))
+            if n and (SOUNDS / n).is_file():
+                (SOUNDS / n).unlink()
+                save_sound_map({k: v for k, v in (SETTINGS.get("sounds") or {}).items() if v.get("file") != n})
+            return self._json({"ok": True, **sounds_view()})
+        if p == "/api/sounds/map":
+            save_sound_map(self._body().get("map"))
+            return self._json({"ok": True, **sounds_view()})
         if p == "/api/cmd":
             b = self._body()
             return self._json(push_cmd(str(b.get("do") or ""), b.get("arg") or ""))
@@ -657,7 +799,7 @@ class H(BaseHTTPRequestHandler):
 def main():
     port = int(os.environ.get("KRONOS_PORT", CFG.get("port", 7707)))
     st = ENGINE.status()
-    log("KRONOS-7 v3.10 · start")
+    log("KRONOS-7 v3.11 · start")
     log(f"Sprzęt: {st['hardware']['gpu_name']} · VRAM {st['hardware']['vram_gb']} GB · RAM {st['hardware']['ram_gb']} GB")
     log(f"AI: {st['backend'] or 'brak (zainstaluj Ollamę)'} · model: {st['model'] or '—'} · zalecany: {st['recommended']}")
     log(st["reason"])

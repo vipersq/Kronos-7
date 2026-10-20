@@ -21,6 +21,13 @@ Lokalny terminal w stylu komputerów pokładowych z filmów science fiction. Pok
 - **Polecenia głosowe** (przycisk GŁOS albo Alt+V), np. „sitrep Bałtyk”, „pokaż Ormuz”, „odśwież”, „briefing”, „odtwórz”, „na żywo”, „warstwa kable”, „pełny ekran”; wszystko inne trafia jako pytanie do AI. W Chrome i Edge rozpoznawanie mowy przetwarzają serwery Google/Microsoft.
 - Wydajność: mapa rysowana na płótnie, obliczenia orbit i przelotów w osobnym wątku, zapis historii w tle.
 
+## Dźwięki i głos lektora (v3.11)
+
+**OPERATOR → DŹWIĘKI I GŁOS LEKTORA…**
+
+- **Głos lektora** (briefing, SITREP): zamiast słabego głosu przeglądarki KRONOS może czytać lokalnym neuronowym syntezatorem **Piper** – działa offline na procesorze, nie zajmuje karty graficznej i ma dobre polskie głosy (Darkman, Gosia, MC Speech) oraz brytyjskie (Alan, Northern English, Cori, Alba). Kliknij **POBIERZ** przy głosie: program (ok. 25 MB) i głos (ok. 60 MB) ściągną się same do `data/tts`. Do tego tempo czytania i efekt „komputera pokładowego” (pasmo radiowe i metaliczny pogłos). Bez Pipera można wybrać dowolny głos przeglądarki – w Edge najlepiej brzmią głosy „Online (Natural)”.
+- **Własne dźwięki:** każde zdarzenie – start, koniec analizy, wzrost napięcia, syrena PRIORYTET JEDEN, nowy kontakt, alarm squawk/AIS-SART, sankcje/STS/kable, przelot satelity, przyciski, dalekopis, praca rdzenia AI, szum tła – może grać Twój plik (MP3, WAV, OGG, M4A, FLAC, do 15 MB), wbudowany syntezator albo nic. Każdy ma osobną głośność i przycisk odsłuchu. Pliki wgrywasz przeciągając je do okna albo wrzucasz do `data/sounds`.
+
 ## Stream Deck (v3.10)
 
 Wtyczka w `streamdeck/dist/com.vipersq.kronos7.streamDeckPlugin` – kliknij plik dwa razy, a aplikacja Stream Deck sama ją zainstaluje (wymaga Stream Deck 6.4 lub nowszego). Akcje pojawią się w kategorii **KRONOS-7**. Przyciski działają, gdy KRONOS jest uruchomiony, a polecenia mapy i głosu – gdy terminal jest otwarty w przeglądarce (może być w tle albo na innym monitorze).
@@ -198,6 +205,7 @@ Dane startowe w repozytorium (`data/seed.json`) to odczyt z 18.10.2026, 14:33. P
 - `data/state.json` – Twój bieżący odczyt (lokalny, poza gitem)
 - `data/archive/` – kopie każdego odczytu, ostatnie 120 (lokalne)
 - `data/settings.json` – ustawienia operatora (lokalne)
+- `data/sounds/` – Twoje pliki dźwiękowe; `data/tts/` – program Piper i pobrane głosy
 - `data/history.db` – historia: pozycje, wskaźniki i zdarzenia (lokalne)
 - `data/satinfo/`, `data/tle/`, `data/cables.json`, `data/ofac_vessels.json` – pamięć podręczna danych (lokalne)
 

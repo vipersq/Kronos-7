@@ -1,4 +1,4 @@
-/* KRONOS-7 v3.10 — interfejs terminala. Dane: lokalny serwer (/api/*). */
+/* KRONOS-7 v3.11 — interfejs terminala. Dane: lokalny serwer (/api/*). */
 (function () {
 "use strict";
 const $ = s => document.querySelector(s);
@@ -86,17 +86,47 @@ function eng() {
   try { if (!actx) { actx = new (window.AudioContext || window.webkitAudioContext)(); SE = window.K7Sound(actx, actx.destination); SE.setVol(SND.vol); }
     if (actx.state === "suspended") actx.resume(); return SE; } catch (e) { return null; }
 }
-const sfx = (name, ...a) => { const e = eng(); if (e) try { return e[name](...a); } catch (err) {} };
+const sfxRaw = (name, ...a) => { const e = eng(); if (e) try { return e[name](...a); } catch (err) {} };
+/* własne dźwięki: każde zdarzenie (slot) może grać plik z data/sounds, syntezator KRONOS-a albo nic */
+const SLOT_OF = { click: "click", beep: "click", blip: "click", error: "click", key: "key", carriage: "key", chatter: "key", powerUp: "boot", done: "done", contact: "contact", whoop: "klaxon", alarm: "threat", burblePhrase: "burble" };
+let CSND = { map: {}, files: [] };
+const BUF = {}, SLOT_T = {};
+function audioCtx() { try { if (!actx) { actx = new (window.AudioContext || window.webkitAudioContext)(); SE = window.K7Sound ? window.K7Sound(actx, actx.destination) : null; if (SE) SE.setVol(SND.vol); }
+  if (actx.state === "suspended") actx.resume(); return actx; } catch (e) { return null; } }
+function loadBuf(file) {
+  if (!BUF[file]) BUF[file] = fetch("/sounds/" + encodeURIComponent(file)).then(r => { if (!r.ok) throw 0; return r.arrayBuffer(); }).then(b => audioCtx().decodeAudioData(b)).catch(() => { delete BUF[file]; return null; });
+  return BUF[file];
+}
+function playFile(file, vol, loop, force) {
+  if (!force && !audioOn) return null; const c = audioCtx(); if (!c) return null;
+  const g = c.createGain(); g.gain.value = SND.vol * (vol == null ? 1 : vol / 100); g.connect(c.destination);
+  const h = { src: null, stopped: false, stop() { this.stopped = true; try { this.src && this.src.stop(); } catch (e) {} } };
+  loadBuf(file).then(buf => { if (!buf || h.stopped) return; const s2 = c.createBufferSource(); s2.buffer = buf; s2.loop = !!loop; s2.connect(g); s2.start(); h.src = s2; h.dur = buf.duration; });
+  return h;
+}
+const slotCfg = slot => CSND.map[slot] || null;
+/* zwraca: undefined – użyj syntezatora; 0 – wyciszone; liczba – zagrano plik */
+function slotPlay(slot) {
+  const c = slotCfg(slot); if (!c) return undefined; if (c.off) return 0;
+  const now = performance.now(); if (now - (SLOT_T[slot] || 0) < (slot === "key" ? 90 : 40)) return 0; SLOT_T[slot] = now;
+  playFile(c.file, c.vol); return .4;
+}
+const sfx = (name, ...a) => { const sl = SLOT_OF[name]; if (sl) { const r = slotPlay(sl); if (r !== undefined) return r; } return sfxRaw(name, ...a); };
+function sndEvent(slot, synth) { const r = slotPlay(slot); if (r === undefined && synth) synth(); }
 function beep(f = 880, d = .05, type = "square") { sfx("beep", f, d, type); }
 function chatter(n = 20) { if (SND.chatter) sfx("chatter", n); }
+let burbleH = null;
 function burble(on) {
-  clearTimeout(burbleT); burbleT = null; if (!on || !audioOn || !SND.chatter) return;
-  const loop = () => { const dur = sfx("burblePhrase") || .4; burbleT = setTimeout(loop, dur * 1000); }; loop();
+  clearTimeout(burbleT); burbleT = null; if (burbleH) { burbleH.stop(); burbleH = null; } if (!on || !audioOn || !SND.chatter) return;
+  const c = slotCfg("burble"); if (c) { if (!c.off) { burbleH = playFile(c.file, c.vol, true); burbleT = -1; } return; }
+  const loop = () => { const dur = sfxRaw("burblePhrase") || .4; burbleT = setTimeout(loop, dur * 1000); }; loop();
 }
-function hum(on) { if (humH) { humH.stop(); humH = null; } if (on && audioOn && SND.hum) { const e = eng(); if (e) humH = e.humStart(); } }
+function hum(on) { if (humH) { humH.stop(); humH = null; } if (on && audioOn && SND.hum) { const c = slotCfg("hum"); if (c) { if (!c.off) humH = playFile(c.file, c.vol, true); return; } const e = eng(); if (e) humH = e.humStart(); } }
 const powerUp = () => sfx("powerUp"), doneChime = () => sfx("done"), alarmBurst = n => sfx("alarm", n || 2);
-function startKlaxon() { stopKlaxon(); if (!audioOn) return; sfx("whoop"); klaxon = setInterval(() => sfx("whoop"), 780); }
-function stopKlaxon() { if (klaxon) { clearInterval(klaxon); klaxon = null; } }
+const WATCHK = new Set(["sanc", "dark", "sts", "cable"]);
+let klaxonH = null;
+function startKlaxon() { stopKlaxon(); if (!audioOn) return; const c = slotCfg("klaxon"); if (c) { if (!c.off) klaxonH = playFile(c.file, c.vol, true); return; } sfxRaw("whoop"); klaxon = setInterval(() => sfxRaw("whoop"), 780); }
+function stopKlaxon() { if (klaxon) { clearInterval(klaxon); klaxon = null; } if (klaxonH) { klaxonH.stop(); klaxonH = null; } }
 function setAudio(on) { audioOn = on; store.set("audio", on); $("#audioBtn").setAttribute("aria-pressed", on);
   if (on) { sfx("click"); sfx("blip", 1568, .08); hum(true); if (document.body.classList.contains("alert")) startKlaxon(); } else { hum(false); burble(false); stopKlaxon(); } }
 $("#audioBtn").addEventListener("click", () => setAudio(!audioOn));
@@ -564,7 +594,10 @@ function tipText(id) {
 
 /* --- samoloty: pobieranie */
 let airT = null;
-function contactSound(kind) { if (kind === "squawk") alarmBurst(1); else sfx("contact"); }
+function contactSound(kind) {
+  if (kind === "squawk") sndEvent("emergency", () => sfxRaw("alarm", 1));
+  else if (WATCHK.has(kind)) sndEvent("watch", () => sfxRaw("contact"));
+  else sfx("contact"); }
 function airToast(e) {
   const box = $("#airToast"); if (!box) return; const b = document.createElement("button");
   b.className = "toast" + (e.kind === "squawk" || e.kind === "alarm" ? " red" : ""); b.innerHTML = `<b>${e.head || TX("KONTAKT ·") + " " + esc(new Date(e.at).toISOString().slice(11, 16)) + " " + TX("UTC")}</b>${esc(e.msg)}`;
@@ -597,7 +630,7 @@ async function pollSea() {
     const lim = d.now / 1000 - (d.keep_s || 21600); for (const [k2, w] of SHIPS) if (w[6] < lim) SHIPS.delete(k2);
     SEA.since = d.now; SEA.skew = d.now - Date.now(); SEA.ok = SHIPS.size > 0; drCache = 0; markStatic();
     SEA.d = Object.assign({}, d, { rows: null, events: (SEA.d ? A(SEA.d.events) : []).concat(A(d.events)).slice(-30) });
-    A(d.events).forEach(e => { SEA.lastEv = Math.max(SEA.lastEv, e.at); if (!SEA.first) { airToast(Object.assign({}, e, { hex: null, go: "vs:" + e.mmsi })); contactSound(e.kind === "alarm" ? "squawk" : "zone"); } });
+    A(d.events).forEach(e => { SEA.lastEv = Math.max(SEA.lastEv, e.at); if (!SEA.first) { airToast(Object.assign({}, e, { hex: null, go: "vs:" + e.mmsi })); contactSound(e.kind === "alarm" ? "squawk" : e.kind); } });
     SEA.first = false; renderSea(); renderFilterCounts();
     if (selected && selected.startsWith("vs:")) pick(selected, true);
   } catch (e) {}
@@ -926,7 +959,7 @@ function passAlarms() {
   PASS.list.forEach(p => { const k = p.norad + ":" + p.aos;
     if (PCFG.alarm && !PASS.alarmed[k] && p.aos > now && p.aos - now <= PCFG.alarm * 60e3) { PASS.alarmed[k] = 1;
       const msg = `${p.name}: ${TX("przelot za")} ${cd(p.aos - now)} · ${hm(p.aos)}–${hm(p.los)} · max ${p.maxEl}° ${COMPASS(p.azMax)}${p.vis ? " · " + TX("widoczny gołym okiem") : ""}`;
-      airToast({ at: now, msg, go: "sc:" + p.norad, kind: "pass" }); if (PCFG.sound) sfx("contact");
+      airToast({ at: now, msg, go: "sc:" + p.norad, kind: "pass" }); if (PCFG.sound) sndEvent("pass", () => sfxRaw("contact"));
       api("/api/notify", { kind: "pass", text: "🛰 " + msg }).catch(() => {}); } });
 }
 setInterval(() => { if (PASS.list.length) { renderPasses(); passAlarms(); } }, 30000);
@@ -1594,7 +1627,7 @@ $("#q").addEventListener("keydown", e => { if (e.key === "Enter") ask(); else if
 /* SITREP w oknie: strumień, kopiuj, czytaj, drukuj */
 let sitCtl = null, sitBusy = false, sitFocus = null, sitText = "";
 function sitOpen() { sitFocus = document.activeElement; $("#sitModal").hidden = false; $("#sitClose").focus(); }
-function sitClose() { burble(false); if (sitCtl) sitCtl.abort(); sitCtl = null; sitBusy = false; if ("speechSynthesis" in window) speechSynthesis.cancel(); $("#sitModal").hidden = true; if (sitFocus) sitFocus.focus(); }
+function sitClose() { burble(false); if (sitCtl) sitCtl.abort(); sitCtl = null; sitBusy = false; stopSpeak(); $("#sitModal").hidden = true; if (sitFocus) sitFocus.focus(); }
 function sitButtons() { ["#sitCopy", "#sitSpeak", "#sitPrint", "#sitAgain"].forEach(b => $(b).disabled = sitBusy); }
 function sitrep() {
   const r = $("#sitIn").value.trim() || TX("Świat"); beep(1000, .06);
@@ -1620,26 +1653,20 @@ $("#sitCopy").addEventListener("click", async () => {
   beep(1400, .05); setTimeout(() => $("#sitCopy").textContent = TX("KOPIUJ"), 1500);
 });
 $("#sitSpeak").addEventListener("click", () => {
-  if (!("speechSynthesis" in window)) return;
-  if (speechSynthesis.speaking) { speechSynthesis.cancel(); return; }
-  const u = new SpeechSynthesisUtterance($("#sitOut").textContent), v = plVoice(); u.lang = LOC; if (v) u.voice = v; u.rate = .95; u.pitch = .85;
-  u.onstart = () => $("#sitSpeak").textContent = TX("STOP"); u.onend = u.onerror = () => $("#sitSpeak").textContent = TX("CZYTAJ");
-  speechSynthesis.cancel(); speechSynthesis.speak(u);
+  if (SPK.on) { stopSpeak(); return; }
+  speak($("#sitOut").textContent, { onstart: () => $("#sitSpeak").textContent = TX("STOP"), onend: () => $("#sitSpeak").textContent = TX("CZYTAJ") });
 });
 $("#sitPrint").addEventListener("click", () => { document.body.classList.add("print-sit"); window.print(); setTimeout(() => document.body.classList.remove("print-sit"), 500); });
 $("#sitIn").addEventListener("keydown", e => { if (e.key === "Enter") sitrep(); });
 
 /* ------------------------------------------------------------ BRIEFING GŁOSOWY */
 let speaking = false;
-function plVoice() { const v = speechSynthesis.getVoices(); return LANG === "en" ? (v.find(x => /^en-GB/i.test(x.lang)) || v.find(x => /^en/i.test(x.lang)) || null) : (v.find(x => /^pl/i.test(x.lang)) || null); }
 $("#speakBtn").addEventListener("click", () => {
-  if (!("speechSynthesis" in window)) { $("#speakBtn").textContent = TX("BRAK SYNTEZY MOWY"); return; }
-  if (speaking) { speechSynthesis.cancel(); return; }
-  const u = new SpeechSynthesisUtterance(S.briefing || TX("Brak briefingu. Uruchom analizę lokalnego AI.")), v = plVoice();
-  u.lang = LOC; if (v) u.voice = v; u.rate = .95; u.pitch = .85;
-  u.onstart = () => { speaking = true; $("#speakBtn").setAttribute("aria-pressed", "true"); $("#speakBtn").textContent = TX("ZATRZYMAJ ODCZYT"); };
-  u.onend = u.onerror = () => { speaking = false; $("#speakBtn").setAttribute("aria-pressed", "false"); $("#speakBtn").textContent = v ? TX("ODCZYTAJ BRIEFING") : TX("ODCZYTAJ (BRAK GŁOSU PL)"); };
-  beep(800, .1); speechSynthesis.cancel(); speechSynthesis.speak(u);
+  if (speaking) { stopSpeak(); return; }
+  beep(800, .1);
+  speak(S.briefing || TX("Brak briefingu. Uruchom analizę lokalnego AI."), {
+    onstart: () => { speaking = true; $("#speakBtn").setAttribute("aria-pressed", "true"); $("#speakBtn").textContent = TX("ZATRZYMAJ ODCZYT"); },
+    onend: () => { speaking = false; $("#speakBtn").setAttribute("aria-pressed", "false"); $("#speakBtn").textContent = TX("ODCZYTAJ BRIEFING"); } });
 });
 
 /* ------------------------------------------------------------ TRYB EKRANU */
@@ -1778,7 +1805,7 @@ function voiceCmd(raw) {
   if (has("raport dzienny", "daily report")) return window.open("/report", "_blank");
   if (has("odswiez", "refresh", "nowa analiza", "new analysis")) return $("#refreshBtn").click();
   if (has("briefing", "odczytaj", "read briefing")) return $("#speakBtn").click();
-  if (has("stop", "cisza", "silence")) { if ("speechSynthesis" in window) speechSynthesis.cancel(); stopKlaxon(); return; }
+  if (has("stop", "cisza", "silence")) { stopSpeak(); stopKlaxon(); return; }
   if (has("pelny ekran", "full screen", "fullscreen")) return toggleFs();
   if (has("globus", "globe", "mapa plaska", "flat map")) return $("#projBtn").click();
   if (has("odtworz", "replay", "odtwarzanie")) return replayOpen();
@@ -1829,7 +1856,7 @@ function runCmd(c) {
     case "briefing": $("#speakBtn").click(); break;
     case "sitrep": $("#sitIn").value = a || TX("Świat"); sitrep(); break;
     case "ask": if (a) { $("#q").value = a; ask(); } break;
-    case "stop": if ("speechSynthesis" in window) speechSynthesis.cancel(); stopKlaxon(); if (!$("#sitModal").hidden) sitClose(); break;
+    case "stop": stopSpeak(); stopKlaxon(); if (!$("#sitModal").hidden) sitClose(); break;
     case "globe": if ((a === "on") !== (mode === "globe") || !a) $("#projBtn").click(); break;
     case "autozoom": setAutoZ(tri3(a, AUTOZ)); break;
     case "alert": if (tri3(a, document.body.classList.contains("alert")) !== document.body.classList.contains("alert")) $("#alertBtn").click(); break;
@@ -1865,6 +1892,152 @@ function reportUI() {
   uiLast = j; uiAt = now; fetch("/api/ui", { method: "POST", headers: { "Content-Type": "application/json" }, body: j }).catch(() => {});
 }
 if (!SOLO || SOLO === "mapa") { cmdLoop(); setInterval(() => { if (!document.hidden || !SOLO) reportUI(); }, 700); }
+/* ------------------------------------------------------------ GŁOS LEKTORA: Piper (lokalny, neuronowy) albo głos przeglądarki */
+let TTSC = null;
+const SPK = { on: false, gen: 0, src: null, onend: null };
+async function loadTTS() { try { TTSC = await api("/api/tts/status"); } catch (e) {} return TTSC; }
+const ttsCfg = () => (TTSC && TTSC.cfg) || { engine: "auto", rate: 1, fx: true, pitch: .9 };
+function ttsVoiceId() { const c = ttsCfg(); return c[LANG === "en" ? "voice_en" : "voice_pl"]; }
+function ttsEngine() {
+  const c = ttsCfg(), v = ttsVoiceId(), ok = TTSC && TTSC.engine && A(TTSC.voices).some(x => x.id === v && x.installed);
+  return c.engine === "browser" || !ok ? "browser" : "piper";
+}
+function splitText(t) {   // kawałki ~300 znaków po zdaniach – pierwszy dźwięk po ułamku sekundy, kolejne liczą się w tle
+  const sent = String(t || "").replace(/\s+/g, " ").match(/[^.!?…;:]+[.!?…;:]*\s*/g) || [], out = []; let cur = "";
+  for (const x of sent) { if ((cur + x).length > 300 && cur) { out.push(cur.trim()); cur = ""; } cur += x; }
+  if (cur.trim()) out.push(cur.trim()); return out;
+}
+async function ttsChunk(text, voice) {
+  try { const r = await fetch("/api/tts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, voice }) });
+    if (!r.ok) return null; return await audioCtx().decodeAudioData(await r.arrayBuffer()); } catch (e) { return null; }
+}
+function fxChain(c) {   // „komputer pokładowy”: pasmo radiowe, lekka kompresja i krótki metaliczny pogłos
+  const inp = c.createGain(), hp = c.createBiquadFilter(), lp = c.createBiquadFilter(), pk = c.createBiquadFilter(), comp = c.createDynamicsCompressor(), out = c.createGain();
+  hp.type = "highpass"; hp.frequency.value = 220; lp.type = "lowpass"; lp.frequency.value = 4300; pk.type = "peaking"; pk.frequency.value = 1700; pk.Q.value = 1.2; pk.gain.value = 4;
+  comp.threshold.value = -22; comp.ratio.value = 4;
+  const d = c.createDelay(.2), fb = c.createGain(), wet = c.createGain(); d.delayTime.value = .038; fb.gain.value = .32; wet.gain.value = .22;
+  inp.connect(hp); hp.connect(lp); lp.connect(pk); pk.connect(comp); comp.connect(out); comp.connect(d); d.connect(fb); fb.connect(d); d.connect(wet); wet.connect(out);
+  return { inp, out };
+}
+function playSpeech(buf, my) {
+  return new Promise(res => {
+    const c = audioCtx(); if (!c || my !== SPK.gen) return res();
+    const s2 = c.createBufferSource(); s2.buffer = buf; const g = c.createGain(); g.gain.value = Math.max(.35, SND.vol) * 1.15;
+    if (ttsCfg().fx) { const f = fxChain(c); s2.connect(f.inp); f.out.connect(g); } else s2.connect(g);
+    g.connect(c.destination); s2.onended = res; SPK.src = s2; s2.start();
+  });
+}
+function endSpeak(my) { if (my !== SPK.gen) return; SPK.on = false; SPK.src = null; const f = SPK.onend; SPK.onend = null; if (f) f(); }
+function stopSpeak() { SPK.gen++; try { SPK.src && SPK.src.stop(); } catch (e) {} SPK.src = null; if ("speechSynthesis" in window) speechSynthesis.cancel(); SPK.on = false; const f = SPK.onend; SPK.onend = null; if (f) f(); }
+function browserVoice() {
+  const v = "speechSynthesis" in window ? speechSynthesis.getVoices() : [], want = ttsCfg().browser_voice, pre = LANG === "en" ? /^en-GB/i : /^pl/i, any = LANG === "en" ? /^en/i : /^pl/i;
+  return v.find(x => x.name === want) || v.find(x => pre.test(x.lang) && /natural|online|neural/i.test(x.name)) || v.find(x => pre.test(x.lang) && /google/i.test(x.name)) || v.find(x => pre.test(x.lang)) || v.find(x => any.test(x.lang)) || null;
+}
+function browserSpeak(text, my) {
+  if (!("speechSynthesis" in window)) return endSpeak(my);
+  const u = new SpeechSynthesisUtterance(text), v = browserVoice(), c = ttsCfg(); u.lang = v ? v.lang : LOC; if (v) u.voice = v; u.rate = .95 * (c.rate || 1); u.pitch = c.pitch || .9;
+  u.onend = u.onerror = () => endSpeak(my); speechSynthesis.cancel(); speechSynthesis.speak(u);
+}
+async function speak(text, cb = {}) {
+  stopSpeak(); const my = ++SPK.gen; SPK.on = true; SPK.onend = cb.onend || null; if (cb.onstart) cb.onstart();
+  if (!TTSC) await loadTTS();
+  if (ttsEngine() !== "piper") return browserSpeak(text, my);
+  const v = ttsVoiceId(), parts = splitText(text); let next = ttsChunk(parts[0], v);
+  for (let i = 0; i < parts.length; i++) {
+    const buf = await next; if (my !== SPK.gen) return;
+    next = i + 1 < parts.length ? ttsChunk(parts[i + 1], v) : null;
+    if (!buf) { browserSpeak(parts.slice(i).join(" "), my); return; }     // Piper nie odpowiedział – dokończ głosem przeglądarki
+    await playSpeech(buf, my); if (my !== SPK.gen) return;
+  }
+  endSpeak(my);
+}
+
+/* ------------------------------------------------------------ OKNO „DŹWIĘK I GŁOS” */
+const SLOTS = [["boot", TX("Start terminala")], ["done", TX("Koniec analizy AI")], ["threat", TX("Wzrost poziomu napięcia")], ["klaxon", TX("PRIORYTET JEDEN – syrena (w pętli)")],
+  ["contact", TX("Nowy kontakt (samolot, okręt)")], ["emergency", TX("Alarm: squawk 7500/7600/7700, AIS-SART")], ["watch", TX("Sankcje, STS, „ciemny” statek, kabel")],
+  ["pass", TX("Przelot satelity")], ["click", TX("Przyciski")], ["key", TX("Dalekopis (drukowanie tekstu)")], ["burble", TX("Praca rdzenia AI (w pętli)")], ["hum", TX("Szum tła (w pętli)")]];
+const SYNTH_DEMO = { boot: () => sfxRaw("powerUp"), done: () => sfxRaw("done"), threat: () => sfxRaw("alarm", 2), klaxon: () => sfxRaw("whoop"), contact: () => sfxRaw("contact"),
+  emergency: () => sfxRaw("alarm", 1), watch: () => sfxRaw("contact"), pass: () => sfxRaw("contact"), click: () => sfxRaw("click"), key: () => sfxRaw("chatter", 24),
+  burble: () => sfxRaw("burblePhrase"), hum: () => { const e = eng(); if (e) { const h = e.humStart(); setTimeout(() => h.stop(), 2500); } } };
+async function loadSounds() { try { CSND = await api("/api/sounds"); } catch (e) {} return CSND; }
+let demoH = null;
+function demoSlot(slot) {
+  if (demoH) { demoH.stop(); demoH = null; } const c = slotCfg(slot); audioCtx();
+  if (c && c.off) return; if (c) { demoH = playFile(c.file, c.vol, false, true); return; }
+  const was = audioOn; audioOn = true; try { SYNTH_DEMO[slot](); } finally { audioOn = was; }
+}
+function renderSndSlots() {
+  const opts = f => `<option value="">${TX("KRONOS (syntezator)")}</option><option value="off"${f === "off" ? " selected" : ""}>${TX("WYŁĄCZONY")}</option>`
+    + A(CSND.files).map(x => `<option value="${esc0(x.name)}"${f === x.name ? " selected" : ""}>${esc0(x.name)}</option>`).join("");
+  $("#sndSlots").innerHTML = SLOTS.map(([k, n]) => { const c = CSND.map[k] || {}, f = c.off ? "off" : c.file || "";
+    return `<div class="snd-row" data-slot="${k}"><span>${n}</span><select aria-label="${esc0(n)}">${opts(f)}</select><input type="range" min="0" max="200" step="5" value="${c.vol ?? 100}" title="${TX("Głośność")}" ${c.file ? "" : "disabled"}><button class="btn" type="button" title="${TX("Odsłuchaj")}">▶</button></div>`; }).join("");
+  $("#sndFiles").innerHTML = A(CSND.files).map(x => `<div class="tts-row"><span class="nm">${esc0(x.name)}</span><span class="st">${(x.size / 1048576).toFixed(1)} MB</span><span class="bt"><button class="btn" type="button" data-sdel="${esc0(x.name)}">${TX("USUŃ")}</button></span></div>`).join("")
+    || `<p class="hint">${TX("Brak własnych plików – dodaj je powyżej.")}</p>`;
+}
+async function saveSndMap() {
+  const map = {}; $$("#sndSlots .snd-row").forEach(r => { const v = r.querySelector("select").value, vol = +r.querySelector("input").value;
+    if (v === "off") map[r.dataset.slot] = { off: true }; else if (v) map[r.dataset.slot] = { file: v, vol }; });
+  try { CSND = await api("/api/sounds/map", { map }); } catch (e) {}
+  hum(false); hum(true); renderSndSlots();
+}
+$("#sndSlots").addEventListener("change", e => { if (e.target.matches("select, input")) saveSndMap(); });
+$("#sndSlots").addEventListener("click", e => { const b = e.target.closest("button"); if (b) demoSlot(b.closest(".snd-row").dataset.slot); });
+$("#sndFiles").addEventListener("click", async e => { const b = e.target.closest("[data-sdel]"); if (!b) return; try { CSND = await api("/api/sounds/delete", { name: b.dataset.sdel }); } catch (err) {} delete BUF[b.dataset.sdel]; renderSndSlots(); });
+async function uploadSounds(files) {
+  const msg = $("#sndMsg");
+  for (const f of files) {
+    msg.textContent = TX("Wgrywam") + " " + f.name + "…";
+    try { const r = await fetch("/api/sounds/upload?name=" + encodeURIComponent(f.name), { method: "POST", headers: { "Content-Type": f.type || "application/octet-stream" }, body: f });
+      const j = await r.json(); if (!j.ok) { msg.textContent = f.name + ": " + (j.error || TX("błąd")); continue; } CSND = j; delete BUF[j.name]; msg.textContent = TX("Dodano:") + " " + j.name;
+    } catch (e) { msg.textContent = f.name + ": " + TX("błąd"); }
+  }
+  renderSndSlots();
+}
+$("#sndFile").addEventListener("change", e => { uploadSounds([...e.target.files]); e.target.value = ""; });
+["dragover", "dragenter"].forEach(ev => $("#sndDrop").addEventListener(ev, e => { e.preventDefault(); $("#sndDrop").classList.add("over"); }));
+["dragleave", "drop"].forEach(ev => $("#sndDrop").addEventListener(ev, e => { e.preventDefault(); $("#sndDrop").classList.remove("over"); if (ev === "drop") uploadSounds([...e.dataTransfer.files]); }));
+$("#sndReset").addEventListener("click", async () => { try { CSND = await api("/api/sounds/map", { map: {} }); } catch (e) {} hum(false); hum(true); renderSndSlots(); });
+
+let ttsPoll = null;
+function renderTTS() {
+  if (!TTSC) return; const c = TTSC.cfg, j = TTSC.job || {};
+  $("#ttsEngine").value = c.engine; $("#ttsRate").value = c.rate; $("#ttsRateV").textContent = "×" + (+c.rate).toFixed(2); $("#ttsFx").checked = !!c.fx;
+  const row = v => { const cur = c[v.lang === "en" ? "voice_en" : "voice_pl"] === v.id;
+    return `<div class="tts-row${cur ? " cur" : ""}"><span class="nm">${v.lang === "pl" ? "PL" : "EN"} · ${esc0(v.label)}</span><span class="st">${v.installed ? (cur ? TX("WYBRANY") : TX("pobrany")) : v.mb + " MB"}</span><span class="bt">`
+      + (v.installed ? `${cur ? "" : `<button class="btn" type="button" data-tuse="${v.id}" data-tlang="${v.lang}">${TX("UŻYJ")}</button>`}<button class="btn" type="button" data-ttry="${v.id}" title="${TX("Odsłuchaj")}">▶</button><button class="btn" type="button" data-trm="${v.id}" title="${TX("Usuń głos")}">✕</button>`
+        : `<button class="btn" type="button" data-tget="${v.id}" data-tlang="${v.lang}"${j.active ? " disabled" : ""}>${TX("POBIERZ")}</button>`) + `</span></div>`; };
+  const mine = A(TTSC.voices).filter(v => v.lang === (LANG === "en" ? "en" : "pl")), other = A(TTSC.voices).filter(v => v.lang !== (LANG === "en" ? "en" : "pl"));
+  $("#ttsVoices").innerHTML = mine.concat(other).map(row).join("");
+  $("#ttsProg").textContent = j.active ? `${TX("Pobieranie:")} ${j.what} · ${j.pct}%` : j.err ? TX("Błąd pobierania:") + " " + j.err : ttsEngine() === "piper" ? TX("Teraz czyta: Piper –") + " " + ((A(TTSC.voices).find(v => v.id === ttsVoiceId()) || {}).label || "") : TX("Teraz czyta: głos przeglądarki –") + " " + ((browserVoice() || {}).name || TX("brak głosu dla tego języka"));
+  const bv = "speechSynthesis" in window ? speechSynthesis.getVoices() : [];
+  $("#ttsBrowser").innerHTML = `<option value="">${TX("automatycznie – najlepszy dla języka")}</option>` + bv.slice().sort((a, b) => (a.lang.slice(0, 2) === (LANG === "en" ? "en" : "pl") ? -1 : 1) - (b.lang.slice(0, 2) === (LANG === "en" ? "en" : "pl") ? -1 : 1) || a.lang.localeCompare(b.lang))
+    .map(v => `<option value="${esc0(v.name)}"${v.name === c.browser_voice ? " selected" : ""}>${esc0(v.lang)} · ${esc0(v.name)}</option>`).join("");
+  clearTimeout(ttsPoll); if (j.active) ttsPoll = setTimeout(async () => { await loadTTS(); renderTTS(); }, 1000);
+}
+async function ttsSave(body) { try { TTSC = await api("/api/tts/settings", body); } catch (e) {} renderTTS(); }
+$("#ttsEngine").addEventListener("change", e => ttsSave({ engine: e.target.value }));
+$("#ttsRate").addEventListener("change", e => ttsSave({ rate: +e.target.value }));
+$("#ttsRate").addEventListener("input", e => $("#ttsRateV").textContent = "×" + (+e.target.value).toFixed(2));
+$("#ttsFx").addEventListener("change", e => ttsSave({ fx: e.target.checked }));
+$("#ttsBrowser").addEventListener("change", e => ttsSave({ browser_voice: e.target.value }));
+const TTS_SAMPLE = () => LANG === "en" ? "KRONOS-7 online. Tension level three. The Strait of Hormuz remains effectively closed." : "KRONOS-7 gotowy. Poziom napięcia trzy. Cieśnina Ormuz pozostaje praktycznie zamknięta.";
+$("#ttsTest").addEventListener("click", () => SPK.on ? stopSpeak() : speak(TTS_SAMPLE()));
+$("#ttsVoices").addEventListener("click", async e => {
+  const g = e.target.closest("[data-tget]"), u = e.target.closest("[data-tuse]"), t = e.target.closest("[data-ttry]"), r = e.target.closest("[data-trm]");
+  if (g) { try { TTSC = await api("/api/tts/install", { voice: g.dataset.tget }); } catch (err) {} await ttsSave({ ["voice_" + g.dataset.tlang]: g.dataset.tget, engine: TTSC.cfg.engine === "browser" ? "auto" : TTSC.cfg.engine }); }
+  if (u) await ttsSave({ ["voice_" + u.dataset.tlang]: u.dataset.tuse });
+  if (r) { try { TTSC = await api("/api/tts/remove", { voice: r.dataset.trm }); } catch (err) {} renderTTS(); }
+  if (t) { stopSpeak(); const buf = await ttsChunk(/^pl/.test(t.dataset.ttry) ? "KRONOS-7 gotowy. Poziom napięcia trzy." : "KRONOS-7 online. Tension level three.", t.dataset.ttry); if (buf) { const my = ++SPK.gen; SPK.on = true; await playSpeech(buf, my); endSpeak(my); } }
+});
+async function openSnd() {
+  $("#settings").hidden = true; await Promise.all([loadSounds(), loadTTS()]); renderSndSlots(); renderTTS(); $("#sndModal").hidden = false; $("#sndClose").focus();
+}
+$("#sndOpen").addEventListener("click", openSnd);
+$("#sndClose").addEventListener("click", () => { $("#sndModal").hidden = true; if (demoH) demoH.stop(); });
+$("#sndModal").addEventListener("click", e => { if (e.target.id === "sndModal") $("#sndModal").hidden = true; });
+if ("speechSynthesis" in window) speechSynthesis.addEventListener("voiceschanged", () => { if (!$("#sndModal").hidden) renderTTS(); });
+loadSounds().then(() => { if (humH) { hum(false); hum(true); } }); loadTTS();
+
 /* ------------------------------------------------------------ START */
 function boot(done) {
   if (SOLO) return done();
@@ -1872,7 +2045,7 @@ function boot(done) {
   let seen = false; try { seen = sessionStorage.getItem("k7-boot") === "1"; } catch (e) { seen = true; }
   if (!needSetup && (seen || reduce)) return done();
   const B = $("#boot"); B.hidden = false; const e = STATUS ? STATUS.engine : null, C = CURRENT || {};
-  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.10"), TX("TEST PAMIĘCI ........ OK"),
+  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.11"), TX("TEST PAMIĘCI ........ OK"),
     TX("PROCESOR GRAFICZNY ..") + " " + (e ? TX(e.hardware.gpu_name) + (e.hardware.vram_gb ? " / " + e.hardware.vram_gb + " " + TX("GB") : "") : "?"),
     TX("RDZEŃ ANALITYCZNY ...") + " " + (e && e.model ? e.model.toUpperCase() : TX("NIEAKTYWNY")),
     TX("BAZA KONFLIKTÓW .....") + " " + A(C.conflicts).length + " " + TX("WĘZŁÓW"), TX("FRONTY ..............") + " " + A(C.fronts).length + " " + TX("TEATRÓW"),
