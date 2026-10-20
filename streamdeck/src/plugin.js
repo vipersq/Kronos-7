@@ -21,7 +21,7 @@ const LAYERS = { conf: ["KONFLIKTY", "CONFLICTS"], front: ["FRONTY", "FRONTS"], 
 const COUNTERS = { "air.n": ["SAMOLOTY", "AIRCRAFT", "air"], "air.isr": ["ROZPOZN.", "RECON", "air"], "air.tanker": ["TANKOWCE", "TANKERS", "air"], "air.bomber": ["BOMBOWCE", "BOMBERS", "air"],
   "air.loiter": ["KRĄŻĄ", "LOITER", "air"], "sea.n": ["STATKI", "SHIPS", "sea"], "sea.mil": ["OKRĘTY", "WARSHIPS", "sea"], "sea.sanc": ["SANKCJE", "SANCTIONS", "sea"],
   "sea.dark": ["CIEMNE", "DARK", "sea"], "sea.sts": ["STS", "STS", "sea"], "sea.cable": ["NAD KABLEM", "ON CABLE", "sea"],
-  "inc.n24": ["INCYDENTY 24H", "INCIDENTS 24H", "inc"], "inc.hi24": ["POWAŻNE 24H", "SERIOUS 24H", "inc"] };
+  "inc.n24": ["INCYDENTY 24H", "INCIDENTS 24H", "inc"], "inc.hi24": ["POWAŻNE 24H", "SERIOUS 24H", "inc"], "ua.n": ["ALARMY UA", "UA ALERTS", "ua"] };
 const CMDS = { briefing: ["BRIEFING", "BRIEFING"], sitrep: ["SITREP", "SITREP"], ask: ["PYTANIE", "QUESTION"], stop: ["STOP", "STOP"], globe: ["GLOBUS", "GLOBE"],
   autozoom: ["AUTO-ZOOM", "AUTO-ZOOM"], alert: ["PRIORYTET", "PRIORITY"], audio: ["AUDIO", "AUDIO"], voice: ["GŁOS", "VOICE"], "replay:toggle": ["ODTWÓRZ", "REPLAY"],
   "replay:play": ["▶ / ❚❚", "▶ / ❚❚"], "replay:live": ["NA ŻYWO", "LIVE"], "zoom:1": ["ZOOM +", "ZOOM +"], "zoom:-1": ["ZOOM −", "ZOOM −"], "zoom:reset": ["ŚWIAT", "WORLD"],
@@ -93,7 +93,7 @@ function render(c) {
   }
   if (a === "counter") {
     const key = st.metric || "air.n", m = COUNTERS[key] || COUNTERS["air.n"], [grp, f] = key.split("."), val = (D[grp] || {})[f];
-    const ev = (D[grp] || {}).ev, fresh = ev && ev.at > (k.seen || 0) && now - ev.at < 30 * 60e3, warn = ["sanc", "dark", "sts", "cable", "loiter", "n24", "hi24"].includes(f) && val > 0;
+    const ev = (D[grp] || {}).ev, fresh = ev && ev.at > (k.seen || 0) && now - ev.at < 30 * 60e3, warn = ["sanc", "dark", "sts", "cable", "loiter", "n24", "hi24"].includes(f) && val > 0 || (grp === "ua" && val > 0);
     const blink = fresh && now % 1400 < 700;
     return setImage(c, keySvg({ top: en() ? m[1] : m[0], big: val == null ? "–" : val > 9999 ? Math.round(val / 1000) + "k" : String(val),
       sub: fresh ? L("NOWY KONTAKT", "NEW CONTACT") : ev ? hm(ev.at) : "", col: warn || fresh ? C.amber : C.cyan, bg: blink ? "#2a1a04" : C.void, glow: fresh }));

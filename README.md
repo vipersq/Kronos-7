@@ -21,6 +21,34 @@ Lokalny terminal w stylu komputerów pokładowych z filmów science fiction. Pok
 - **Polecenia głosowe** (przycisk GŁOS albo Alt+V), np. „sitrep Bałtyk”, „pokaż Ormuz”, „odśwież”, „briefing”, „odtwórz”, „na żywo”, „warstwa kable”, „pełny ekran”; wszystko inne trafia jako pytanie do AI. W Chrome i Edge rozpoznawanie mowy przetwarzają serwery Google/Microsoft.
 - Wydajność: mapa rysowana na płótnie, obliczenia orbit i przelotów w osobnym wątku, zapis historii w tle.
 
+## Wywiad+, odbiorniki, mapa szczegółowa (v3.14)
+
+Ustawienia: **OPERATOR → ŹRÓDŁA I INTEGRACJE…** (tam też stan każdego źródła).
+
+**Dane wywiadowcze**
+- **Alarmy przeciwlotnicze w Ukrainie** na żywo (warstwa ALARMY UA): bez klucza, a z darmowym tokenem alerts.in.ua także rodzaj zagrożenia i części obwodów. Powiadomienia dla wybranych obwodów.
+- **DeepStateMap** (warstwa DEEPSTATE): obszary okupowane, wyzwolone i sporne oraz kierunki natarć – prawdziwa linia frontu, aktualizowana kilka razy dziennie.
+- **NOTAM-y** (FAA NOTAM API, darmowy klucz): zamknięte przestrzenie, strzelania, starty rakiet, drony i zakłócenia GNSS w rejonach informacji lotniczej (FIR) obserwowanych regionów.
+- **„Ciemne” statki z radaru SAR** (Global Fishing Watch, darmowy klucz): wykrycia statków bez AIS w obserwowanych akwenach.
+- **Kanały OSINT na Telegramie** (bez logowania): lokalne AI wybiera posty o konkretnych zdarzeniach, tłumaczy je, streszcza, ocenia wiarygodność w skali Admiralicji i łączy powtórzenia między kanałami. Najważniejsze trafiają do briefingu.
+- **Zdjęcia satelitarne NASA** w kartach konfliktów, incydentów, alarmów i postów: kolor, pożary albo światła nocne (przerwy w dostawach prądu).
+
+**Twoje odbiorniki (SDR)**
+- **ADS-B** z readsb / dump1090 / tar1090 (adres aircraft.json) – warstwa MOJE ADS-B, wojskowe i alarmowe wyróżnione, zasięg anteny.
+- **AIS** – zdania NMEA po UDP z AIS-catcher, rtl_ais itp.; statki trafiają do warstwy STATKI.
+- **APRS-IS** – stacje wokół QTH (tylko odbiór).
+
+**Więcej statków:** pamięć pozycji wydłużona do 24 h; publiczny strumień AIS Norwegii (Kystverket, bez klucza); własne strumienie NMEA po TCP; AISHub (wymiana danych dla właścicieli odbiorników). W panelu STATKI widać, ile statków jest na mapie, ile w pamięci i ile ukrywają filtry.
+
+**Mapa szczegółowa:** lista przy mapie – WEKTOR (dotychczasowa), CIEMNA SZCZEGÓŁOWA (Stadia Maps), CIEMNA SZARA (Esri), SATELITA (Esri, przyciemniona) i OSM NOCNA. Podkłady kafelkowe używają rzutu Merkatora jak mapy internetowe i pozwalają przybliżać do poziomu ulic.
+
+**Wygoda**
+- **Wyszukiwarka** przy mapie (klawisz /): MMSI, nazwa, IMO, znak wywoławczy statku; adres ICAO, znak, rejestracja i typ samolotu; znaki APRS.
+- **Pytania o przeszłość** – przycisk ARCHIWUM albo pytanie typu „co działo się w Ormuzie w zeszłym tygodniu?”: AI odpowiada z archiwum odczytów, bazy zdarzeń i incydentów.
+- **Widżet** dla ekranów dodatkowych: `http://127.0.0.1:7707/widget` (dla angielskiego `?lang=en`) – poziom napięcia, odliczanie analizy, liczniki, przelot satelity, ostatni kontakt. Można go wczytać w widżecie przeglądarki iCUE na XENEON EDGE, na tablecie albo drugim monitorze.
+- **Home Assistant** – webhook dostaje zdarzenia (z polami kind, text, level) i PRIORYTET JEDEN. Przykład automatyzacji: wyzwalacz Webhook `kronos7`, warunek `{{ trigger.json.kind == 'priority' }}`, akcja: czerwone światło.
+- **Poczta** – alerty UKMTO, MDAT-GoG, IFC-IOR (i inne) zamówione e-mailem trafiają do panelu BEZPIECZEŃSTWO MORSKIE: wpisz skrzynkę IMAP (najlepiej osobną, z hasłem aplikacji). KRONOS tylko czyta.
+
 ## Bezpieczeństwo morskie (v3.12)
 
 Panel **BEZPIECZEŃSTWO MORSKIE** i warstwa mapy **INCYDENTY MORSKIE**: piractwo, ataki, porwania, abordaże oraz ostrzeżenia nawigacyjne (miny, zakłócenia GNSS, strzelania i starty rakiet, zamknięte akweny). Źródła, wszystkie oficjalne i bez kluczy, sprawdzane co 30 minut:
@@ -225,6 +253,7 @@ Dane startowe w repozytorium (`data/seed.json`) to odczyt z 18.10.2026, 14:33. P
 - `data/state.json` – Twój bieżący odczyt (lokalny, poza gitem)
 - `data/archive/` – kopie każdego odczytu, ostatnie 120 (lokalne)
 - `data/settings.json` – ustawienia operatora (lokalne)
+- `data/osint_tg.json`, `data/mail_seen.json` – posty OSINT i przetworzone e-maile (lokalne)
 - `data/marsec.json` – incydenty i ostrzeżenia morskie z analizą AI (lokalne)
 - `data/sounds/` – Twoje pliki dźwiękowe; `data/tts/` – program Piper i pobrane głosy
 - `data/history.db` – historia: pozycje, wskaźniki i zdarzenia (lokalne)

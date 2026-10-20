@@ -18,6 +18,8 @@ KINDS = {  # rodzaj zdarzenia: (opis PL, opis EN)
     "cable": ("Statek stoi nad kablem podmorskim", "Ship stationary over an undersea cable"),
     "pass": ("Przelot satelity nad QTH", "Satellite pass over your QTH"),
     "marsec": ("Incydent bezpieczeństwa morskiego (piractwo, atak, porwanie)", "Maritime security incident (piracy, attack, hijacking)"),
+    "ua_alert": ("Alarm przeciwlotniczy w wybranych obwodach Ukrainy", "Air raid alert in selected Ukrainian oblasts"),
+    "osint": ("Ważny post z kanałów OSINT (Telegram)", "Important OSINT post (Telegram)"),
 }
 DEFAULT_ON = {"threat", "loiter", "squawk", "sanc", "sts", "cable", "pass", "marsec"}
 
@@ -38,17 +40,40 @@ class Notifier:
         self.q = queue.Queue(maxsize=200)
         self.sent = deque(maxlen=60)
         self.last_err = None
+        self.ha_err = None
         threading.Thread(target=self._worker, daemon=True, name="notify").start()
 
     def configure(self, st):
         self.cfg = {"tg_token": st.get("tg_token") or "", "tg_chat": str(st.get("tg_chat") or ""), "discord": st.get("discord") or "",
-                    "kinds": set(st.get("notify_kinds") if st.get("notify_kinds") is not None else DEFAULT_ON)}
+                    "kinds": set(st.get("notify_kinds") if st.get("notify_kinds") is not None else DEFAULT_ON),
+                    "ha": ((st.get("intg") or {}).get("ha_webhook") or "").strip()}
 
     def enabled(self):
         c = self.cfg
         return bool((c.get("tg_token") and c.get("tg_chat")) or c.get("discord"))
 
-    def send(self, kind, text, force=False):
+    def ha(self, kind, text, extra=None):
+        """Home Assistant: webhook dostaje każde zdarzenie (także PRIORYTET JEDEN), z rodzajem i treścią – automatyzacje decydują same."""
+        url = self.cfg.get("ha")
+        if not url:
+            return False
+        if not url.startswith("http"):
+            url = "http://" + url
+        body = dict(extra or {}, kind=kind, text=text, source="KRONOS-7", ts=int(time.time()))
+        def go():
+            try:
+                self._post(url, body)
+                self.ha_err = None
+            except Exception as e:
+                self.ha_err = str(e)[:160]
+        threading.Thread(target=go, daemon=True).start()
+        return True
+
+    def send(self, kind, text, force=False, extra=None):
+        if self.cfg.get("ha") and (force or kind in self.cfg.get("kinds", ()) or kind in ("priority", "threat_level")):
+            self.ha(kind, text, extra)
+        if kind in ("priority", "threat_level"):
+            return True
         if not self.enabled() or (not force and kind not in self.cfg.get("kinds", ())):
             return False
         try:

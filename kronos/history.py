@@ -42,6 +42,7 @@ class History:
         self.ev_seen = {}
         self.on_event = None
         self.marsec = None
+        self.extra = []          # dodatkowe moduły ze zdarzeniami: (nazwa, obiekt z .events)
 
     # ------------------------------------------------ zapis
     def sample(self, air, sea, state, markets):
@@ -64,7 +65,7 @@ class History:
                                                                                    or (r["cat"] == "tanker" and zone_of(r["lat"], r["lon"])))]
                 self.db.executemany("INSERT INTO sea VALUES(?,?,?,?,?,?,?,?)", srows)
             # zdarzenia z modułów na żywo
-            for src, mod in (("air", air), ("sea", sea), ("marsec", self.marsec)):
+            for src, mod in (("air", air), ("sea", sea), ("marsec", self.marsec)) + tuple(self.extra):
                 if not mod:
                     continue
                 last = self.ev_seen.get(src, 0)

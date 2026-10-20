@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KRONOS-7 · widżet</title>
+<style>
+  :root{--phos:#7dff9a;--dim:#3f8f55;--faint:#163321;--amber:#ffb347;--red:#ff4b4b;--cyan:#6fe4ff;--void:#050805;--text:#d9ffe1}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--void);color:var(--text);font-family:Consolas,"Cascadia Mono","Courier New",monospace;overflow:hidden}
+  body{container-type:size;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));grid-auto-rows:minmax(0,1fr);gap:6px;padding:6px}
+  body::after{content:"";position:fixed;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(0,0,0,.25) 0 1px,transparent 1px 3px)}
+  .t{border:1px solid var(--faint);padding:6px 10px;display:flex;flex-direction:column;justify-content:center;min-width:0;min-height:0;position:relative}
+  .t b{font-size:clamp(10px,2.2cqh,14px);letter-spacing:.18em;color:var(--dim);font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .t span{font-size:clamp(20px,11cqh,64px);font-weight:700;line-height:1.05;color:var(--phos);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 0 12px rgba(125,255,154,.35)}
+  .t i{font-style:normal;font-size:clamp(10px,2.6cqh,16px);color:var(--text);opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .t.big span{font-size:clamp(28px,16cqh,96px)}
+  .amber span{color:var(--amber)}.red span{color:var(--red)}.red{border-color:var(--red);animation:bl 1.2s infinite}.cyan span{color:var(--cyan)}
+  @keyframes bl{50%{background:#2a0606}}
+  .bar{position:absolute;left:10px;right:10px;bottom:4px;height:4px;background:var(--faint)}.bar>div{height:100%;background:var(--amber)}
+  .ev{grid-column:1/-1;max-height:18cqh}
+  .ev span{font-size:clamp(12px,4cqh,22px);white-space:nowrap;animation:none}
+  .off{position:fixed;inset:0;display:none;align-items:center;justify-content:center;color:var(--red);font-size:24px;letter-spacing:.3em;background:rgba(5,8,5,.85)}
+  body.dead .off{display:flex}
+  @container (max-height:260px){.ev{display:none}}
+</style>
+</head>
+<body>
+<div class="t big" id="w-threat"><b>NAPIĘCIE</b><span>–</span><i></i></div>
+<div class="t" id="w-ai"><b>ANALIZA AI</b><span>–</span><i></i><div class="bar" hidden><div></div></div></div>
+<div class="t" id="w-air"><b>LOTNICTWO</b><span>–</span><i></i></div>
+<div class="t" id="w-sea"><b>MORZE</b><span>–</span><i></i></div>
+<div class="t" id="w-inc"><b>INCYDENTY 24H</b><span>–</span><i></i></div>
+<div class="t" id="w-ua"><b>ALARMY UA</b><span>–</span><i></i></div>
+<div class="t" id="w-pass"><b>PRZELOT</b><span>–</span><i></i></div>
+<div class="t ev" id="w-ev"><b>OSTATNI KONTAKT</b><span>–</span></div>
+<div class="off">KRONOS OFFLINE</div>
+<script>
+/* Widżet KRONOS-7 dla ekranów dodatkowych (XENEON EDGE / iCUE, tablet, drugi monitor). Tylko odczyt – dane z /api/deck. */
+const EN = new URLSearchParams(location.search).get("lang") === "en";
+const L = (pl, en) => EN ? en : pl;
+const $ = id => document.getElementById(id);
+const set = (id, big, sub, cls) => { const e = $(id); e.querySelector("span").textContent = big; const i = e.querySelector("i"); if (i) i.textContent = sub || ""; e.className = "t" + (id === "w-threat" ? " big" : id === "w-ev" ? " ev" : "") + (cls ? " " + cls : ""); };
+const hm = t => new Date(t).toLocaleTimeString(EN ? "en-GB" : "pl-PL", { hour: "2-digit", minute: "2-digit" });
+const cd = ms => { if (ms <= 0) return L("ZARAZ", "SOON"); const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h}h${String(m).padStart(2, "0")}` : `${m}:${String(s % 60).padStart(2, "0")}`; };
+if (EN) [["w-threat", "TENSION"], ["w-ai", "AI ANALYSIS"], ["w-air", "AIRCRAFT"], ["w-sea", "MARITIME"], ["w-inc", "INCIDENTS 24H"], ["w-ua", "UA ALERTS"], ["w-pass", "SAT PASS"], ["w-ev", "LATEST CONTACT"]].forEach(([i, t]) => $(i).querySelector("b").textContent = t);
+let D = null, fails = 0;
+async function poll() {
+  try { D = await (await fetch("/api/deck", { cache: "no-store" })).json(); fails = 0; document.body.classList.remove("dead"); render(); }
+  catch (e) { if (++fails > 3) document.body.classList.add("dead"); }
+}
+function render() {
+  if (!D) return; const now = Date.now(), th = D.threat || {};
+  set("w-threat", th.level == null ? "–" : th.level + "/5", th.label, th.level >= 5 ? "red" : th.level >= 4 ? "red" : th.level === 3 ? "amber" : "");
+  const j = D.job || {};
+  if (j.running) { set("w-ai", (j.pct || 0) + "%", L("GPU ZAJĘTE", "GPU BUSY"), "amber"); const b = $("w-ai").querySelector(".bar"); b.hidden = false; b.firstChild.style.width = (j.pct || 0) + "%"; }
+  else { const ms = D.next ? new Date(D.next) - now : null; set("w-ai", ms == null ? "–" : cd(ms), D.next ? L("o ", "at ") + hm(D.next) : "", ms != null && ms < 600e3 ? "amber" : ""); $("w-ai").querySelector(".bar").hidden = true; }
+  const a = D.air || {}; set("w-air", a.n ?? "–", `ISR ${a.isr || 0} · TNK ${a.tanker || 0} · BMB ${a.bomber || 0}${a.loiter ? " · " + L("krąży", "loiter") + " " + a.loiter : ""}`, a.loiter ? "cyan" : "");
+  const s = D.sea || {}; set("w-sea", s.mil ?? "–", `${L("okręty", "warships")} · ${L("sankcje", "sanct.")} ${s.sanc || 0} · STS ${s.sts || 0} · ${L("ciemne", "dark")} ${s.dark || 0}`, (s.sts || s.cable) ? "amber" : "");
+  const inc = D.inc || {}; set("w-inc", inc.n24 ?? "–", inc.hi24 ? `${inc.hi24} ${L("poważnych", "serious")}` : L("piractwo · ataki", "piracy · attacks"), inc.hi24 ? "red" : inc.n24 ? "amber" : "");
+  const ua = D.ua || {}; set("w-ua", ua.n ?? "–", L("obwody z alarmem", "oblasts on alert"), ua.n >= 10 ? "red" : ua.n ? "amber" : "");
+  const p = (D.ui || {}).pass;
+  if (p) { const inP = now >= p.aos && now < p.los; set("w-pass", inP ? L("TERAZ", "NOW") : cd(p.aos - now), `${p.name} · max ${p.maxEl}°`, inP ? "cyan" : ""); } else set("w-pass", "–", "");
+  const ev = [(D.air || {}).ev, (D.sea || {}).ev, (D.inc || {}).ev, (D.ua || {}).ev].filter(Boolean).sort((x, y) => y.at - x.at)[0];
+  set("w-ev", ev ? `${hm(ev.at)} · ${ev.msg}` : "–", "", ev && now - ev.at < 600e3 ? "amber" : "");
+}
+poll(); setInterval(poll, 2000); setInterval(render, 1000);
+</script>
+</body>
+</html>

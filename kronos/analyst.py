@@ -438,6 +438,7 @@ Jeśli nie ma takich wydarzeń, zwróć pustą listę.
                  f"UDERZENIA (7 dni): {len(st.get('strikes', []))}; FLANKA NATO: {'; '.join(e['t'] for e in st.get('eastflank', [])[:4])}\n"
                  f"FRONTY: {'; '.join(f['name'] + ': ' + (f.get('note') or '')[:160] for f in st.get('fronts', []))}")
         chg = st["changes"]
+        tgo = "\n".join("- {} {}: {}".format(x.get("when"), x.get("who"), x.get("what")) for x in st.get("osint_tg", [])[:12])
         msec = "\n".join("- {} [{}, waga {}] {}: {}".format(x.get("when"), x.get("kind"), x.get("sev"), x.get("where") or "", x.get("what") or "") for x in st.get("marsec", [])[:15])
         prompt = f"""Oceń globalny poziom napięcia i przygotuj briefing.
 level: 1 (spokój) do 5 (kryzys globalny). label: jedno słowo (NISKI, UMIARKOWANY, PODWYŻSZONY, WYSOKI, KRYTYCZNY). note: główne ogniska, do 60 znaków.
@@ -464,6 +465,9 @@ ZAGROŻENIA NATURALNE:
 
 BEZPIECZEŃSTWO MORSKIE – incydenty z 7 dni (IMB, ReCAAP, NGA, UKHO, EUNAVFOR, MARAD; już bez duplikatów):
 {msec or "brak"}
+
+KANAŁY OSINT (Telegram, 24 h; strony wojny są stronnicze – traktuj jako twierdzenia):
+{tgo or "brak"}
 
 ZMIANY: nowe depesze {len(chg['new_items'])}, zmiany statusu konfliktów {chg['trend_changes']}, nowe konflikty {chg['new_conflicts']}"""
         try:
@@ -511,11 +515,12 @@ def context_for(st, focus=None, limit=14000):
            "shipping": [{k: x.get(k) for k in ("name", "status", "metric", "why")} for x in st.get("shipping", [])],
            "forecasts": [{"t": e["t"], "m": e["m"][:3]} for e in ((st.get("feeds") or {}).get("polymarket") or [])],
            "marketsNote": st.get("marketsNote"),
-           "maritime_security": st.get("marsec", [])[:15]}
+           "maritime_security": st.get("marsec", [])[:15],
+           "telegram_osint": st.get("osint_tg", [])[:12]}
     s = json.dumps(ctx, ensure_ascii=False)
     while len(s) > limit and len(ctx["items"]) > 10:
         ctx["items"] = ctx["items"][:-3]; s = json.dumps(ctx, ensure_ascii=False)
-    for k in ("maritime_security", "forecasts", "econ", "humanitarian", "sanctions", "forces", "nuclear", "hazards", "calendar", "eastflank", "strikes", "airwar", "shipping"):
+    for k in ("telegram_osint", "maritime_security", "forecasts", "econ", "humanitarian", "sanctions", "forces", "nuclear", "hazards", "calendar", "eastflank", "strikes", "airwar", "shipping"):
         if len(s) <= limit:
             break
         ctx.pop(k, None); s = json.dumps(ctx, ensure_ascii=False)

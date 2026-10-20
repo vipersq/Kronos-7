@@ -498,3 +498,27 @@ body.xeneon .maptools .btn{font-size:15px;padding:1px 6px;white-space:nowrap}
 .ms-rep summary{cursor:pointer;color:var(--phos-dim);letter-spacing:.06em}
 .ms-rep pre{white-space:pre-wrap;font-family:var(--f-body);font-size:calc(11.5*var(--u));margin:6px 0;max-height:260px;overflow:auto;color:var(--text)}
 #msWarn[aria-pressed=true],#msAll[aria-pressed=true]{background:var(--phos);color:var(--void)}
+
+/* v3.14 – integracje */
+.intg input{width:100%;background:var(--void);color:var(--text);border:1px solid var(--phos-dim);font-family:var(--f-body);font-size:calc(12.5*var(--u));padding:5px 7px}
+.intg label{font-size:calc(12.5*var(--u));color:var(--text)}.intg label small{display:block;color:var(--phos-dim);font-size:calc(11*var(--u))}
+.intg .hint.red,.tts-row .st.red{color:var(--red)}
+.ntext{white-space:pre-wrap;font-family:var(--f-body);font-size:calc(11.5*var(--u));max-height:260px;overflow:auto;border:1px solid var(--phos-faint);padding:6px}
+.satimg img{width:100%;display:block;border:1px solid var(--phos-faint);margin-top:6px;image-rendering:auto}
+.satimg .seg .btn[aria-pressed=true]{background:var(--phos);color:var(--void)}
+#qHist{white-space:nowrap}
+.findbox{position:relative;display:inline-flex}
+#findQ{width:clamp(150px,16vw,260px);background:var(--void);color:var(--text);border:1px solid var(--phos-dim);font-family:var(--f-body);font-size:calc(12*var(--u));padding:3px 7px}
+#findQ:focus{border-color:var(--phos);outline:none}
+.findres{position:absolute;top:100%;left:0;z-index:30;list-style:none;margin:2px 0 0;padding:0;width:min(440px,90vw);max-height:60vh;overflow:auto;background:var(--void);border:1px solid var(--phos);box-shadow:0 8px 24px rgba(0,0,0,.6)}
+.findres button{display:grid;width:100%;text-align:left;background:none;border:0;border-bottom:1px dotted var(--phos-faint);color:var(--text);padding:5px 8px;cursor:pointer;font-family:var(--f-body)}
+.findres button b{font-weight:600;font-size:calc(12.5*var(--u))}.findres button span{font-size:calc(11*var(--u));color:var(--phos-dim)}
+.findres button.on,.findres button:hover{background:var(--phos-faint)}
+.findres .empty{padding:8px;font-size:calc(12*var(--u));color:var(--phos-dim)}
+#tileCanvas{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:0}
+.mapbox #map{position:relative;z-index:1}
+#mapCanvas{z-index:2}
+#map.tiles .land,#map.tiles .grat,#map.tiles .sphere{fill:none!important;stroke:none!important}
+#map.tiles{background:transparent}
+.mapattr{position:absolute;left:6px;bottom:4px;z-index:3;font-size:10px;color:rgba(220,255,225,.7);background:rgba(5,8,5,.6);padding:1px 5px;pointer-events:none}
+#baseSel{background:var(--void);color:var(--text);border:1px solid var(--phos-dim);font-family:var(--f-body);font-size:calc(12*var(--u));padding:2px}

@@ -1,4 +1,4 @@
-/* KRONOS-7 v3.13 — interfejs terminala. Dane: lokalny serwer (/api/*). */
+/* KRONOS-7 v3.14 — interfejs terminala. Dane: lokalny serwer (/api/*). */
 (function () {
 "use strict";
 const $ = s => document.querySelector(s);
@@ -73,6 +73,7 @@ let SATPIN = [];                      // [nazwa, norad, l1, l2] przypiętych
 const SATG = {};                      // grupa -> { recs:[{name,norad,rec,l1}], el:path, pts:[] }
 const SEA = { ok: false, d: null, skew: 0, lastEv: 0, first: true, since: 0, detail: {} };
 const CABLES = { lines: null, loading: false };
+const SHIPSTAT = { view: 0, filt: 0, old: 0, total: 0, at: 0 };
 const REPLAY = { on: false, t: 0, from: 0, to: 0, playing: false, air: [], ships: new Map(), ev: [], busy: false, want: 0, timer: null };
 let S = {}, CURRENT = null, ARCH = false, STATUS = null, MK = null, selected = null;
 const F = () => S.feeds || {};
@@ -160,14 +161,29 @@ clocks(); setInterval(clocks, 1000);
 const W = 960; let H = 480;   // szerokość stała (współrzędne wewnętrzne), wysokość dopasowana do okna
 const svg = d3.select("#map");
 let mode = store.get("proj", "flat"), rot = [-30, -25], dragging = false, T = d3.zoomIdentity;
-const flat = d3.geoEquirectangular().scale(W / (2 * Math.PI)).translate([W / 2, H / 2]);
+/* mapa płaska: wektorowa (rzut walcowy równoodległościowy) albo z podkładem kafelkowym (rzut Merkatora, jak w mapach internetowych) */
+/* [nazwa, adres kafelków, atrybucja, filtr, nakładka z napisami, maks. zoom] */
+const BASES = { vector: [TX("WEKTOR"), null],
+  dark: [TX("CIEMNA SZCZEGÓŁOWA"), "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png{k}", "© Stadia Maps · © OpenMapTiles · © OpenStreetMap", null, null, 20],
+  darkesri: [TX("CIEMNA SZARA"), "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", "Esri, HERE, Garmin, © OpenStreetMap", null,
+    "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}", 16],
+  sat: [TX("SATELITA"), "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", "Esri, Maxar, Earthstar Geographics", "brightness(.6) saturate(.75)",
+    "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", 18],
+  osm: [TX("OSM NOCNA"), "https://tile.openstreetmap.org/{z}/{x}/{y}.png", "© OpenStreetMap", "invert(1) hue-rotate(180deg) brightness(.85) contrast(.9) saturate(.6)", null, 19] };
+let TILE_KEY = "";
+let BASE = BASES[store.get("basemap", "vector")] ? store.get("basemap", "vector") : "vector";
+let MERC = BASE !== "vector";
+const equi = d3.geoEquirectangular().scale(W / (2 * Math.PI)).translate([W / 2, H / 2]);
+const merc = d3.geoMercator().scale(W / (2 * Math.PI)).translate([W / 2, H / 2]);
+let flat = MERC ? merc : equi;
+const flatExtent = () => MERC ? [[0, H / 2 - W / 2], [W, H / 2 + W / 2]] : [[0, Math.min(0, H / 2 - W / 4)], [W, Math.max(H, H / 2 + W / 4)]];
 const globe = d3.geoOrthographic().scale(232).translate([W / 2, H / 2]).clipAngle(90).precision(.4);
 function sizeMap() {
   const r = $("#mapbox").getBoundingClientRect(); if (!r.width || !r.height) return false;
   const nh = Math.round(W * Math.max(.3, Math.min(.85, r.height / r.width)));
   if (nh === H && sizeMap.done) return false; H = nh; sizeMap.done = true;
-  svg.attr("viewBox", `0 0 ${W} ${H}`); flat.translate([W / 2, H / 2]); globe.scale(Math.min(W, H) * .47).translate([W / 2, H / 2]);
-  if (typeof zoom !== "undefined") zoom.extent([[0, 0], [W, H]]).translateExtent([[0, Math.min(0, H / 2 - W / 4)], [W, Math.max(H, H / 2 + W / 4)]]);
+  svg.attr("viewBox", `0 0 ${W} ${H}`); equi.translate([W / 2, H / 2]); merc.translate([W / 2, H / 2]); globe.scale(Math.min(W, H) * .47).translate([W / 2, H / 2]);
+  if (typeof zoom !== "undefined") zoom.extent([[0, 0], [W, H]]).translateExtent(flatExtent());
   return true;
 }
 let proj = flat, path = d3.geoPath(flat);
@@ -183,15 +199,15 @@ const gSphere = root.append("path").attr("class", "sphere");
 const gGrat = root.append("path").attr("class", "grat");
 const gLand = root.append("path").attr("class", "land");
 const LAYERS = [["conf", TX("KONFLIKTY"), 1], ["front", TX("FRONTY"), 1], ["move", TX("NATARCIA"), 1], ["strike", TX("UDERZENIA"), 1], ["force", TX("SIŁY"), 1], ["ship", TX("ŻEGLUGA"), 1],
-  ["haz", TX("NATURA"), 1], ["sat", TX("ORBITY"), 1], ["air", TX("LOTNICTWO"), 1], ["vessel", TX("STATKI"), 1], ["cable", TX("KABLE"), 0], ["marsec", TX("INCYDENTY MORSKIE"), 1], ["flank", TX("FLANKA"), 1], ["nuke", TX("ATOM"), 1], ["asp", TX("PRZESTRZEŃ"), 0], ["gps", TX("GNSS"), 0],
+  ["haz", TX("NATURA"), 1], ["sat", TX("ORBITY"), 1], ["air", TX("LOTNICTWO"), 1], ["vessel", TX("STATKI"), 1], ["cable", TX("KABLE"), 0], ["marsec", TX("INCYDENTY MORSKIE"), 1], ["uaal", TX("ALARMY UA"), 1], ["dstate", TX("DEEPSTATE"), 0], ["notam", TX("NOTAM"), 0], ["sar", TX("SAR"), 0], ["osint", TX("OSINT TG"), 0], ["myadsb", TX("MOJE ADS-B"), 0], ["aprs", TX("APRS"), 0], ["flank", TX("FLANKA"), 1], ["nuke", TX("ATOM"), 1], ["asp", TX("PRZESTRZEŃ"), 0], ["gps", TX("GNSS"), 0],
   ["fire", TX("POŻARY"), 0], ["net", TX("SIEĆ"), 0], ["hum", TX("HUMANITARNE"), 0], ["cyber", TX("CYBER"), 0], ["news", TX("DEPESZE"), 0], ["night", TX("NOC"), 1]];
-const DRAW_ORDER = ["marsec", "cable", "night", "gps", "fire", "asp", "vessel", "ship", "sat", "haz", "front", "move", "strike", "force", "net", "hum", "nuke", "flank", "air", "airlive", "cyber", "news", "conf"];
+const DRAW_ORDER = ["uaal", "dstate", "notam", "sar", "osint", "myadsb", "aprs", "marsec", "cable", "night", "gps", "fire", "asp", "vessel", "ship", "sat", "haz", "front", "move", "strike", "force", "net", "hum", "nuke", "flank", "air", "airlive", "cyber", "news", "conf"];
 const G = {}; DRAW_ORDER.forEach(k => G[k] = root.append("g").attr("data-l", k));
 const pNight = G.night.append("path").attr("class", "night"), pTwi = G.night.append("path").attr("class", "twi");
 let layerOn = Object.assign(Object.fromEntries(LAYERS.map(l => [l[0], !!l[2]])), store.get("layers3", {}));
 $("#layers").innerHTML = LAYERS.map(([k, n]) => `<button class="btn" data-layer="${k}" aria-pressed="${!!layerOn[k]}">${n}</button>`).join("");
 function applyLayers() { LAYERS.forEach(([k]) => G[k].style("display", layerOn[k] ? null : "none"));
-  G.air.style("display", layerOn.air && !AIR.ok ? null : "none"); if (layerOn.cable) loadCables(); markStatic(); }
+  G.air.style("display", layerOn.air && !AIR.ok ? null : "none"); if (layerOn.cable) loadCables(); if (layerOn.dstate) loadDS(); if (layerOn.myadsb || layerOn.aprs) pollSdr(); markStatic(); }
 $$("[data-layer]").forEach(b => b.addEventListener("click", () => { const k = b.dataset.layer; layerOn[k] = !layerOn[k]; b.setAttribute("aria-pressed", layerOn[k]); store.set("layers3", layerOn); beep(600); applyLayers(); }));
 function ensureLayer(k) { if (k && !layerOn[k]) { const b = $(`[data-layer="${k}"]`); if (b) b.click(); } }
 
@@ -236,7 +252,7 @@ function loadHi() {
   s.onload = () => { land50 = fixWinding(topojson.feature(window.__LAND50, window.__LAND50.objects.countries)); if (landHi) redraw(); };
   document.body.appendChild(s);
 }
-const zoom = d3.zoom().scaleExtent([1, 320]).translateExtent([[0, Math.min(0, H / 2 - W / 4)], [W, Math.max(H, H / 2 + W / 4)]]).extent([[0, 0], [W, H]])
+const zoom = d3.zoom().scaleExtent([1, MERC ? 4000 : 320]).translateExtent(flatExtent()).extent([[0, 0], [W, H]])
   .filter(ev => mode === "flat" && (ev.type === "wheel" || ev.type === "dblclick" || ev.type === "mousedown" ? !ev.button : (ev.touches ? ev.touches.length > 1 : true)))
   .on("zoom", ev => { T = ev.transform; root.attr("transform", T); placeMarkers(); zoomClasses();
     const hi = T.k >= 2.5; if (hi !== landHi) { landHi = hi; if (hi) loadHi(); gLand.attr("d", path(hi && land50 ? land50 : land110)); } });
@@ -253,11 +269,13 @@ d3.timer(t => {
 function setMode(m) {
   mode = m; store.set("proj", m);
   proj = m === "globe" ? globe.rotate(rot) : flat; path = d3.geoPath(proj);
-  $("#map").classList.toggle("globe", m === "globe"); $("#projBtn").setAttribute("aria-pressed", m === "globe");
+  $("#map").classList.toggle("globe", m === "globe"); $("#projBtn").setAttribute("aria-pressed", m === "globe"); $("#map").classList.toggle("tiles", MERC && m === "flat");
   if (m === "globe") { T = d3.zoomIdentity; svg.call(zoom.transform, d3.zoomIdentity); }
   redraw();
 }
 $("#projBtn").addEventListener("click", () => { beep(600); setMode(mode === "globe" ? "flat" : "globe"); });
+$("#baseSel").innerHTML = Object.entries(BASES).map(([k, v]) => `<option value="${k}">${v[0]}</option>`).join(""); $("#baseSel").value = BASE;
+$("#baseSel").addEventListener("change", e => setBase(e.target.value));
 let AUTOZ = store.get("autozoom", true);      // przybliżanie mapy po kliknięciu obiektu
 function zoomBox(box, anim) {
   if (go.busy && !AUTOZ) return;
@@ -439,14 +457,54 @@ const TIP = document.createElement("div"); TIP.className = "maptip"; TIP.hidden 
 let cvW = 0, cvH = 0, DPR = 1, vS = 1, vX = 0, vY = 0, needDraw = true, staticDirty = true, lastDraw = 0, drCache = 0, lastSel = null;
 let SHIT = { n: 0, x: new Float32Array(0), y: new Float32Array(0), k: new Uint8Array(0), v: new Float64Array(0) }, AHIT = [];
 const markStatic = () => { staticDirty = true; needDraw = true; };
+/* podkład kafelkowy (CARTO / Esri / OSM) – osobne płótno pod mapą wektorową, rysowane tylko przy zmianie widoku */
+const TCV = document.createElement("canvas"); TCV.id = "tileCanvas"; TCV.setAttribute("aria-hidden", "true"); $("#mapbox").insertBefore(TCV, $("#map"));
+const TC2 = TCV.getContext("2d"), TILES = new Map(); let tileDirty = false;
+const ATTR = document.createElement("div"); ATTR.className = "mapattr"; ATTR.hidden = true; $("#mapbox").appendChild(ATTR);
+function tileUrl(u, z, x, y) { return u.replace("{s}", "abcd"[(x + y) % 4]).replace("{z}", z).replace("{x}", x).replace("{y}", y).replace("{r}", DPR > 1 ? "@2x" : "").replace("{k}", TILE_KEY ? "?api_key=" + encodeURIComponent(TILE_KEY) : ""); }
+function drawTiles() {
+  const on = MERC && mode === "flat";
+  if (TCV.width !== CV.width || TCV.height !== CV.height) { TCV.width = CV.width; TCV.height = CV.height; }
+  TC2.setTransform(1, 0, 0, 1, 0, 0); TC2.clearRect(0, 0, TCV.width, TCV.height);
+  ATTR.hidden = !on; if (!on) return; ATTR.textContent = BASES[BASE][2] || "";
+  viewFit();
+  const wpx = W * T.k * vS, ox = vX + T.x * vS, oy = vY + (T.y + (H / 2 - W / 2) * T.k) * vS;
+  const B = BASES[BASE], z = Math.max(1, Math.min(B[5] || 19, Math.round(Math.log2(wpx * DPR / (DPR > 1 && /\{r\}/.test(B[1]) ? 512 : 256))))), n = 2 ** z, ts = wpx / n;
+  const x0 = Math.floor(-ox / ts), x1 = Math.floor((cvW - ox) / ts), y0 = Math.max(0, Math.floor(-oy / ts)), y1 = Math.min(n - 1, Math.floor((cvH - oy) / ts));
+  if ((x1 - x0 + 1) * (y1 - y0 + 1) > 500) return;
+  TC2.setTransform(DPR, 0, 0, DPR, 0, 0);
+  [[B[1], B[3], BASE], [B[4], null, BASE + "+"]].forEach(([url, flt, pre], li) => { if (!url) return; TC2.filter = flt || "none";
+  for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) {
+    const wx = ((tx % n) + n) % n, key = pre + "/" + z + "/" + wx + "/" + ty, dx = ox + tx * ts, dy = oy + ty * ts;
+    let im = TILES.get(key);
+    if (!im) { im = new Image(); im.onload = () => { im.ok = 1; tileDirty = true; }; im.onerror = () => { im.bad = 1; }; im.src = tileUrl(url, z, wx, ty); TILES.set(key, im);
+      if (TILES.size > 1200) TILES.delete(TILES.keys().next().value); }
+    if (im.ok) { TC2.drawImage(im, dx, dy, ts + .6, ts + .6); continue; }
+    if (li) continue;
+    for (let up = 1; up <= 5 && z - up >= 0; up++) {      // dopóki kafelek się ładuje – powiększony kafelek z niższego poziomu
+      const f = 2 ** up, pim = TILES.get(pre + "/" + (z - up) + "/" + Math.floor(wx / f) + "/" + Math.floor(ty / f));
+      if (pim && pim.ok) { const sw = pim.naturalWidth / f, sh = pim.naturalHeight / f; TC2.drawImage(pim, (wx % f) * sw, (ty % f) * sh, sw, sh, dx, dy, ts + .6, ts + .6); break; }
+    }
+  } });
+  TC2.filter = "none";
+}
+function setBase(b) {
+  if (!BASES[b]) b = "vector"; BASE = b; store.set("basemap", b); MERC = b !== "vector"; flat = MERC ? merc : equi;
+  if (mode === "flat") { proj = flat; path = d3.geoPath(proj); }
+  zoom.scaleExtent([1, MERC ? 4000 : 320]).translateExtent(flatExtent());
+  $("#map").classList.toggle("tiles", MERC); $("#baseSel").value = b;
+  if (mode === "flat") setTheater(theater || "world", false); redraw(); markStatic(); sfx("click");
+}
 function sizeCanvas() { const r = $("#map").getBoundingClientRect(); DPR = Math.min(2, devicePixelRatio || 1); cvW = r.width; cvH = r.height;
   CV.width = SCV.width = Math.max(1, Math.round(cvW * DPR)); CV.height = SCV.height = Math.max(1, Math.round(cvH * DPR)); markStatic(); }
 if (window.ResizeObserver) new ResizeObserver(sizeCanvas).observe($("#map"));
 function viewFit() { vS = Math.min(cvW / W, cvH / H); vX = (cvW - W * vS) / 2; vY = (cvH - H * vS) / 2; }
 /* współrzędne geograficzne -> piksele (płaska mapa liczona wprost, globus przez projekcję) */
+const MKS = W / (2 * Math.PI), QP = Math.PI / 4, RD2 = Math.PI / 360;
 function scr(lon, lat) {
   if (mode === "globe") { if (!visible(lon, lat)) return null; const p = proj([lon, lat]); return p ? [vX + p[0] * vS, vY + p[1] * vS] : null; }
-  const x = W / 2 + lon * W / 360, y = H / 2 - lat * W / 360; return [vX + (T.x + x * T.k) * vS, vY + (T.y + y * T.k) * vS];
+  const x = W / 2 + lon * W / 360, y = MERC ? H / 2 - MKS * Math.log(Math.tan(QP + (lat > 85 ? 85 : lat < -85 ? -85 : lat) * RD2)) : H / 2 - lat * W / 360;
+  return [vX + (T.x + x * T.k) * vS, vY + (T.y + y * T.k) * vS];
 }
 const inView = (x, y, m) => x > -m && y > -m && x < cvW + m && y < cvH + m;
 function tri(c, x, y, ang, s) { const co = Math.cos(ang), si = Math.sin(ang); c.moveTo(x + co * s * 1.6, y + si * s * 1.6); c.lineTo(x - co * s + si * s * .9, y - si * s - co * s * .9); c.lineTo(x - co * s - si * s * .9, y - si * s + co * s * .9); c.closePath(); }
@@ -455,7 +513,7 @@ const RGB = {}; function rgb32(css, alpha) { const key = css + alpha; if (RGB[ke
   return RGB[key] = ((Math.round(alpha * 255) << 24) | (d[2] << 16) | (d[1] << 8) | d[0]) >>> 0; }
 const FONT = () => "10px " + (getComputedStyle(document.body).getPropertyValue("--f-display") || "monospace");
 function drawStatic() {
-  staticDirty = false; viewFit();
+  staticDirty = false; viewFit(); drawTiles();
   const k = mode === "globe" ? 1 : T.k, nowMs = Date.now(), w2 = SCV.width, h2 = SCV.height;
   SX.setTransform(1, 0, 0, 1, 0, 0); SX.clearRect(0, 0, w2, h2);
   /* przy dużej liczbie punktów piksele zapisujemy wprost do bufora – to kilkanaście razy szybsze niż ścieżki */
@@ -478,21 +536,25 @@ function drawStatic() {
     const nowS = (REPLAY.on ? REPLAY.t : nowMs + SEA.skew) / 1000, recalc = REPLAY.on || nowMs - drCache > 4000, useTri = k >= 4, s0 = Math.max(1.4, Math.min(4.5, 1.2 + Math.log2(k) * .7));
     if (recalc) drCache = nowMs;
     const cols = SCATS.map(c => [rgb32(SCOL[c], c === "other" || c === "service" ? .8 : 1), rgb32(SCOL[c], .35)]);
+    let cF = 0, cO = 0, cV = 0;
     for (const w of SRC.values()) {
-      const ci = w[5], cat = SCATS[ci] || "other", fl = w[11] || 0; if (!FLT.ship[cat] && !(fl && FLT.watch)) continue;
-      if (FLT.suspect && !fl && cat !== "military" && cat !== "law") continue;
-      const age = nowS - w[6], old = age > 3600 ? 1 : 0; if (old && !FLT.shipOld && !fl) continue;
+      const ci = w[5], cat = SCATS[ci] || "other", fl = w[11] || 0; if (!FLT.ship[cat] && !(fl && FLT.watch)) { cF++; continue; }
+      if (FLT.suspect && !fl && cat !== "military" && cat !== "law") { cF++; continue; }
+      const age = nowS - w[6], old = age > 3600 ? 1 : 0; if (old && !FLT.shipOld && !fl) { cO++; continue; }
       if (recalc || w[9] == null) { if (w[3] >= .5 && w[4] != null && age < 1800) { const nm = w[3] * age / 3600, a2 = w[4] * Math.PI / 180; w[9] = w[1] + nm * Math.cos(a2) / 60; w[10] = w[2] + nm * Math.sin(a2) / (60 * Math.max(.2, Math.cos(w[1] * Math.PI / 180))); } else { w[9] = w[1]; w[10] = w[2]; } }
       const p = scr(w[10], w[9]); if (!p || !inView(p[0], p[1], 6)) continue;
       if (useTri) tris.push(p[0], p[1], w[3] >= .5 && w[4] != null ? (w[4] - 90) * Math.PI / 180 : NaN, ci, old);
       else dot(p[0], p[1], Math.max(2, Math.round((SHOT.has(cat) ? 2.6 : 1.9) * DPR)), cols[ci][old]);
       H_.x[n] = p[0]; H_.y[n] = p[1]; H_.k[n] = 1; H_.v[n] = w[0]; n++;
       if (fl && FLT.watch) rings.push(p[0], p[1], fl);
+      cV++;
       if (FLT.shipNames && w[7] && (k >= 8 || (k >= 3 && SHOT.has(cat)))) names.push(p[0], p[1], w[7]);
     }
+    Object.assign(SHIPSTAT, { view: cV, filt: cF, old: cO, total: SRC.size, at: Date.now() });
   }
   SX.putImageData(img, 0, 0); SX.setTransform(DPR, 0, 0, DPR, 0, 0);
   if (layerOn.cable && CABLES.lines) drawCables(k);   // pod punktami (destination-over)
+  if (layerOn.dstate && IN.ds) drawDS(k);
   if (tris.length) { const s0 = Math.max(1.4, Math.min(4.5, 1.2 + Math.log2(k) * .7));
     SCATS.forEach((cat, ci) => { for (const old of [0, 1]) { SX.beginPath(); let any = false; const s = SHOT.has(cat) ? s0 * 1.35 : s0;
       for (let i = 0; i < tris.length; i += 5) { if (tris[i + 3] !== ci || tris[i + 4] !== old) continue; any = true; const x = tris[i], y = tris[i + 1], ang = tris[i + 2];
@@ -534,6 +596,7 @@ function drawCanvas() {
     for (let i = 0; i < labels.length; i += 3) { CX.strokeText(labels[i + 2], labels[i] + 7, labels[i + 1] - 6); CX.fillText(labels[i + 2], labels[i] + 7, labels[i + 1] - 6); }
   }
   if (layerOn.marsec && MS.d && !REPLAY.on) drawMS();
+  if (!REPLAY.on) drawIntel();
   /* wyróżnienie zaznaczonego obiektu */
   if (selected && /^(vs|ah|sc):/.test(selected)) { let pt = null;
     if (selected.startsWith("ah:")) { const h = AHIT.find(x => x[2] === selected); if (h) pt = h; }
@@ -563,6 +626,7 @@ function drawSatSel(k) {
 function frame(t) {
   requestAnimationFrame(frame);
   if (document.hidden || view !== "map" || mapHidden()) return;
+  if (tileDirty) { tileDirty = false; drawTiles(); }
   if (t - drCache > 4000 && layerOn.vessel && SHIPS.size) staticDirty = true;
   const live = (AIR.ok || REPLAY.on) && layerOn.air;
   const satSel = selected && /^(s|sc):/.test(selected);
@@ -591,6 +655,11 @@ function tipText(id) {
   if (t === "vs") { const r = seaRec(key), fl = r ? r.flags : 0; return r ? `${r.name || "MMSI " + r.mmsi} · ${SCN[r.cat] || ""}${r.sog != null ? " · " + r.sog + " kn" : ""}${fl & 1 ? " · " + TX("SANKCJE") : ""}${fl & 4 ? " · " + TX("MILCZY") : ""}${fl & 2 ? " · " + TX("NAD KABLEM") : ""}` : ""; }
   if (t === "ah") { const a = airList().find(x => x.hex === key); return a ? `${a.flag || ""} ${a.cs || a.hex} · ${a.desc || (a.model || "").split(" (")[0] || a.t || ""}${a.country ? " · " + TX(a.country) : ""}${a.alt != null ? " · " + a.alt + " ft" : ""}${a.loiter ? " · " + TX("KRĄŻY") : ""}` : ""; }
   if (t === "sc") { const r = satByNorad(+key); return r ? r.name : ""; }
+  if (t === "ua") { const o = A(IN.d && IN.d.ua && IN.d.ua.oblasts).find(x => x.id === key); return o ? `${TX("ALARM")} · ${o.name}${o.since ? " · " + cd(Date.now() - o.since) : ""}` : ""; }
+  if (t === "nt") { const n = A(IN.d && IN.d.notam && IN.d.notam.items).find(x => x.id === key); return n ? `NOTAM ${n.loc} · ${NT_N[n.kind] || n.kind}` : ""; }
+  if (t === "tg") { const p = A(IN.d && IN.d.tg).find(x => x.id === key); return p ? `@${p.ch} · ${p.title || ""}` : ""; }
+  if (t === "la") { const a = A(IN.sdr && IN.sdr.adsb).find(x => x.hex === key); return a ? `${a.cs || a.hex} · ${a.t || ""} · ${a.alt ?? ""} ft · ${TX("Twój odbiornik")}` : ""; }
+  if (t === "ap") { const s2 = A(IN.sdr && IN.sdr.aprs).find(x => x.call === key); return s2 ? `APRS ${s2.call} · ${s2.cmt || s2.kind || ""}` : ""; }
   if (t === "mi") { const x = A(MS.d && MS.d.items).find(y => y.id === key); return x ? `${x.title || ""} · ${((MS.d.kinds || {})[x.kind] || x.kind)} · ${x.t ? new Date(x.t).toLocaleDateString(LOC) : ""}` : ""; }
   return "";
 }
@@ -646,8 +715,11 @@ function renderSea() {
   const d = SEA.d; if (!d) return; const st = d.status || {}, dt = st.digitraffic || {}, ai = st.aisstream || {}, sm = d.summary || {}, now = Date.now() + SEA.skew;
   $("#seaT").innerHTML = SHIPS.size ? `<span class="livedot"></span>${TX("NA ŻYWO ·")} ${SHIPS.size.toLocaleString(LOC)} ${TX("jednostek")}` : "";
   const srcLine = (n, s, extra) => `<li><button tabindex="-1" style="cursor:default"><span class="t">${n}</span><span class="${s.ok ? "" : s.ok === false ? "red" : "dim"}">${s.ok ? (s.n || 0).toLocaleString(LOC) + " " + TX("statków") : s.ok === false ? TX("BŁĄD") : "—"}</span><span class="sub">${esc(s.err || extra || "")}</span></button></li>`;
-  let h = `<li class="hd">${TX("Źródła")}</li>` + srcLine(TX("Digitraffic · północny Bałtyk"), dt, TX("bez klucza"))
-    + srcLine(d.scope === "world" ? TX("aisstream.io · cały świat") : TX("aisstream.io · obserwowane rejony świata"), ai, d.key ? (ai.rate ? ai.rate + " " + TX("komunikatów/s") : TX("łączenie…")) : TX("wpisz darmowy klucz w oknie OPERATOR"));
+  const ist = (IN.d && IN.d.status) || {}, extra = Object.entries(ist).filter(([k]) => k.startsWith("tcp:") || k === "aishub" || k === "ais").filter(([, v]) => v && !v.off)
+    .map(([k, v]) => srcLine(k === "aishub" ? "AISHub" : k === "ais" ? TX("Twój odbiornik AIS (UDP)") : esc(v.name || k), { ok: v.ok, n: v.n, err: v.err }, k === "tcp:kystverket" ? TX("Norwegia, bez klucza") : "")).join("");
+  const diag = `<li><button tabindex="-1" style="cursor:default"><span class="t">${TX("Na mapie (w widoku)")}</span><span>${SHIPSTAT.view.toLocaleString(LOC)}</span><span class="sub">${TX("w pamięci")} ${SHIPS.size.toLocaleString(LOC)} · ${TX("ukryte filtrem")} ${SHIPSTAT.filt.toLocaleString(LOC)} · ${TX("starsze niż 1 h (ukryte)")} ${SHIPSTAT.old.toLocaleString(LOC)}${!layerOn.vessel ? " · " + TX("warstwa STATKI wyłączona") : ""}</span></button></li>`;
+  let h = `<li class="hd">${TX("Źródła")}</li>` + diag + srcLine(TX("Digitraffic · północny Bałtyk"), dt, TX("bez klucza"))
+    + srcLine(d.scope === "world" ? TX("aisstream.io · cały świat") : TX("aisstream.io · obserwowane rejony świata"), ai, d.key ? (ai.rate ? ai.rate + " " + TX("komunikatów/s") : TX("łączenie…")) : TX("wpisz darmowy klucz w oknie OPERATOR")) + extra;
   const ev = A(d.events).slice(-8).reverse();
   if (ev.length) h += `<li class="hd">${TX("Zdarzenia")}</li>` + ev.map(e => `<li><button data-go="vs:${e.mmsi}"><span class="t">${esc(e.msg)}</span><span class="dim">${new Date(e.at).toISOString().slice(11, 16)}</span></button></li>`).join("");
   const zones = sm.zones || {};
@@ -845,6 +917,7 @@ function msCard(iid, silent) {
     [TX("STATEK"), s.name ? [s.name, s.type, s.flag ? TX(s.flag) : null, s.imo ? "IMO " + s.imo : null].filter(Boolean).join(" · ") : null],
     [TX("ŹRÓDŁA"), A(r.reports).map(x => esc(x.name)).join(", ") + (A(r.reports).length > 1 ? " – " + TX("połączone w jedno zdarzenie") : ""), 1]]);
   h += A(r.reports).map(x => `<details class="ms-rep"><summary>${esc(x.name)} · ${esc(x.ref || "")}${x.t ? " · " + new Date(x.t).toISOString().slice(0, 16).replace("T", " ") + " UTC" : ""}</summary><pre>${esc0(x.text || x.title || "")}</pre>${x.url ? L(x.url, TX("otwórz źródło")) : ""}</details>`).join("");
+  if (r.pos) h += satBtn(r.pos[0], r.pos[1], 1.5);
   if (inReplay) h += `<p><button class="btn" data-msreplay="${r.t}">${TX("ODTWÓRZ RUCH STATKÓW I SAMOLOTÓW Z TEJ CHWILI")}</button></p>`;
   h += `<p class="hint">${ai.title ? TX("Tytuł i streszczenie: lokalne AI na podstawie oryginalnych zgłoszeń (poniżej).") : TX("Lokalne AI jeszcze nie przeanalizowało tego zgłoszenia – zrobi to w wolnej chwili.")} ${r.warn ? TX("Ostrzeżenie zniknie z mapy, gdy źródło je wycofa.") : ""}</p>`;
   setTimeout(() => { const b = $("#detail [data-msreplay]"); if (b) b.addEventListener("click", async () => { await replayOpen(); if (REPLAY.on) replayFetch(Math.max(REPLAY.from, Math.min(REPLAY.to, +b.dataset.msreplay))); }); }, 0);
@@ -1256,6 +1329,7 @@ function locExtra(t, key) {
   if (t === "ah") { const a = A(AIR.d && AIR.d.ac).find(x => x.hex === key); if (!a) return null; const p = airPos(a, Date.now() + AIR.skew); return [p[0], p[1], 4, "air"]; }
   if (t === "gd") { const g = A(f.gdacs)[+key]; return g && [g.lat, g.lon, 12, "haz"]; }
   if (t === "mi") { const x = A(MS.d && MS.d.items).find(y => y.id === key); return x && x.pos && [x.pos[0], x.pos[1], 4, "marsec"]; }
+  if (/^(ua|nt|tg|la|ap)$/.test(t)) return intelLL(t, key);
   if (t === "nhc") { const n = A(f.nhc)[+key]; return n && [n.lat, n.lon, 12, "haz"]; }
   if (t === "asp") { const a = A(S.airspace).find(x => x.id === key); return a && [a.lat, a.lon, 14, "asp"]; }
   if (t === "net") { const n = A(f.ioda)[+key]; return n && [n.lat, n.lon, 14, "net"]; }
@@ -1353,6 +1427,7 @@ function pick(id, silent) {
         [TX("MMSI"), r.mmsi], [TX("IMO"), r.imo], [TX("ZNAK WYWOŁAWCZY"), r.cs], [TX("ŹRÓDŁO"), r.src], [TX("PODGLĄD"), L(r.u, TX("MarineTraffic")), 1]]) + shipWatch(r) +
         `<p class="hint">${TX("Dane AIS nadaje sam statek, więc nazwa, typ i cel podróży mogą być nieaktualne lub fałszywe. Okręty zwykle wyłączają AIS. Linia przerywana to trasa z ostatnich godzin.")}</p>`; }
   } else if (t === "mi") { h = msCard(id.slice(3), silent);
+  } else if (/^(ua|nt|tg|la|ap)$/.test(t)) { h = intelCard(t, id.slice(3)); if (!h) return;
   } else if (t === "ah") { const a = A(AIR.d && AIR.d.ac).find(x => x.hex === key);
     if (!a) h = chip(TX("ADS-B NA ŻYWO"), "var(--cyan)") + `<h2 class="glow">${esc(key)}</h2><p class="hint">${TX("Samolot przestał nadawać albo zniknął z zasięgu odbiorników.")}</p>`;
     else { const now = Date.now() + AIR.skew, p = airPos(a, now), age = airAge(a, now);
@@ -1407,7 +1482,8 @@ function pick(id, silent) {
   } else if (t === "src") { const s = srcList()[+key]; if (!s) return;
     h = chip(TX("ŹRÓDŁO") + (s.rel ? " " + TX("· WIARYGODNOŚĆ") + " " + s.rel : ""), "var(--phos)") + `<h2 class="glow">${esc(s.name)}</h2>` + dd([[TX("STAN"), s.state], [TX("UWAGI"), s.note], s.url ? [TX("ADRES"), L(s.url, s.url), 1] : null]);
   } else return;
-  $("#detail").innerHTML = h; bindDetail();
+  if (t === "c") { const c0 = A(S.conflicts).find(x => x.id === key); if (c0 && c0.lat != null) h += satBtn(c0.lat, c0.lon, 3); }
+  $("#detail").innerHTML = h; bindDetail(); bindSatImg();
 }
 function idleDetail() {
   const hot = A(S.conflicts).filter(c => c.trend === "esc" || c.trend === "new");
@@ -1694,6 +1770,7 @@ async function streamTo(url, body, el, onDone, signal) {
 }
 function ask() {
   const q = $("#q").value.trim(); if (!q) return; beep(1000, .06);
+  if (HIST_Q.test(q)) return askHistory();
   streamTo("/api/ask", { q }, $("#qOut"), text => { const m = text.match(/REF:\s*(.+)$/m); if (!m) return;
     const ids = m[1].split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
     const c = A(S.conflicts).find(x => ids.includes(x.id)); if (c) { go("c:" + c.id); return; }
@@ -1941,6 +2018,7 @@ function runCmd(c) {
     case "view": setView(a === "chain" ? "chain" : "map"); break;
     case "voice": voiceToggle(); break;
     case "event": {   // pokaż najnowszy kontakt: air, sea, inc (incydent morski) albo dowolny
+      if (a === "ua") { ensureLayer("uaal"); setView("map"); const z = AUTOZ; AUTOZ = true; setTheater("ua", true); AUTOZ = z; break; }
       if (a === "inc") { const x = A(MS.d && MS.d.items).filter(y => !y.warn).sort((p, q) => (q.t || 0) - (p.t || 0))[0]; if (x) { const z = AUTOZ; AUTOZ = true; ensureLayer("marsec"); setView("map"); go("mi:" + x.id); AUTOZ = z; } break; }
       const ev = [].concat(a !== "sea" ? A(AIR.d && AIR.d.events).map(e => Object.assign({ id: e.go || "ah:" + e.hex }, e)) : [],
                            a !== "air" ? A(SEA.d && SEA.d.events).map(e => Object.assign({ id: "vs:" + e.mmsi }, e)) : []).sort((x, y) => y.at - x.at)[0];
@@ -2131,6 +2209,209 @@ $("#sndModal").addEventListener("click", e => { if (e.target.id === "sndModal") 
 if ("speechSynthesis" in window) speechSynthesis.addEventListener("voiceschanged", () => { if (!$("#sndModal").hidden) renderTTS(); });
 loadSounds().then(() => { if (humH) { hum(false); hum(true); } }); loadTTS();
 
+/* ------------------------------------------------------------ WYWIAD+ (v3.14): alarmy UA, DeepState, NOTAM, SAR, Telegram OSINT, własne odbiorniki */
+const IN = { d: null, sdr: null, ds: null, dsAt: 0 };
+async function pollIntel() { try { IN.d = await api("/api/intel"); if ((IN.d.tile_key || "") !== TILE_KEY) { TILE_KEY = IN.d.tile_key || ""; TILES.clear(); markStatic(); } renderIntel(); needDraw = true; if (layerOn.dstate) loadDS(); } catch (e) {} }
+async function pollSdr() { try { IN.sdr = await api("/api/sdr"); renderSdr(); needDraw = true; } catch (e) {} }
+async function loadDS() {
+  const at = IN.d && IN.d.deepstate && IN.d.deepstate.at; if (!at || at === IN.dsAt) return;
+  try { IN.ds = await api("/api/intel/deepstate"); IN.dsAt = at; markStatic(); } catch (e) {}
+}
+const UA_COL = "#ff4b4b", NT_COL = { gnss: "#ffb347", missile: "#ff4b4b", uas: "#c48cff", military: "#6fe4ff", closed: "#ff8f6b" };
+const NT_N = { gnss: TX("GNSS/GPS"), missile: TX("RAKIETY / STARTY"), uas: TX("DRONY"), military: TX("WOJSKOWE"), closed: TX("ZAMKNIĘTA PRZESTRZEŃ") };
+const CRED = { A: "var(--phos)", B: "var(--phos)", C: "var(--amber)", D: "var(--amber)", E: "var(--red)", F: "var(--phos-dim)" };
+function drawDS(k) {   // warstwa stała: obszary DeepStateMap pod punktami
+  if (!IN.ds) return; SX.save(); SX.globalCompositeOperation = "destination-over";
+  const fill = { occupied: "rgba(255,75,75,.22)", unknown: "rgba(180,180,180,.16)", liberated: "rgba(125,255,154,.10)", other: "rgba(255,143,107,.14)" };
+  const line = { occupied: "rgba(255,75,75,.75)", unknown: "rgba(200,200,200,.5)", liberated: "rgba(125,255,154,.35)", other: "rgba(255,143,107,.5)" };
+  for (const st of ["occupied", "unknown", "other", "liberated"]) {
+    SX.beginPath();
+    for (const pg of A(IN.ds.polys)) { if (pg.st !== st) continue;
+      for (const ring of pg.r) { let first = true, prev = null; for (const c of ring) { const p = scr(c[0], c[1]); if (!p) { first = true; continue; } if (first || (prev && Math.abs(p[0] - prev[0]) > cvW * .5)) SX.moveTo(p[0], p[1]); else SX.lineTo(p[0], p[1]); first = false; prev = p; } SX.closePath(); } }
+    SX.fillStyle = fill[st]; SX.fill("evenodd"); SX.strokeStyle = line[st]; SX.lineWidth = k >= 6 ? 1.4 : .9; SX.stroke();
+  }
+  SX.restore();
+}
+function drawIntel() {
+  const now = Date.now(), k = mode === "globe" ? 1 : T.k, d = IN.d;
+  const ring = (p, r, col, w, dash) => { CX.beginPath(); CX.arc(p[0], p[1], r, 0, 6.2832); CX.strokeStyle = col; CX.lineWidth = w || 1.2; if (dash) CX.setLineDash(dash); CX.stroke(); CX.setLineDash([]); };
+  if (d && layerOn.uaal && d.ua) for (const o of A(d.ua.oblasts)) { if (!o.on) continue; const p = scr(o.lon, o.lat); if (!p || !inView(p[0], p[1], 30)) continue;
+    const r = Math.max(9, Math.min(40, 6 * Math.sqrt(k) * 2)), pulse = (now / 900) % 1;
+    CX.beginPath(); CX.arc(p[0], p[1], r, 0, 6.2832); CX.fillStyle = "rgba(255,75,75,.22)"; CX.fill(); ring(p, r, UA_COL, 1.4);
+    CX.globalAlpha = 1 - pulse; ring(p, r + pulse * 14, UA_COL, 1); CX.globalAlpha = 1; AHIT.push([p[0], p[1], "ua:" + o.id]); }
+  if (d && layerOn.notam && d.notam) for (const n of A(d.notam.items)) { if (!n.pos) continue; const p = scr(n.pos[1], n.pos[0]); if (!p || !inView(p[0], p[1], 30)) continue;
+    const col = NT_COL[n.kind] || "#c48cff";
+    if (n.r) { const e = scr(n.pos[1], n.pos[0] + n.r / 111.2); if (e) { const rp = Math.abs(e[1] - p[1]); if (rp > 6 && rp < 2000) { CX.globalAlpha = .55; ring(p, rp, col, 1, [4, 3]); CX.globalAlpha = 1; } } }
+    CX.beginPath(); CX.moveTo(p[0], p[1] - 5); CX.lineTo(p[0] + 5, p[1] + 4); CX.lineTo(p[0] - 5, p[1] + 4); CX.closePath(); CX.fillStyle = "rgba(5,8,5,.8)"; CX.fill(); CX.strokeStyle = col; CX.lineWidth = 1.3; CX.stroke();
+    AHIT.push([p[0], p[1], "nt:" + n.id]); }
+  if (d && layerOn.sar && d.gfw) { CX.fillStyle = "rgba(255,179,71,.55)"; for (const c of A(d.gfw.cells)) { const p = scr(c.lon, c.lat); if (!p || !inView(p[0], p[1], 4)) continue; const s = Math.min(7, 1.5 + Math.sqrt(c.n)); CX.fillRect(p[0] - s / 2, p[1] - s / 2, s, s); } }
+  if (d && layerOn.osint) for (const t of A(d.tg)) { if (!t.pos) continue; const p = scr(t.pos[1], t.pos[0]); if (!p || !inView(p[0], p[1], 10)) continue;
+    const age = (now - t.t) / 3600e3; CX.globalAlpha = age < 3 ? 1 : age < 12 ? .75 : .45;
+    CX.beginPath(); CX.arc(p[0], p[1], 4.5, 0, 6.2832); CX.fillStyle = cssv(CRED[t.cred] || "var(--phos-dim)"); CX.fill(); CX.strokeStyle = "#050805"; CX.lineWidth = 1; CX.stroke(); CX.globalAlpha = 1;
+    AHIT.push([p[0], p[1], "tg:" + t.id]); }
+  const S2 = IN.sdr;
+  if (S2 && layerOn.myadsb) for (const a of A(S2.adsb)) { const p = scr(a.lon, a.lat); if (!p || !inView(p[0], p[1], 8)) continue;
+    CX.beginPath(); tri(CX, p[0], p[1], ((a.trk || 0) - 90) * Math.PI / 180, 3); CX.fillStyle = a.emerg ? "#ff4b4b" : a.mil ? "#6fe4ff" : "#e8ffe8"; CX.globalAlpha = .85; CX.fill(); CX.globalAlpha = 1;
+    AHIT.push([p[0], p[1], "la:" + a.hex]); if (k >= 5 && a.cs) { CX.font = FONT(); CX.fillStyle = "#e8ffe8"; CX.fillText(a.cs, p[0] + 5, p[1] - 4); } }
+  if (S2 && layerOn.aprs) { CX.font = FONT(); for (const s of A(S2.aprs)) { const p = scr(s.lon, s.lat); if (!p || !inView(p[0], p[1], 8)) continue;
+    if (A(s.trail).length) { CX.beginPath(); s.trail.concat([[s.lat, s.lon]]).forEach((q, i) => { const pp = scr(q[1], q[0]); if (pp) i ? CX.lineTo(pp[0], pp[1]) : CX.moveTo(pp[0], pp[1]); }); CX.strokeStyle = "rgba(196,140,255,.6)"; CX.lineWidth = 1; CX.stroke(); }
+    CX.fillStyle = "#c48cff"; CX.fillRect(p[0] - 2.5, p[1] - 2.5, 5, 5); AHIT.push([p[0], p[1], "ap:" + s.call]);
+    if (k >= 6) { CX.fillStyle = "#e3c9ff"; CX.fillText(s.call, p[0] + 5, p[1] - 4); } } }
+  /* QTH operatora – punkt odniesienia dla odbiorników */
+  if ((layerOn.myadsb || layerOn.aprs) && S2) { const q = qth(), p = scr(q.lon, q.lat); if (p) { ring(p, 6, "#e8ffe8", 1.5); CX.fillStyle = "#e8ffe8"; CX.fillRect(p[0] - 1, p[1] - 1, 2, 2); } }
+}
+const agoS = t => t ? agoTxt(Math.max(0, Math.round((Date.now() - t) / 1000))) : "";
+function renderIntel() {
+  const d = IN.d; if (!d) return;
+  const tg = A(d.tg).filter(t => t.ai);
+  $("#tgT").textContent = `${tg.length} ${TX("postów")} · 48 h`;
+  rowsInto("#osint", tg.slice(0, 40).map(t => `<li><button data-go="tg:${esc0(t.id)}"><span class="t">${esc(t.title || "")}</span><span class="chip" style="color:${CRED[t.cred] || "var(--phos-dim)"}">${esc(t.cred || "?")}</span><span class="sub">@${esc(t.ch)} · ${esc(t.place || "")} · ${hm(t.t)}${A(t.also).length ? " · " + TX("też") + " " + t.also.map(x => "@" + x).join(", ") : ""}</span></button></li>`).join("")
+    || `<li class="empty">${TX("Lokalne AI jeszcze nie przeczytało postów – pojawią się po pierwszej porcji.")}</li>`);
+  const ua = d.ua, on = ua ? A(ua.oblasts).filter(o => o.on).sort((a, b) => (a.since || 0) - (b.since || 0)) : [];
+  let h = `<li class="hd">${TX("Alarmy w Ukrainie")} · ${on.length}${ua ? " · " + esc(ua.src) : ""}</li>` + (on.map(o => `<li><button data-go="ua:${esc0(o.id)}"><span class="t">${esc(o.name)}</span><span class="red">${o.since ? cd(Date.now() - o.since) : TX("TERAZ")}</span><span class="sub">${esc(A(o.kinds).join(", "))}${o.parts ? " · " + o.parts + " " + TX("części obwodu") : ""}</span></button></li>`).join("") || `<li class="empty">${TX("Brak alarmów.")}</li>`);
+  const nt = d.notam ? A(d.notam.items) : [];
+  h += `<li class="hd">NOTAM · ${nt.length}</li>` + (nt.length ? nt.slice(0, 30).map(n => `<li><button data-go="nt:${esc0(n.id)}"><span class="t">${esc(n.loc)} · ${esc(NT_N[n.kind] || n.kind)}</span><span class="dim">${esc(n.num || "")}</span><span class="sub">${esc((n.text || "").slice(0, 140))}</span></button></li>`).join("")
+    : `<li class="empty">${(d.status.notam || {}).off ? TX("Wpisz darmowy klucz FAA w oknie ŹRÓDŁA I INTEGRACJE.") : TX("Brak NOTAM-ów z wybranych kategorii.")}</li>`);
+  const g = d.gfw; h += `<li class="hd">${TX("Ciemne statki z radaru SAR")}</li><li><button tabindex="-1" style="cursor:default"><span class="sub">${g ? `${A(g.cells).length} ${TX("obszarów z wykryciami bez AIS")} · ${esc(g.from)}–${esc(g.to)}` : (d.status.gfw || {}).off ? TX("Wpisz darmowy klucz Global Fishing Watch w oknie ŹRÓDŁA I INTEGRACJE.") : esc((d.status.gfw || {}).err || "…")}</span></button></li>`;
+  rowsInto("#alerts2", h);
+  $("#alT").textContent = on.length ? on.length + " " + TX("alarmów") : "";
+}
+function renderSdr() {
+  const s = IN.sdr; if (!s) return; const st = s.status || {}, a = A(s.adsb), ap = A(s.aprs);
+  const line = (n, x, txt) => `<li><button tabindex="-1" style="cursor:default"><span class="t">${n}</span><span class="${x.ok ? "" : x.ok === false ? "red" : "dim"}">${x.off ? TX("wyłączony") : x.ok ? "OK" : x.ok === false ? TX("BŁĄD") : "…"}</span><span class="sub">${esc(x.err || txt || "")}</span></button></li>`;
+  let h = line("ADS-B", st.adsb || {}, st.adsb && !st.adsb.off ? `${a.length} ${TX("samolotów")} · ${TX("zasięg do")} ${st.adsb.max_nm || 0} NM` : TX("adres aircraft.json w oknie ŹRÓDŁA I INTEGRACJE"))
+    + line("AIS", st.ais || {}, st.ais && !st.ais.off ? `UDP ${st.ais.port} · ${st.ais.n} ${TX("statków (1 h)")} · ${st.ais.msgs} ${TX("komunikatów")}` : TX("port UDP z AIS-catcher / rtl_ais"))
+    + line("APRS", st.aprs || {}, st.aprs && !st.aprs.off ? `${ap.length} ${TX("stacji w promieniu")}` : TX("włącz w oknie ŹRÓDŁA I INTEGRACJE"));
+  const mil = a.filter(x => x.mil || x.emerg);
+  if (mil.length) h += `<li class="hd">${TX("Wojskowe / alarmowe z Twojej anteny")}</li>` + mil.slice(0, 12).map(x => `<li><button data-go="la:${x.hex}"><span class="t">${esc(x.cs || x.hex)} · ${esc(x.t)}</span><span class="${x.emerg ? "red" : "cyan"}">${x.emerg ? "SQUAWK " + esc(x.sq) : TX("WOJSKOWY")}</span><span class="sub">${x.alt != null ? x.alt + " ft" : ""} · ${fmtLL(x.lat, x.lon)}</span></button></li>`).join("");
+  if (ap.length) h += `<li class="hd">APRS · ${TX("ostatnie")}</li>` + ap.slice(0, 10).map(x => `<li><button data-go="ap:${esc0(x.call)}"><span class="t">${esc(x.call)}</span><span class="dim">${hm(x.t)}</span><span class="sub">${esc(x.cmt || x.kind || "")}</span></button></li>`).join("");
+  rowsInto("#sdr", h);
+  $("#sdrT").textContent = [a.length ? "✈ " + a.length : "", st.ais && st.ais.n ? "⚓ " + st.ais.n : "", ap.length ? "APRS " + ap.length : ""].filter(Boolean).join(" · ");
+}
+/* karty szczegółów */
+function intelCard(t, key) {
+  const d = IN.d || {}, sdr = IN.sdr || {};
+  if (t === "ua") { const o = A(d.ua && d.ua.oblasts).find(x => x.id === key); if (!o) return "";
+    return chip(TX("ALARM PRZECIWLOTNICZY"), "var(--red)") + `<h2 class="glow">${esc(o.name)}</h2>` + dd([[TX("STAN"), o.on ? TX("ALARM TRWA") : TX("brak alarmu")], [TX("OD"), o.since ? hm(o.since) + " (" + cd(Date.now() - o.since) + ")" : null],
+      [TX("RODZAJ"), A(o.kinds).join(", ")], [TX("ŹRÓDŁO"), d.ua.src]]) + `<p class="hint">${TX("Dokładniejsze dane (rodzaj zagrożenia, rejony i gminy) daje darmowy token alerts.in.ua.")}</p>` + satBtn(o.lat, o.lon, 2.5); }
+  if (t === "nt") { const n = A(d.notam && d.notam.items).find(x => x.id === key); if (!n) return "";
+    return chip("NOTAM · " + (NT_N[n.kind] || n.kind), NT_COL[n.kind] || "var(--violet)") + `<h2 class="glow">${esc(n.loc)} ${esc(n.num || "")}</h2>` + dd([[TX("OD"), n.from], [TX("DO"), n.to], [TX("PROMIEŃ"), n.r ? Math.round(n.r) + " km" : null]])
+      + `<pre class="ntext">${esc0(n.text)}</pre><p class="hint">${TX("Źródło: FAA NOTAM API. Treść w oryginalnym, skrótowym formacie ICAO.")}</p>`; }
+  if (t === "tg") { const p = A(d.tg).find(x => x.id === key); if (!p) return "";
+    return chip("TELEGRAM · @" + p.ch, "var(--cyan)") + `<h2 class="glow">${esc(p.title || p.ch)}</h2>` + (p.summary ? `<p>${esc(p.summary)}</p>` : "")
+      + dd([[TX("KANAŁ"), `${esc(p.chn)} (${esc(p.type)})`, 1], [TX("WIARYGODNOŚĆ"), p.cred ? p.cred + " · " + (REL[p.cred] || "") : null], [TX("KIEDY"), new Date(p.t).toLocaleString(LOC)], [TX("MIEJSCE"), p.place],
+        [TX("TO SAMO PODAJĄ"), A(p.also).map(x => "@" + x).join(", ")], [TX("ORYGINAŁ"), L(p.url, "t.me/" + p.id), 1]])
+      + `<p class="hint">${TX("Streszczenie i ocena: lokalne AI. Komunikaty stron wojny i propaganda to twierdzenia, nie potwierdzone fakty. Pozycja na mapie jest przybliżona.")}</p>` + (p.pos ? satBtn(p.pos[0], p.pos[1], 1.2) : ""); }
+  if (t === "la") { const a = A(sdr.adsb).find(x => x.hex === key); if (!a) return "";
+    return chip(TX("TWÓJ ODBIORNIK ADS-B"), a.mil ? "var(--cyan)" : "var(--phos)") + `<h2 class="glow">${esc(a.cs || a.hex.toUpperCase())} · ${esc(a.t || "?")}</h2>` + dd([[TX("REJESTRACJA"), a.r], [TX("ADRES ICAO"), a.hex.toUpperCase()],
+      [TX("WYSOKOŚĆ"), a.alt != null ? a.alt + " ft" : null], [TX("PRĘDKOŚĆ"), a.gs ? Math.round(a.gs) + " kt" : null], [TX("KURS"), a.trk != null ? Math.round(a.trk) + "°" : null], [TX("SQUAWK"), a.sq],
+      [TX("SYGNAŁ"), a.rssi != null ? a.rssi + " dBFS" : null], [TX("ODLEGŁOŚĆ"), Math.round(dist(qth(), a) / 1.852) + " NM"], [TX("PODGLĄD"), L("https://globe.adsb.fi/?icao=" + a.hex, "adsb.fi"), 1]]); }
+  if (t === "ap") { const s = A(sdr.aprs).find(x => x.call === key); if (!s) return "";
+    return chip("APRS", "var(--violet)") + `<h2 class="glow">${esc(s.call)}</h2>` + dd([[TX("RODZAJ"), s.kind], [TX("KOMENTARZ"), s.cmt], [TX("PRĘDKOŚĆ"), s.spd != null ? s.spd + " km/h" : null], [TX("POZYCJA"), fmtLL(s.lat, s.lon)],
+      [TX("ODLEGŁOŚĆ"), Math.round(dist(qth(), s)) + " km"], [TX("OSTATNIO"), hm(s.t)], [TX("PODGLĄD"), L("https://aprs.fi/#!call=" + encodeURIComponent(s.call), "aprs.fi"), 1]]); }
+  return "";
+}
+const dist = (a, b) => { const r = Math.PI / 180, x = Math.sin((b.lat - a.lat) * r / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin((b.lon - a.lon) * r / 2) ** 2; return 12742 * Math.asin(Math.min(1, Math.sqrt(x))); };
+function intelLL(t, key) {
+  const d = IN.d || {}, s = IN.sdr || {};
+  if (t === "ua") { const o = A(d.ua && d.ua.oblasts).find(x => x.id === key); return o && [o.lat, o.lon, 8, "uaal"]; }
+  if (t === "nt") { const n = A(d.notam && d.notam.items).find(x => x.id === key); return n && n.pos && [n.pos[0], n.pos[1], 6, "notam"]; }
+  if (t === "tg") { const p = A(d.tg).find(x => x.id === key); return p && p.pos && [p.pos[0], p.pos[1], 4, "osint"]; }
+  if (t === "la") { const a = A(s.adsb).find(x => x.hex === key); return a && [a.lat, a.lon, 2, "myadsb"]; }
+  if (t === "ap") { const a = A(s.aprs).find(x => x.call === key); return a && [a.lat, a.lon, 1, "aprs"]; }
+  return null;
+}
+/* zdjęcie satelitarne NASA dla dowolnego miejsca */
+function satBtn(lat, lon, span) { return `<p class="satimg-row"><button class="btn" data-satimg="${(+lat).toFixed(3)},${(+lon).toFixed(3)},${span || 1.5}">${TX("ZDJĘCIE SATELITARNE (NASA, wczoraj)")}</button></p><div class="satimg" hidden></div>`; }
+function bindSatImg() {
+  const b = $("#detail [data-satimg]"); if (!b) return;
+  b.addEventListener("click", () => { const [la, lo, sp] = b.dataset.satimg.split(",").map(Number), box = $("#detail .satimg"); box.hidden = false;
+    const show = (layer, date) => { box.innerHTML = `<div class="seg"><button class="btn" data-sl="true">${TX("KOLOR")}</button><button class="btn" data-sl="fires">${TX("POŻARY")}</button><button class="btn" data-sl="night">${TX("NOC (ŚWIATŁA)")}</button><button class="btn" data-sz="0.5">${TX("BLIŻEJ")}</button><button class="btn" data-sz="2">${TX("DALEJ")}</button></div><img alt="" src="/api/satimg?lat=${la}&lon=${lo}&span=${box.dataset.sp || sp}&layer=${layer}"><p class="hint">${TX("NASA Worldview · VIIRS/MODIS · zdjęcie z wczoraj (dane z opóźnieniem do doby; chmury zasłaniają widok). Warstwa NOC pokazuje światła miast – przydaje się do wykrywania przerw w dostawach prądu.")}</p>`;
+      box.querySelectorAll("[data-sl]").forEach(x => { x.setAttribute("aria-pressed", x.dataset.sl === layer); x.addEventListener("click", () => show(x.dataset.sl)); });
+      box.querySelectorAll("[data-sz]").forEach(x => x.addEventListener("click", () => { box.dataset.sp = Math.max(.2, Math.min(12, (+box.dataset.sp || sp) * +x.dataset.sz)); show(layer); })); };
+    box.dataset.sp = sp; show("true"); b.closest(".satimg-row").hidden = true; });
+}
+setInterval(() => { if (!document.hidden) pollIntel(); }, 30000);
+let sdrTick = 0;
+setInterval(() => { sdrTick++; if (!document.hidden && ((layerOn.myadsb || layerOn.aprs) || sdrTick % 10 === 0)) pollSdr(); }, 3000);
+
+/* ------------------------------------------------------------ okno ŹRÓDŁA I INTEGRACJE */
+const INTG_FIELDS = ["stadia_key", "kystverket", "ais_tcp", "aishub_user", "alerts_token", "ua_watch", "faa_id", "faa_secret", "notam_locs", "gfw_token", "tg_channels", "adsb_url", "ais_port", "aprs_on", "aprs_km", "ha_webhook",
+  "imap_host", "imap_port", "imap_user", "imap_pass", "imap_folder", "imap_senders", "imap_days"];
+const INTG_SECRET = new Set(["alerts_token", "gfw_token", "faa_secret", "imap_pass"]);
+let INTG = null;
+async function openIntg() {
+  $("#settings").hidden = true; try { INTG = await api("/api/intg"); } catch (e) { return; }
+  INTG_FIELDS.forEach(k => { const el = $("#ig_" + k); if (!el) return;
+    if (el.type === "checkbox") el.checked = !!INTG[k];
+    else if (INTG_SECRET.has(k)) { el.value = ""; el.placeholder = INTG[k] ? TX("ustawiony") + " (" + INTG[k] + ") – " + TX("wpisz nowy, aby zmienić") : el.dataset.ph || ""; }
+    else { el.value = INTG[k] || ""; if (INTG.defaults[k]) el.placeholder = INTG.defaults[k]; } });
+  renderIntgStatus(); $("#intgModal").hidden = false; $("#intgClose").focus();
+}
+function renderIntgStatus() {
+  const st = (INTG && INTG.status) || {}, N = { ua_alerts: TX("Alarmy UA"), deepstate: "DeepStateMap", notam: "NOTAM (FAA)", gfw: "Global Fishing Watch", telegram: "Telegram OSINT",
+    adsb: "ADS-B", ais: "AIS (UDP)", aprs: "APRS-IS", aishub: "AISHub", mail: TX("Poczta (IMAP)"), ha: "Home Assistant" };
+  Object.entries(st).forEach(([k, v]) => { if (k.startsWith("tcp:")) N[k] = "AIS · " + (v.name || k.slice(4)); });
+  $("#igStatus").innerHTML = Object.entries(N).map(([k, n]) => { const s = st[k] || {};
+    return `<div class="tts-row"><span class="nm">${n}</span><span class="st ${s.ok ? "" : s.ok === false ? "red" : ""}">${s.off ? TX("wyłączone") : s.ok ? "OK" + (s.n != null ? " · " + s.n : "") : s.ok === false ? TX("BŁĄD") : "—"}</span><span class="bt"></span></div>${s.err ? `<p class="hint red">${esc0(s.err)}</p>` : ""}`; }).join("");
+}
+async function saveIntg() {
+  const body = {}; INTG_FIELDS.forEach(k => { const el = $("#ig_" + k); if (!el) return; body[k] = el.type === "checkbox" ? el.checked : el.value; });
+  $("#igMsg").textContent = TX("Zapisuję…"); try { INTG = await api("/api/intg", body); $("#igMsg").textContent = TX("Zapisano. Źródła odświeżą się w ciągu minuty."); beep(1400, .08); } catch (e) { $("#igMsg").textContent = TX("Nie udało się zapisać."); }
+  INTG_FIELDS.forEach(k => { if (INTG_SECRET.has(k)) { const el = $("#ig_" + k); el.value = ""; el.placeholder = INTG[k] ? TX("ustawiony") + " (" + INTG[k] + ")" : ""; } });
+  renderIntgStatus(); setTimeout(async () => { try { INTG = await api("/api/intg"); renderIntgStatus(); } catch (e) {} pollIntel(); pollSdr(); }, 6000);
+}
+$("#intgOpen").addEventListener("click", openIntg);
+$("#intgClose").addEventListener("click", () => { $("#intgModal").hidden = true; });
+$("#intgModal").addEventListener("click", e => { if (e.target.id === "intgModal") $("#intgModal").hidden = true; });
+$("#igSave").addEventListener("click", saveIntg);
+$("#igMailTest").addEventListener("click", async () => { await saveIntg(); $("#igMailMsg").textContent = TX("Łączę…"); try { const r = await api("/api/intg/test-mail", {}); $("#igMailMsg").textContent = r.ok ? TX("Połączono – wiadomości w folderze:") + " " + r.n : r.error; } catch (e) { $("#igMailMsg").textContent = TX("błąd"); } });
+$("#igHaTest").addEventListener("click", async () => { await saveIntg(); $("#igHaMsg").textContent = TX("Wysyłam…"); try { const r = await api("/api/intg/test-ha", {}); $("#igHaMsg").textContent = r.ok ? TX("Wysłano – sprawdź w Home Assistant (Narzędzia deweloperskie → Zdarzenia albo automatyzację z wyzwalaczem Webhook).") : r.error; } catch (e) { $("#igHaMsg").textContent = TX("błąd"); } });
+/* PRIORYTET JEDEN → Home Assistant */
+$("#alertBtn").addEventListener("click", () => setTimeout(() => api("/api/notify", { kind: "priority", text: document.body.classList.contains("alert") ? "PRIORYTET JEDEN: ON" : "PRIORYTET JEDEN: OFF" }).catch(() => {}), 50));
+
+/* ------------------------------------------------------------ pytania o historię */
+const HIST_Q = /wczoraj|przedwczoraj|zesz[łl]|ostatni(ch|m)?\s+(tydzie|tygodn|miesi|dni|\d)|w ci[ąa]gu|\b\d{1,2}\.\d{1,2}\b|\b20\d\d-\d\d|yesterday|last (week|month|\d+ days)|archiw|histori|dzia[łl]o si/i;
+function askHistory() {
+  const q = $("#q").value.trim(); if (!q) return; beep(900, .06);
+  streamTo("/api/ask/history", { q }, $("#qOut"));
+}
+$("#qHist").addEventListener("click", askHistory);
+
+
+/* ------------------------------------------------------------ WYSZUKIWARKA: statki (MMSI, nazwa, IMO, znak), samoloty (ICAO, znak, rejestracja, typ), APRS */
+let findT = null, findSel = -1, findList = [];
+const FIND_LAYER = { vs: "vessel", ah: "air", la: "myadsb", ap: "aprs" };
+async function findRun() {
+  const q = $("#findQ").value.trim(), box = $("#findRes");
+  if (q.length < 2) { box.hidden = true; findList = []; return; }
+  let d = null; try { d = await api("/api/find?q=" + encodeURIComponent(q)); } catch (e) { return; }
+  if ($("#findQ").value.trim() !== q) return;
+  findList = A(d.res); findSel = findList.length ? 0 : -1;
+  const ic = { vs: "⚓", ah: "✈", la: "✈", ap: "◆" };
+  box.innerHTML = findList.length ? findList.map((r, i) => `<li><button type="button" data-fi="${i}" class="${i === findSel ? "on" : ""}"><b>${ic[r.t] || "·"} ${esc(r.name)}</b><span>${esc(r.sub || "")}</span></button></li>`).join("")
+    : `<li class="empty">${TX("Nic nie znaleziono (szukam w statkach, samolotach wojskowych, Twoim ADS-B i APRS).")}</li>`;
+  box.hidden = false;
+}
+function findGo(i) {
+  const r = findList[i]; if (!r) return; $("#findRes").hidden = true; $("#findQ").blur(); sfx("click");
+  const lay = FIND_LAYER[r.t]; if (lay && !layerOn[lay]) ensureLayer(lay);
+  if (r.t === "vs" && !SHIPS.has(+r.id)) { setView("map"); flyTo(r.lat, r.lon, 1); loadShipDetail(+r.id); }
+  const z = AUTOZ; AUTOZ = true; setView("map"); go(r.t + ":" + r.id); AUTOZ = z;
+  if (r.t === "vs" && r.lat != null) flyTo(r.lat, r.lon, 1.2);
+}
+$("#findQ").addEventListener("input", () => { clearTimeout(findT); findT = setTimeout(findRun, 220); });
+$("#findQ").addEventListener("keydown", e => {
+  if (e.key === "Enter") { e.preventDefault(); if (findSel >= 0) findGo(findSel); }
+  else if (e.key === "Escape") { $("#findRes").hidden = true; $("#findQ").blur(); }
+  else if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); if (!findList.length) return; findSel = (findSel + (e.key === "ArrowDown" ? 1 : -1) + findList.length) % findList.length;
+    $$("#findRes [data-fi]").forEach(b => b.classList.toggle("on", +b.dataset.fi === findSel)); }
+});
+$("#findRes").addEventListener("mousedown", e => { const b = e.target.closest("[data-fi]"); if (b) { e.preventDefault(); findGo(+b.dataset.fi); } });
+$("#findQ").addEventListener("blur", () => setTimeout(() => { $("#findRes").hidden = true; }, 150));
+$("#findQ").addEventListener("focus", () => { if (findList.length) $("#findRes").hidden = false; });
+document.addEventListener("keydown", e => { if (e.key === "/" && !/input|textarea|select/i.test(document.activeElement.tagName)) { e.preventDefault(); $("#findQ").focus(); $("#findQ").select(); } });
+
 /* ------------------------------------------------------------ START */
 function boot(done) {
   if (SOLO) return done();
@@ -2138,7 +2419,7 @@ function boot(done) {
   let seen = false; try { seen = sessionStorage.getItem("k7-boot") === "1"; } catch (e) { seen = true; }
   if (!needSetup && (seen || reduce)) return done();
   const B = $("#boot"); B.hidden = false; const e = STATUS ? STATUS.engine : null, C = CURRENT || {};
-  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.13"), TX("TEST PAMIĘCI ........ OK"),
+  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.14"), TX("TEST PAMIĘCI ........ OK"),
     TX("PROCESOR GRAFICZNY ..") + " " + (e ? TX(e.hardware.gpu_name) + (e.hardware.vram_gb ? " / " + e.hardware.vram_gb + " " + TX("GB") : "") : "?"),
     TX("RDZEŃ ANALITYCZNY ...") + " " + (e && e.model ? e.model.toUpperCase() : TX("NIEAKTYWNY")),
     TX("BAZA KONFLIKTÓW .....") + " " + A(C.conflicts).length + " " + TX("WĘZŁÓW"), TX("FRONTY ..............") + " " + A(C.fronts).length + " " + TX("TEATRÓW"),
@@ -2174,7 +2455,7 @@ if (window.ResizeObserver) new ResizeObserver(() => { const h = $("#map").getBou
   try { STATUS = await api("/api/status"); } catch (e) {}
   await loadSettings();
   await loadState();
-  pollAir(); pollSea(); loadHist(); pollMS();
+  pollAir(); pollSea(); loadHist(); pollMS(); pollIntel(); pollSdr();
   renderSys(); renderSrc();
   if (mode === "flat") setTheater(theater || "world", false);
   loadMarkets(); setInterval(loadMarkets, 5 * 60 * 1000);

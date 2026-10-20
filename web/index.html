@@ -91,6 +91,67 @@
     <p class="hint sat-note">Liczby obok typów pokazują, ile obiektów jest teraz w pamięci. Warstwy STATKI i LOTNICTWO włączasz pod mapą.</p>
   </div>
 </div>
+<div class="modal" id="intgModal" hidden role="dialog" aria-modal="true" aria-labelledby="intgTitle">
+  <div class="modal-in sit-modal frame snd-modal">
+    <div class="frame-h"><span id="intgTitle">&gt; ŹRÓDŁA I INTEGRACJE</span><button type="button" class="btn" id="intgClose" aria-label="Zamknij">✕</button></div>
+    <div class="sat-body intg">
+      <div class="sat-col">
+        <p class="sat-h">UKRAINA · ALARMY PRZECIWLOTNICZE</p>
+        <p class="hint">Działa bez klucza (ubilling.net.ua). Darmowy token z alerts.in.ua (formularz na stronie) daje rodzaj zagrożenia i części obwodów.</p>
+        <input id="ig_alerts_token" type="password" autocomplete="off" data-ph="token alerts.in.ua (opcjonalnie)" placeholder="token alerts.in.ua (opcjonalnie)">
+        <label for="ig_ua_watch">Powiadamiaj o alarmach w obwodach <small>po przecinku, np. Lwów, Kijów, Odessa – pusta lista = bez powiadomień</small></label>
+        <input id="ig_ua_watch" autocomplete="off">
+        <p class="sat-h">NOTAM · FAA NOTAM API</p>
+        <p class="hint">Darmowe konto: api.faa.gov → zarejestruj aplikację → „NOTAM API” → client_id i client_secret.</p>
+        <input id="ig_faa_id" autocomplete="off" placeholder="client_id">
+        <input id="ig_faa_secret" type="password" autocomplete="off" data-ph="client_secret" placeholder="client_secret">
+        <label for="ig_notam_locs">Rejony informacji lotniczej (FIR) <small>kody ICAO po przecinku</small></label>
+        <input id="ig_notam_locs" autocomplete="off">
+        <p class="sat-h">„CIEMNE” STATKI · GLOBAL FISHING WATCH</p>
+        <p class="hint">Darmowy token do użytku niekomercyjnego: globalfishingwatch.org/our-apis → API Portal → Create token. Wykrycia radarowe (SAR) statków bez AIS, z kilkudniowym opóźnieniem.</p>
+        <input id="ig_gfw_token" type="password" autocomplete="off" data-ph="token GFW" placeholder="token GFW">
+        <p class="sat-h">TELEGRAM OSINT</p>
+        <label for="ig_tg_channels">Kanały publiczne <small>nazwy po przecinku (z adresu t.me/NAZWA); puste = domyślny zestaw</small></label>
+        <input id="ig_tg_channels" autocomplete="off">
+      </div>
+      <div class="sat-col">
+        <p class="sat-h">MOJE ODBIORNIKI (SDR)</p>
+        <label for="ig_adsb_url">ADS-B: adres aircraft.json <small>readsb / dump1090 / tar1090, np. http://192.168.1.50/tar1090/data/aircraft.json</small></label>
+        <input id="ig_adsb_url" autocomplete="off" spellcheck="false">
+        <label for="ig_ais_port">AIS: port UDP dla zdań NMEA <small>w AIS-catcher dodaj „-u IP_KOMPUTERA 10110”, w rtl_ais „-h IP -P 10110”</small></label>
+        <input id="ig_ais_port" inputmode="numeric" autocomplete="off" placeholder="10110">
+        <p class="sat-h">MAPA SZCZEGÓŁOWA</p>
+        <label for="ig_stadia_key">Klucz Stadia Maps (opcjonalnie) <small>podkład „CIEMNA SZCZEGÓŁOWA” działa bez klucza na tym komputerze; na telefonie w sieci domowej potrzebny jest darmowy klucz (stadiamaps.com → Sign up)</small></label>
+        <input id="ig_stadia_key" autocomplete="off" spellcheck="false">
+        <p class="sat-h">WIĘCEJ STATKÓW (AIS)</p>
+        <label class="chk"><input id="ig_kystverket" type="checkbox"> Kystverket – publiczny strumień AIS Norwegii (wybrzeże, Morze Północne i Barentsa, bez klucza)</label>
+        <label for="ig_ais_tcp">Inne strumienie NMEA po TCP <small>host:port po przecinku, np. serwer TCP z AIS-catcher (-S 5012) albo od znajomego</small></label>
+        <input id="ig_ais_tcp" autocomplete="off" spellcheck="false" placeholder="192.168.1.50:5012">
+        <label for="ig_aishub_user">AISHub – nazwa użytkownika <small>darmowa wymiana: udostępniasz dane ze swojego odbiornika AIS i dostajesz statki z całej sieci AISHub (aishub.net → Join)</small></label>
+        <input id="ig_aishub_user" autocomplete="off" spellcheck="false">
+        <label class="chk"><input id="ig_aprs_on" type="checkbox"> APRS-IS: stacje wokół QTH (tylko odbiór, znak z okna OPERATOR)</label>
+        <input id="ig_aprs_km" inputmode="numeric" autocomplete="off" placeholder="promień w km (domyślnie 150)">
+        <p class="sat-h">HOME ASSISTANT</p>
+        <p class="hint">W HA utwórz automatyzację z wyzwalaczem „Webhook” i wklej tu jej adres (np. http://homeassistant.local:8123/api/webhook/kronos7). KRONOS wyśle zdarzenia z okna OPERATOR → Powiadomienia oraz PRIORYTET JEDEN, z polami kind, text i level.</p>
+        <input id="ig_ha_webhook" autocomplete="off" spellcheck="false" placeholder="http://homeassistant.local:8123/api/webhook/kronos7">
+        <div class="set-row"><button type="button" class="btn" id="igHaTest">TEST</button><span class="hint" id="igHaMsg"></span></div>
+        <p class="sat-h">POCZTA · ALERTY UKMTO, MDAT-GoG, IFC-IOR</p>
+        <p class="hint">Najlepiej osobna skrzynka. Gmail: imap.gmail.com, port 993, hasło aplikacji (Konto Google → Bezpieczeństwo → Hasła do aplikacji). KRONOS tylko czyta i niczego nie usuwa.</p>
+        <input id="ig_imap_host" autocomplete="off" placeholder="serwer IMAP, np. imap.gmail.com">
+        <input id="ig_imap_port" inputmode="numeric" autocomplete="off" placeholder="port (993)">
+        <input id="ig_imap_user" autocomplete="off" placeholder="adres e-mail / login">
+        <input id="ig_imap_pass" type="password" autocomplete="new-password" data-ph="hasło aplikacji" placeholder="hasło aplikacji">
+        <input id="ig_imap_folder" autocomplete="off" placeholder="folder (INBOX)">
+        <input id="ig_imap_senders" autocomplete="off" placeholder="inni nadawcy po przecinku (opcjonalnie)">
+        <input id="ig_imap_days" inputmode="numeric" autocomplete="off" placeholder="ile dni wstecz przy pierwszym odczycie (14)">
+        <div class="set-row"><button type="button" class="btn" id="igMailTest">SPRAWDŹ POCZTĘ</button><span class="hint" id="igMailMsg"></span></div>
+        <p class="sat-h">STAN ŹRÓDEŁ</p>
+        <div class="tts-voices" id="igStatus"></div>
+      </div>
+    </div>
+    <div class="set-foot"><span class="hint" id="igMsg"></span><button type="button" class="btn" id="igSave">ZAPISZ</button></div>
+  </div>
+</div>
 <div class="modal" id="sndModal" hidden role="dialog" aria-modal="true" aria-labelledby="sndTitle">
   <div class="modal-in sit-modal frame snd-modal">
     <div class="frame-h"><span id="sndTitle">&gt; DŹWIĘK I GŁOS</span><button type="button" class="btn" id="sndClose" aria-label="Zamknij">✕</button></div>
@@ -162,6 +223,7 @@
       <label class="chk"><input id="setHum" type="checkbox"> Szum tła (buczenie maszynowni)</label>
       <label class="chk"><input id="setChat" type="checkbox"> Terkot drukowanego tekstu i „liczenie” rdzenia</label>
       <button type="button" class="btn" id="sndOpen">DŹWIĘKI I GŁOS LEKTORA…</button>
+      <button type="button" class="btn" id="intgOpen">ŹRÓDŁA I INTEGRACJE… (klucze, SDR, poczta, Home Assistant)</button>
       <p class="set-msg" id="setMsg" aria-live="polite"></p>
     </div>
     <div class="set-foot"><button type="submit" class="btn" id="setSave">ZAPISZ</button></div>
@@ -202,7 +264,7 @@
   <section class="frame news-strip" id="changes" aria-label="Co nowego"></section>
 
   <section class="query" aria-label="Zapytanie do systemu">
-    <div class="q-row"><span>&gt;</span><input id="q" placeholder="ZAPYTAJ SYSTEM… np. DLACZEGO ORMUZ JEST ZAMKNIĘTY" autocomplete="off"><button class="btn" id="qGo">WYŚLIJ</button></div>
+    <div class="q-row"><span>&gt;</span><input id="q" placeholder="ZAPYTAJ SYSTEM… np. DLACZEGO ORMUZ JEST ZAMKNIĘTY" autocomplete="off"><button class="btn" id="qGo">WYŚLIJ</button><button class="btn" id="qHist" title="Pytanie o przeszłość: archiwum odczytów, zdarzenia, incydenty">ARCHIWUM</button></div>
     <div class="q-hints" id="qHints"></div>
     <div class="q-out" id="qOut" hidden></div>
   </section>
@@ -218,7 +280,7 @@
     </div>
     <div class="maptools" id="maptools">
       <div class="theaters" id="theaters"></div>
-      <div class="zoombar"><button class="btn" id="zin" aria-label="Przybliż">+</button><button class="btn" id="zout" aria-label="Oddal">−</button><button class="btn" id="zreset" aria-label="Cały świat">◎</button><span id="zoomlvl">×1</span><button class="btn" id="filtBtn">FILTRY</button><button class="btn" id="azBtn" aria-pressed="true" title="Przybliżaj mapę po kliknięciu obiektu">AUTO-ZOOM</button><button class="btn" id="replayBtn" aria-pressed="false" title="Odtwarzanie ruchu samolotów i statków z ostatnich 48 h">ODTWÓRZ</button></div>
+      <div class="zoombar"><button class="btn" id="zin" aria-label="Przybliż">+</button><button class="btn" id="zout" aria-label="Oddal">−</button><button class="btn" id="zreset" aria-label="Cały świat">◎</button><span id="zoomlvl">×1</span><select id="baseSel" title="Podkład mapy: wektorowy KRONOS albo szczegółowy kafelkowy (ciemny, satelitarny)" aria-label="Podkład mapy"></select><span class="findbox"><input id="findQ" type="search" placeholder="SZUKAJ: MMSI, nazwa, znak, ICAO…" autocomplete="off" aria-label="Szukaj statku lub samolotu" title="Skrót: klawisz /"><ul class="findres" id="findRes" hidden></ul></span><button class="btn" id="filtBtn">FILTRY</button><button class="btn" id="azBtn" aria-pressed="true" title="Przybliżaj mapę po kliknięciu obiektu">AUTO-ZOOM</button><button class="btn" id="replayBtn" aria-pressed="false" title="Odtwarzanie ruchu samolotów i statków z ostatnich 48 h">ODTWÓRZ</button></div>
       <div class="layers" id="layers"></div>
     </div>
     <div class="mapgrid">
@@ -322,6 +384,18 @@
     <section class="frame cap" data-slide="war2">
       <div class="frame-h"><span>&gt; STATKI</span><em id="seaT"></em></div>
       <ul class="rows" id="sea"></ul>
+    </section>
+    <section class="frame cap" data-slide="war2">
+      <div class="frame-h"><span>&gt; ALARMY UA · NOTAM · SAR</span><em id="alT"></em></div>
+      <ul class="rows" id="alerts2"></ul>
+    </section>
+    <section class="frame cap" data-slide="war2">
+      <div class="frame-h"><span>&gt; OSINT · TELEGRAM</span><em id="tgT"></em></div>
+      <ul class="rows" id="osint"></ul>
+    </section>
+    <section class="frame cap" data-slide="war2">
+      <div class="frame-h"><span>&gt; MOJE ODBIORNIKI</span><em id="sdrT"></em></div>
+      <ul class="rows" id="sdr"></ul>
     </section>
     <section class="frame cap" data-slide="war2">
       <div class="frame-h"><span>&gt; BEZPIECZEŃSTWO MORSKIE</span><em id="msT"></em></div>

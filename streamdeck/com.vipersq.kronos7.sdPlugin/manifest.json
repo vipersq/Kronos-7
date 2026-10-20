@@ -1,7 +1,7 @@
 {
   "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
   "Name": "KRONOS-7",
-  "Version": "1.1.0.0",
+  "Version": "1.2.0.0",
   "Author": "vipersq",
   "Description": "Sterowanie terminalem KRONOS-7: poziom napięcia, odliczanie analizy AI, teatry działań, warstwy mapy, liczniki samolotów i statków, przeloty satelitów, odtwarzanie 48 h. / Control the KRONOS-7 intel terminal.",
   "URL": "https://github.com/vipersq/Kronos-7",

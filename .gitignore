@@ -20,3 +20,6 @@ data/sounds/
 data/tts/
 data/marsec.json
 data/marsec.tmp
+data/osint_tg.json
+data/osint_tg.tmp
+data/mail_seen.json

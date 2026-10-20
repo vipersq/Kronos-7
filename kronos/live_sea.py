@@ -33,7 +33,7 @@ AIS_BOXES = [
 WORLD = [[[-90.0, -180.0], [90.0, 180.0]]]
 CATS = ["military", "law", "tanker", "cargo", "passenger", "sar", "service", "fishing", "pleasure", "other"]
 CAT_I = {c: i for i, c in enumerate(CATS)}
-KEEP_S = 6 * 3600          # jak długo pamiętamy statek bez sygnału
+KEEP_S = 24 * 3600         # jak długo pamiętamy statek bez sygnału (stare pozycje są wyblakłe)
 LINK = "https://www.marinetraffic.com/en/ais/details/ships/mmsi:{mmsi}"
 
 

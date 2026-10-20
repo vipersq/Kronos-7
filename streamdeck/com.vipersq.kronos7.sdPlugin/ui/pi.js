@@ -11,7 +11,8 @@ const LAYERS = [["vessel", "Statki (AIS)", "Ships (AIS)"], ["air", "Lotnictwo (A
 const METRICS = [["air.n", "Samoloty wojskowe – wszystkie", "Military aircraft – all"], ["air.isr", "Samoloty rozpoznawcze", "Reconnaissance aircraft"], ["air.tanker", "Tankowce powietrzne", "Air tankers"],
   ["air.bomber", "Bombowce", "Bombers"], ["air.loiter", "Samoloty krążące (orbita)", "Loitering aircraft"], ["sea.n", "Statki – wszystkie", "Ships – all"], ["sea.mil", "Okręty i straż", "Warships and coast guard"],
   ["sea.sanc", "Statki z sankcjami OFAC", "OFAC-sanctioned ships"], ["sea.dark", "„Ciemne” statki (AIS wyłączony)", "Dark ships (AIS off)"], ["sea.sts", "Przeładunki STS", "STS transfers"], ["sea.cable", "Statki nad kablami", "Ships over cables"],
-  ["inc.n24", "Incydenty morskie (24 h: piractwo, ataki)", "Maritime incidents (24 h: piracy, attacks)"], ["inc.hi24", "Poważne incydenty morskie (24 h)", "Serious maritime incidents (24 h)"]];
+  ["inc.n24", "Incydenty morskie (24 h: piractwo, ataki)", "Maritime incidents (24 h: piracy, attacks)"], ["inc.hi24", "Poważne incydenty morskie (24 h)", "Serious maritime incidents (24 h)"],
+  ["ua.n", "Obwody Ukrainy z alarmem przeciwlotniczym", "Ukrainian oblasts on air-raid alert"]];
 const COMMANDS = [["briefing", "Odczytaj briefing", "Read briefing"], ["sitrep", "SITREP (region w polu Tekst)", "SITREP (region in Text)"], ["ask", "Pytanie do AI (w polu Tekst)", "Ask AI (question in Text)"],
   ["stop", "Stop – cisza (mowa, syrena, SITREP)", "Stop – silence (speech, siren, SITREP)"], ["refresh", "Odśwież analizę AI", "Refresh AI analysis"], ["alert", "PRIORYTET JEDEN (alarm)", "PRIORITY ONE (alarm)"],
   ["globe", "Globus 3D / mapa", "3D globe / flat map"], ["autozoom", "AUTO-ZOOM wł./wył.", "AUTO-ZOOM on/off"], ["replay:toggle", "Odtwarzanie 48 h wł./wył.", "48 h replay on/off"],

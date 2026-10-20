@@ -41,8 +41,11 @@ KINDS = {   # rodzaj: (PL, EN, domyślna ważność, czy to incydent (a nie ostr
     "hazard": ("Niebezpieczne operacje", "Hazardous operations", 1, False),
     "other": ("Inne", "Other", 1, False),
 }
-SRC_NAMES = {"nga": "NGA MSI", "ukho": "UKHO NAVAREA I", "imb": "IMB PRC (ICC)", "recaap": "ReCAAP ISC", "eunavfor": "EUNAVFOR ATALANTA", "marad": "MARAD MSCI"}
-SRC_KIND = {"nga": "warning", "ukho": "warning", "imb": "incident", "recaap": "incident", "eunavfor": "report", "marad": "advisory"}
+SRC_NAMES = {"nga": "NGA MSI", "ukho": "UKHO NAVAREA I", "imb": "IMB PRC (ICC)", "recaap": "ReCAAP ISC", "eunavfor": "EUNAVFOR ATALANTA", "marad": "MARAD MSCI",
+             "ukmto": "UKMTO (e-mail)", "mdat": "MDAT-GoG (e-mail)", "ifcior": "IFC-IOR (e-mail)", "email": "e-mail"}
+SRC_KIND = {"nga": "warning", "ukho": "warning", "imb": "incident", "recaap": "incident", "eunavfor": "report", "marad": "advisory",
+            "ukmto": "incident", "mdat": "incident", "ifcior": "incident", "email": "incident"}
+FETCHED = ("nga", "ukho", "imb", "recaap", "eunavfor", "marad")     # źródła pobierane ze stron (pozostałe przychodzą pocztą)
 
 # miejsca do przybliżonej pozycji, gdy źródło podaje tylko opis
 GAZ = [("northern coast of somalia|north(?:ern)? somalia|puntland|eyl", 10.5, 50.5), ("bab el.mandeb|bab-el-mandeb", 12.6, 43.3), ("gulf of aden", 12.5, 47.5), ("red sea", 18.5, 39.5), ("hodeidah|hudaydah", 14.8, 42.9),
@@ -348,7 +351,7 @@ class MarSec:
         self.log = log
         self.lock = threading.Lock()
         self.items = {}                 # id -> rekord
-        self.status = {k: {"ok": None, "n": 0, "err": None, "at": None} for k in SRC_NAMES}
+        self.status = {k: {"ok": None, "n": 0, "err": None, "at": None} for k in FETCHED}
         self.events = deque(maxlen=60)
         self.ai = None; self.busy = lambda: False
         self.wake = threading.Event()
@@ -620,7 +623,7 @@ class MarSec:
                             "title": ai.get("title") or r.get("title"), "ai": bool(ai), "region": r.get("region"), "warn": bool(r.get("warn")),
                             "area": bool(r.get("area"))})
         out.sort(key=lambda x: -(x["t"] or 0))
-        return {"items": out, "status": {k: dict(v, name=SRC_NAMES[k]) for k, v in self.status.items()},
+        return {"items": out, "status": {k: dict(v, name=SRC_NAMES.get(k, k)) for k, v in self.status.items() if k in FETCHED},
                 "kinds": {k: v[1 if en else 0] for k, v in KINDS.items()}, "incident_kinds": [k for k, v in KINDS.items() if v[3]]}
 
     def detail(self, iid):
@@ -631,7 +634,7 @@ class MarSec:
             while r.get("dup") and r["dup"] in self.items:
                 r = self.items[r["dup"]]
             out = {k: v for k, v in r.items() if k not in ("dup_cand",)}
-            out["reports"] = [{"src": x["src"], "name": SRC_NAMES[x["src"]], "ref": x.get("ref"), "t": x.get("t"), "title": x.get("title"), "text": x.get("text"), "url": x.get("url")}
+            out["reports"] = [{"src": x["src"], "name": x.get("via") and f"{x['via']} (e-mail)" or SRC_NAMES.get(x["src"], x["src"]), "ref": x.get("ref"), "t": x.get("t"), "title": x.get("title"), "text": x.get("text"), "url": x.get("url")}
                               for x in [r] + [self.items[a] for a in r.get("also", []) if a in self.items]]
         out["src_name"] = SRC_NAMES[r["src"]]
         return out
