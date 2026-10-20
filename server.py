@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-from kronos import analyst, collector, history, i18n, live_air, live_sea, llm, marsec, notify, report, satinfo, sats, tts, intel, sdr, mailin  # noqa: E402
+from kronos import analyst, collector, history, i18n, live_air, live_sea, llm, marsec, notify, report, satinfo, sats, tts, intel, sdr, mailin, tiles  # noqa: E402
 
 DATA = ROOT / "data"; ARCH = DATA / "archive"; WEB = ROOT / "web"
 ARCH.mkdir(parents=True, exist_ok=True)
@@ -95,6 +95,7 @@ NOTAMS = intel.Notams(log, intg_cfg)
 DARKSAR = intel.DarkSAR(log, intg_cfg)
 TGOSINT = intel.TgOsint(log, intg_cfg, DATA)
 SATIMG = intel.SatImg()
+TILES = tiles.TileCache(DATA, log, intg_cfg)
 LADSB = sdr.LocalADSB(log, intg_cfg, lambda: set(AIR.ac.keys()))
 LAIS = sdr.LocalAIS(log, intg_cfg, SEA)
 APRSIS = sdr.APRS(log, intg_cfg)
@@ -765,6 +766,21 @@ class H(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(b)))
             self.send_header("Cache-Control", "max-age=86400")
             self.end_headers(); self.wfile.write(b); return
+        m = re.match(r"^/tile/([a-z@2x+]+)/(\d+)/(\d+)/(\d+)$", p)
+        if m:
+            try:
+                b, ct = TILES.get(m.group(1), int(m.group(2)), int(m.group(3)), int(m.group(4)))
+            except Exception:
+                b, ct = None, None
+            if not b:
+                self.send_response(404); self.send_header("Content-Length", "0"); self.send_header("Cache-Control", "max-age=600"); self.end_headers(); return
+            self.send_response(200); self.send_header("Content-Type", ct); self.send_header("Content-Length", str(len(b)))
+            self.send_header("Cache-Control", "max-age=2592000"); self.end_headers()
+            try: self.wfile.write(b)
+            except (BrokenPipeError, ConnectionResetError): pass
+            return
+        if p == "/api/tiles":
+            return self._json(TILES.view())
         if p == "/api/deck":
             return self._json(deck_state())
         if p == "/api/intg":
@@ -918,6 +934,25 @@ class H(BaseHTTPRequestHandler):
         p = self.path.split("?")[0]
         if not self._gate(p):
             return
+        if p == "/api/tiles":
+            if not self._local():
+                return self._json({"error": "local"}, 403)
+            b = self._body(); act = b.get("act")
+            if act == "start":
+                try:
+                    bb = [float(v) for v in b.get("bbox") or [-180, -85, 180, 85]]
+                    ok, err = TILES.start(str(b.get("group")), bb, max(0, min(14, int(b.get("zmax") or 6))), max(0, int(b.get("zmin") or 0)), bool(b.get("retina")))
+                except (TypeError, ValueError):
+                    ok, err = False, "?"
+                return self._json({"ok": ok, "error": err, **TILES.view()})
+            if act == "count":
+                bb = [float(v) for v in b.get("bbox") or [-180, -85, 180, 85]]
+                return self._json({"n": TILES.count(bb, max(0, min(14, int(b.get("zmax") or 6))), max(0, int(b.get("zmin") or 0)))})
+            if act == "cancel":
+                TILES.cancel()
+            if act == "clear":
+                TILES.cancel(); TILES.clear(b.get("group") or None)
+            return self._json(TILES.view())
         if p == "/api/pin":
             pin = str(self._body().get("pin") or "")
             if SETTINGS.get("lan") and SETTINGS.get("lan_pin") and pin == SETTINGS["lan_pin"]:

@@ -164,13 +164,10 @@ let mode = store.get("proj", "flat"), rot = [-30, -25], dragging = false, T = d3
 /* mapa płaska: wektorowa (rzut walcowy równoodległościowy) albo z podkładem kafelkowym (rzut Merkatora, jak w mapach internetowych) */
 /* [nazwa, adres kafelków, atrybucja, filtr, nakładka z napisami, maks. zoom] */
 const BASES = { vector: [TX("WEKTOR"), null],
-  dark: [TX("CIEMNA SZCZEGÓŁOWA"), "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png{k}", "© Stadia Maps · © OpenMapTiles · © OpenStreetMap", null, null, 20],
-  darkesri: [TX("CIEMNA SZARA"), "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", "Esri, HERE, Garmin, © OpenStreetMap", null,
-    "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}", 16],
-  sat: [TX("SATELITA"), "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", "Esri, Maxar, Earthstar Geographics", "brightness(.6) saturate(.75)",
-    "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", 18],
-  osm: [TX("OSM NOCNA"), "https://tile.openstreetmap.org/{z}/{x}/{y}.png", "© OpenStreetMap", "invert(1) hue-rotate(180deg) brightness(.85) contrast(.9) saturate(.6)", null, 19] };
-let TILE_KEY = "";
+  dark: [TX("CIEMNA SZCZEGÓŁOWA"), "/tile/dark{r}/{z}/{x}/{y}", "© Stadia Maps · © OpenMapTiles · © OpenStreetMap", null, null, 20],
+  darkesri: [TX("CIEMNA SZARA"), "/tile/darkesri/{z}/{x}/{y}", "Esri, HERE, Garmin, © OpenStreetMap", null, "/tile/darkesri+/{z}/{x}/{y}", 16],
+  sat: [TX("SATELITA"), "/tile/sat/{z}/{x}/{y}", "Esri, Maxar, Earthstar Geographics", "brightness(.6) saturate(.75)", "/tile/sat+/{z}/{x}/{y}", 18],
+  osm: [TX("OSM NOCNA"), "/tile/osm/{z}/{x}/{y}", "© OpenStreetMap", "invert(1) hue-rotate(180deg) brightness(.85) contrast(.9) saturate(.6)", null, 19] };
 let BASE = BASES[store.get("basemap", "vector")] ? store.get("basemap", "vector") : "vector";
 let MERC = BASE !== "vector";
 const equi = d3.geoEquirectangular().scale(W / (2 * Math.PI)).translate([W / 2, H / 2]);
@@ -457,36 +454,58 @@ const TIP = document.createElement("div"); TIP.className = "maptip"; TIP.hidden 
 let cvW = 0, cvH = 0, DPR = 1, vS = 1, vX = 0, vY = 0, needDraw = true, staticDirty = true, lastDraw = 0, drCache = 0, lastSel = null;
 let SHIT = { n: 0, x: new Float32Array(0), y: new Float32Array(0), k: new Uint8Array(0), v: new Float64Array(0) }, AHIT = [];
 const markStatic = () => { staticDirty = true; needDraw = true; };
-/* podkład kafelkowy (CARTO / Esri / OSM) – osobne płótno pod mapą wektorową, rysowane tylko przy zmianie widoku */
+/* podkład kafelkowy – kafelki idą przez serwer KRONOS, który trzyma je na dysku (data/tiles): każdy pobierany jest z internetu tylko raz.
+   Dwa płótna pod mapą: podkład i nakładka z napisami. Rysowane tylko przy zmianie widoku albo po doczytaniu kafelka. */
 const TCV = document.createElement("canvas"); TCV.id = "tileCanvas"; TCV.setAttribute("aria-hidden", "true"); $("#mapbox").insertBefore(TCV, $("#map"));
-const TC2 = TCV.getContext("2d"), TILES = new Map(); let tileDirty = false;
+const TCV2 = document.createElement("canvas"); TCV2.id = "tileCanvas2"; TCV2.className = "tilecv"; TCV2.setAttribute("aria-hidden", "true"); $("#mapbox").insertBefore(TCV2, $("#map"));
+const TC2 = TCV.getContext("2d"), TC3 = TCV2.getContext("2d"), TILES = new Map(); let tileDirty = false, tileSig = "";
 const ATTR = document.createElement("div"); ATTR.className = "mapattr"; ATTR.hidden = true; $("#mapbox").appendChild(ATTR);
-function tileUrl(u, z, x, y) { return u.replace("{s}", "abcd"[(x + y) % 4]).replace("{z}", z).replace("{x}", x).replace("{y}", y).replace("{r}", DPR > 1 ? "@2x" : "").replace("{k}", TILE_KEY ? "?api_key=" + encodeURIComponent(TILE_KEY) : ""); }
-function drawTiles() {
+function tileUrl(u, z, x, y) { return u.replace("{z}", z).replace("{x}", x).replace("{y}", y).replace("{r}", DPR > 1 ? "@2x" : ""); }
+/* filtr (przyciemnienie satelity, odwrócenie OSM) nakładany raz na kafelek przy wczytaniu – potem rysowanie to zwykłe kopiowanie obrazka */
+function tileBake(im, flt) {
+  if (!flt) return im;
+  try { const c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight; const x = c.getContext("2d"); x.filter = flt; x.drawImage(im, 0, 0); return c; } catch (e) { return im; }
+}
+function tileGet(key, url, flt) {
+  let im = TILES.get(key);
+  if (im) { if (im.ok && TILES.size > 200) { TILES.delete(key); TILES.set(key, im); } return im; }   // LRU
+  im = new Image(); im.decoding = "async";
+  im.onload = () => { (im.decode ? im.decode() : Promise.resolve()).catch(() => {}).then(() => { im.px = tileBake(im, flt); im.pw = im.naturalWidth; im.ph = im.naturalHeight; if (flt) { im.onerror = null; im.src = ""; } im.ok = 1; tileDirty = true; }); };
+  im.onerror = () => { im.bad = 1; };
+  im.src = url; TILES.set(key, im);
+  while (TILES.size > 420) { const k0 = TILES.keys().next().value, o = TILES.get(k0); TILES.delete(k0); if (o && !o.ok) o.src = ""; }
+  return im;
+}
+function drawTiles(force) {
   const on = MERC && mode === "flat";
-  if (TCV.width !== CV.width || TCV.height !== CV.height) { TCV.width = CV.width; TCV.height = CV.height; }
-  TC2.setTransform(1, 0, 0, 1, 0, 0); TC2.clearRect(0, 0, TCV.width, TCV.height);
-  ATTR.hidden = !on; if (!on) return; ATTR.textContent = BASES[BASE][2] || "";
+  if (TCV.width !== CV.width || TCV.height !== CV.height) { TCV.width = TCV2.width = CV.width; TCV.height = TCV2.height = CV.height; force = true; }
+  ATTR.hidden = !on;
+  if (!on) { if (tileSig) { TC2.setTransform(1, 0, 0, 1, 0, 0); TC2.clearRect(0, 0, TCV.width, TCV.height); TC3.setTransform(1, 0, 0, 1, 0, 0); TC3.clearRect(0, 0, TCV.width, TCV.height); tileSig = ""; } return; }
+  ATTR.textContent = BASES[BASE][2] || "";
   viewFit();
   const wpx = W * T.k * vS, ox = vX + T.x * vS, oy = vY + (T.y + (H / 2 - W / 2) * T.k) * vS;
   const B = BASES[BASE], z = Math.max(1, Math.min(B[5] || 19, Math.round(Math.log2(wpx * DPR / (DPR > 1 && /\{r\}/.test(B[1]) ? 512 : 256))))), n = 2 ** z, ts = wpx / n;
+  const sig = [BASE, z, ox.toFixed(1), oy.toFixed(1), wpx.toFixed(1), cvW, cvH].join("|");
+  if (!force && sig === tileSig) return;
+  tileSig = sig;
   const x0 = Math.floor(-ox / ts), x1 = Math.floor((cvW - ox) / ts), y0 = Math.max(0, Math.floor(-oy / ts)), y1 = Math.min(n - 1, Math.floor((cvH - oy) / ts));
-  if ((x1 - x0 + 1) * (y1 - y0 + 1) > 500) return;
-  TC2.setTransform(DPR, 0, 0, DPR, 0, 0);
-  [[B[1], B[3], BASE], [B[4], null, BASE + "+"]].forEach(([url, flt, pre], li) => { if (!url) return; TC2.filter = flt || "none";
-  for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) {
-    const wx = ((tx % n) + n) % n, key = pre + "/" + z + "/" + wx + "/" + ty, dx = ox + tx * ts, dy = oy + ty * ts;
-    let im = TILES.get(key);
-    if (!im) { im = new Image(); im.onload = () => { im.ok = 1; tileDirty = true; }; im.onerror = () => { im.bad = 1; }; im.src = tileUrl(url, z, wx, ty); TILES.set(key, im);
-      if (TILES.size > 1200) TILES.delete(TILES.keys().next().value); }
-    if (im.ok) { TC2.drawImage(im, dx, dy, ts + .6, ts + .6); continue; }
-    if (li) continue;
-    for (let up = 1; up <= 5 && z - up >= 0; up++) {      // dopóki kafelek się ładuje – powiększony kafelek z niższego poziomu
-      const f = 2 ** up, pim = TILES.get(pre + "/" + (z - up) + "/" + Math.floor(wx / f) + "/" + Math.floor(ty / f));
-      if (pim && pim.ok) { const sw = pim.naturalWidth / f, sh = pim.naturalHeight / f; TC2.drawImage(pim, (wx % f) * sw, (ty % f) * sh, sw, sh, dx, dy, ts + .6, ts + .6); break; }
-    }
-  } });
-  TC2.filter = "none";
+  [TC2, TC3].forEach(c => { c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, TCV.width, TCV.height); c.setTransform(DPR, 0, 0, DPR, 0, 0); c.imageSmoothingQuality = "low"; });
+  if ((x1 - x0 + 1) * (y1 - y0 + 1) > 400) return;
+  /* najpierw kafelki ze środka ekranu */
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, order = [];
+  for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) order.push([tx, ty, (tx - cx) ** 2 + (ty - cy) ** 2]);
+  order.sort((a, b) => a[2] - b[2]);
+  [[B[1], BASE, TC2], [B[4], BASE + "+", TC3]].forEach(([url, pre, c], li) => { if (!url) return;
+    for (const [tx, ty] of order) {
+      const wx = ((tx % n) + n) % n, key = pre + "/" + z + "/" + wx + "/" + ty, dx = ox + tx * ts, dy = oy + ty * ts;
+      const im = tileGet(key, tileUrl(url, z, wx, ty), li ? null : B[3]);
+      if (im.ok) { c.drawImage(im.px, dx, dy, ts + .6, ts + .6); continue; }
+      if (li) continue;
+      for (let up = 1; up <= 6 && z - up >= 0; up++) {      // dopóki kafelek się ładuje – powiększony kafelek z niższego poziomu
+        const f = 2 ** up, pim = TILES.get(pre + "/" + (z - up) + "/" + Math.floor(wx / f) + "/" + Math.floor(ty / f));
+        if (pim && pim.ok) { const sw = pim.pw / f, sh = pim.ph / f; c.drawImage(pim.px, (wx % f) * sw, (ty % f) * sh, sw, sh, dx, dy, ts + .6, ts + .6); break; }
+      }
+    } });
 }
 function setBase(b) {
   if (!BASES[b]) b = "vector"; BASE = b; store.set("basemap", b); MERC = b !== "vector"; flat = MERC ? merc : equi;
@@ -626,7 +645,7 @@ function drawSatSel(k) {
 function frame(t) {
   requestAnimationFrame(frame);
   if (document.hidden || view !== "map" || mapHidden()) return;
-  if (tileDirty) { tileDirty = false; drawTiles(); }
+  if (tileDirty) { tileDirty = false; drawTiles(true); }
   if (t - drCache > 4000 && layerOn.vessel && SHIPS.size) staticDirty = true;
   const live = (AIR.ok || REPLAY.on) && layerOn.air;
   const satSel = selected && /^(s|sc):/.test(selected);
@@ -2211,7 +2230,7 @@ loadSounds().then(() => { if (humH) { hum(false); hum(true); } }); loadTTS();
 
 /* ------------------------------------------------------------ WYWIAD+ (v3.14): alarmy UA, DeepState, NOTAM, SAR, Telegram OSINT, własne odbiorniki */
 const IN = { d: null, sdr: null, ds: null, dsAt: 0 };
-async function pollIntel() { try { IN.d = await api("/api/intel"); if ((IN.d.tile_key || "") !== TILE_KEY) { TILE_KEY = IN.d.tile_key || ""; TILES.clear(); markStatic(); } renderIntel(); needDraw = true; if (layerOn.dstate) loadDS(); } catch (e) {} }
+async function pollIntel() { try { IN.d = await api("/api/intel"); renderIntel(); needDraw = true; if (layerOn.dstate) loadDS(); } catch (e) {} }
 async function pollSdr() { try { IN.sdr = await api("/api/sdr"); renderSdr(); needDraw = true; } catch (e) {} }
 async function loadDS() {
   const at = IN.d && IN.d.deepstate && IN.d.deepstate.at; if (!at || at === IN.dsAt) return;
@@ -2334,6 +2353,44 @@ function bindSatImg() {
 setInterval(() => { if (!document.hidden) pollIntel(); }, 30000);
 let sdrTick = 0;
 setInterval(() => { sdrTick++; if (!document.hidden && ((layerOn.myadsb || layerOn.aprs) || sdrTick % 10 === 0)) pollSdr(); }, 3000);
+
+/* ------------------------------------------------------------ MAPY OFFLINE */
+const OFF_KB = { dark: 22, darkesri: 30, sat: 45, osm: 18 };
+function viewBBox() {
+  if (!MERC || mode !== "flat") return [-180, -85, 180, 85];
+  const inv = (sx, sy) => flat.invert([((sx - vX) / vS - T.x) / T.k, ((sy - vY) / vS - T.y) / T.k]);
+  const a = inv(0, 0), b = inv(cvW, cvH);
+  return [Math.max(-180, a[0]), Math.max(-85, b[1]), Math.min(180, b[0]), Math.min(85, a[1])].map(v => +v.toFixed(4));
+}
+let offT = null, OFFV = null;
+async function offRefresh() {
+  try { OFFV = await api("/api/tiles"); } catch (e) { return; }
+  $("#offStat").textContent = OFFV.n + " " + TX("kafelków") + " · " + OFFV.mb + " MB";
+  const j = OFFV.job, bar = $("#offModal .offbar");
+  if (j) { bar.hidden = false; bar.firstChild.style.width = Math.round(100 * j.done / Math.max(1, j.total)) + "%";
+    $("#offMsg").textContent = (j.running ? TX("Pobieram…") + " " : TX("Gotowe.") + " ") + j.done + " / " + j.total + " · " + TX("nowych") + " " + j.new + " (" + (j.bytes / 1e6).toFixed(0) + " MB)" + (j.fail ? " · " + TX("błędów") + " " + j.fail : ""); }
+  $("#offStop").hidden = !(j && j.running); $("#offGo").disabled = !!(j && j.running);
+  if (j && j.running) { clearTimeout(offT); offT = setTimeout(() => { if (!$("#offModal").hidden) offRefresh(); }, 1500); }
+}
+async function offEstimate() {
+  const g = $("#offGroup").value, world = $("#offArea").value === "world";
+  const zs = world ? [3, 4, 5, 6, 7] : [6, 7, 8, 9, 10, 11, 12], cur = +$("#offZoom").value;
+  $("#offZoom").innerHTML = zs.map(z => `<option value="${z}">${z}</option>`).join(""); $("#offZoom").value = zs.includes(cur) ? cur : world ? 6 : 10;
+  if (g === "osm") { $("#offEst").textContent = TX("OpenStreetMap nie pozwala na pobieranie hurtowe – KRONOS zapamiętuje tylko miejsca, które obejrzysz."); $("#offGo").disabled = true; return; }
+  $("#offGo").disabled = !!(OFFV && OFFV.job && OFFV.job.running);
+  try { const bbox = world ? [-180, -85, 180, 85] : viewBBox(), r = await api("/api/tiles", { act: "count", bbox, zmax: +$("#offZoom").value });
+    const layers = g === "dark" ? 1 : 2, n = r.n * layers, mb = n * OFF_KB[g] * (g === "dark" && DPR > 1 ? 2.5 : 1) / 1000;
+    $("#offEst").textContent = TX("Do pobrania ok.") + " " + n.toLocaleString(LOC) + " " + TX("kafelków") + " · ~" + Math.round(mb) + " MB · ~" + Math.max(1, Math.round(n / 8 / 60)) + " min" + (n > 60000 ? " – " + TX("za dużo, zmniejsz szczegółowość") : ""); } catch (e) {}
+}
+$("#offBtn").addEventListener("click", () => { const g = BASES[BASE] && BASE !== "vector" ? BASE : "dark"; $("#offGroup").value = g; $("#offModal").hidden = false; offEstimate(); offRefresh(); $("#offClose").focus(); });
+$("#offClose").addEventListener("click", () => { $("#offModal").hidden = true; });
+$("#offModal").addEventListener("click", e => { if (e.target.id === "offModal") $("#offModal").hidden = true; });
+["offGroup", "offArea", "offZoom"].forEach(id => $("#" + id).addEventListener("change", offEstimate));
+$("#offGo").addEventListener("click", async () => { const world = $("#offArea").value === "world";
+  const r = await api("/api/tiles", { act: "start", group: $("#offGroup").value, bbox: world ? [-180, -85, 180, 85] : viewBBox(), zmax: +$("#offZoom").value, retina: DPR > 1 });
+  if (!r.ok) $("#offMsg").textContent = r.error || TX("błąd"); else beep(1400, .08); offRefresh(); });
+$("#offStop").addEventListener("click", async () => { await api("/api/tiles", { act: "cancel" }); setTimeout(offRefresh, 800); });
+$("#offClear").addEventListener("click", async () => { await api("/api/tiles", { act: "clear", group: $("#offGroup").value }); TILES.clear(); tileSig = ""; markStatic(); offRefresh(); });
 
 /* ------------------------------------------------------------ okno ŹRÓDŁA I INTEGRACJE */
 const INTG_FIELDS = ["stadia_key", "kystverket", "ais_tcp", "aishub_user", "alerts_token", "ua_watch", "faa_id", "faa_secret", "notam_locs", "gfw_token", "tg_channels", "adsb_url", "ais_port", "aprs_on", "aprs_km", "ha_webhook",

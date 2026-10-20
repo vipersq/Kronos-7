@@ -152,6 +152,26 @@
     <div class="set-foot"><span class="hint" id="igMsg"></span><button type="button" class="btn" id="igSave">ZAPISZ</button></div>
   </div>
 </div>
+<div class="modal" id="offModal" hidden role="dialog" aria-modal="true" aria-labelledby="offTitle">
+  <div class="modal-in frame off-modal">
+    <div class="frame-h"><span id="offTitle">&gt; MAPY OFFLINE</span><button type="button" class="btn" id="offClose" aria-label="Zamknij">✕</button></div>
+    <div class="intg off-body">
+      <p class="hint">Każdy obejrzany kafelek mapy zostaje na dysku (folder data/tiles) – drugi raz ładuje się z dysku, natychmiast i bez internetu. Tutaj możesz pobrać mapę z góry.</p>
+      <p class="sat-h">NA DYSKU: <span id="offStat">–</span></p>
+      <label for="offGroup">Podkład</label>
+      <select id="offGroup"><option value="dark">CIEMNA SZCZEGÓŁOWA</option><option value="darkesri">CIEMNA SZARA</option><option value="sat">SATELITA</option><option value="osm">OSM NOCNA (tylko obejrzane miejsca)</option></select>
+      <label for="offArea">Obszar</label>
+      <select id="offArea"><option value="world">CAŁY ŚWIAT</option><option value="view">TO, CO WIDAĆ TERAZ NA MAPIE</option></select>
+      <label for="offZoom">Szczegółowość do poziomu <small>świat: 5 = państwa i duże miasta, 6–7 = regiony i drogi główne; obszar: do 12 = ulice w miastach</small></label>
+      <select id="offZoom"></select>
+      <p class="hint" id="offEst"></p>
+      <div class="offbar" hidden><div></div></div>
+      <p class="hint" id="offMsg" aria-live="polite"></p>
+      <div class="set-row"><button type="button" class="btn" id="offGo">POBIERZ</button><button type="button" class="btn" id="offStop" hidden>PRZERWIJ</button><button type="button" class="btn" id="offClear">WYCZYŚĆ TEN PODKŁAD</button></div>
+      <p class="hint">Pobieranie idzie w tle, ok. 8 kafelków na sekundę, żeby nie obciążać serwerów dostawców – możesz zamknąć to okno.</p>
+    </div>
+  </div>
+</div>
 <div class="modal" id="sndModal" hidden role="dialog" aria-modal="true" aria-labelledby="sndTitle">
   <div class="modal-in sit-modal frame snd-modal">
     <div class="frame-h"><span id="sndTitle">&gt; DŹWIĘK I GŁOS</span><button type="button" class="btn" id="sndClose" aria-label="Zamknij">✕</button></div>
@@ -280,7 +300,7 @@
     </div>
     <div class="maptools" id="maptools">
       <div class="theaters" id="theaters"></div>
-      <div class="zoombar"><button class="btn" id="zin" aria-label="Przybliż">+</button><button class="btn" id="zout" aria-label="Oddal">−</button><button class="btn" id="zreset" aria-label="Cały świat">◎</button><span id="zoomlvl">×1</span><select id="baseSel" title="Podkład mapy: wektorowy KRONOS albo szczegółowy kafelkowy (ciemny, satelitarny)" aria-label="Podkład mapy"></select><span class="findbox"><input id="findQ" type="search" placeholder="SZUKAJ: MMSI, nazwa, znak, ICAO…" autocomplete="off" aria-label="Szukaj statku lub samolotu" title="Skrót: klawisz /"><ul class="findres" id="findRes" hidden></ul></span><button class="btn" id="filtBtn">FILTRY</button><button class="btn" id="azBtn" aria-pressed="true" title="Przybliżaj mapę po kliknięciu obiektu">AUTO-ZOOM</button><button class="btn" id="replayBtn" aria-pressed="false" title="Odtwarzanie ruchu samolotów i statków z ostatnich 48 h">ODTWÓRZ</button></div>
+      <div class="zoombar"><button class="btn" id="zin" aria-label="Przybliż">+</button><button class="btn" id="zout" aria-label="Oddal">−</button><button class="btn" id="zreset" aria-label="Cały świat">◎</button><span id="zoomlvl">×1</span><select id="baseSel" title="Podkład mapy: wektorowy KRONOS albo szczegółowy kafelkowy (ciemny, satelitarny)" aria-label="Podkład mapy"></select><button class="btn" id="offBtn" title="Mapy offline: pobierz podkład na dysk, żeby ładował się natychmiast i działał bez internetu" aria-label="Mapy offline">⬇</button><span class="findbox"><input id="findQ" type="search" placeholder="SZUKAJ: MMSI, nazwa, znak, ICAO…" autocomplete="off" aria-label="Szukaj statku lub samolotu" title="Skrót: klawisz /"><ul class="findres" id="findRes" hidden></ul></span><button class="btn" id="filtBtn">FILTRY</button><button class="btn" id="azBtn" aria-pressed="true" title="Przybliżaj mapę po kliknięciu obiektu">AUTO-ZOOM</button><button class="btn" id="replayBtn" aria-pressed="false" title="Odtwarzanie ruchu samolotów i statków z ostatnich 48 h">ODTWÓRZ</button></div>
       <div class="layers" id="layers"></div>
     </div>
     <div class="mapgrid">
