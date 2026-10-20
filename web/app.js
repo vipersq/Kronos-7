@@ -1,4 +1,4 @@
-/* KRONOS-7 v3.11 — interfejs terminala. Dane: lokalny serwer (/api/*). */
+/* KRONOS-7 v3.12 — interfejs terminala. Dane: lokalny serwer (/api/*). */
 (function () {
 "use strict";
 const $ = s => document.querySelector(s);
@@ -183,9 +183,9 @@ const gSphere = root.append("path").attr("class", "sphere");
 const gGrat = root.append("path").attr("class", "grat");
 const gLand = root.append("path").attr("class", "land");
 const LAYERS = [["conf", TX("KONFLIKTY"), 1], ["front", TX("FRONTY"), 1], ["move", TX("NATARCIA"), 1], ["strike", TX("UDERZENIA"), 1], ["force", TX("SIŁY"), 1], ["ship", TX("ŻEGLUGA"), 1],
-  ["haz", TX("NATURA"), 1], ["sat", TX("ORBITY"), 1], ["air", TX("LOTNICTWO"), 1], ["vessel", TX("STATKI"), 1], ["cable", TX("KABLE"), 0], ["flank", TX("FLANKA"), 1], ["nuke", TX("ATOM"), 1], ["asp", TX("PRZESTRZEŃ"), 0], ["gps", TX("GNSS"), 0],
+  ["haz", TX("NATURA"), 1], ["sat", TX("ORBITY"), 1], ["air", TX("LOTNICTWO"), 1], ["vessel", TX("STATKI"), 1], ["cable", TX("KABLE"), 0], ["marsec", TX("INCYDENTY MORSKIE"), 1], ["flank", TX("FLANKA"), 1], ["nuke", TX("ATOM"), 1], ["asp", TX("PRZESTRZEŃ"), 0], ["gps", TX("GNSS"), 0],
   ["fire", TX("POŻARY"), 0], ["net", TX("SIEĆ"), 0], ["hum", TX("HUMANITARNE"), 0], ["cyber", TX("CYBER"), 0], ["news", TX("DEPESZE"), 0], ["night", TX("NOC"), 1]];
-const DRAW_ORDER = ["cable", "night", "gps", "fire", "asp", "vessel", "ship", "sat", "haz", "front", "move", "strike", "force", "net", "hum", "nuke", "flank", "air", "airlive", "cyber", "news", "conf"];
+const DRAW_ORDER = ["marsec", "cable", "night", "gps", "fire", "asp", "vessel", "ship", "sat", "haz", "front", "move", "strike", "force", "net", "hum", "nuke", "flank", "air", "airlive", "cyber", "news", "conf"];
 const G = {}; DRAW_ORDER.forEach(k => G[k] = root.append("g").attr("data-l", k));
 const pNight = G.night.append("path").attr("class", "night"), pTwi = G.night.append("path").attr("class", "twi");
 let layerOn = Object.assign(Object.fromEntries(LAYERS.map(l => [l[0], !!l[2]])), store.get("layers3", {}));
@@ -533,6 +533,7 @@ function drawCanvas() {
     CX.font = FONT(); CX.fillStyle = cssv("var(--text)"); CX.strokeStyle = cssv("var(--void)"); CX.lineWidth = 3;
     for (let i = 0; i < labels.length; i += 3) { CX.strokeText(labels[i + 2], labels[i] + 7, labels[i + 1] - 6); CX.fillText(labels[i + 2], labels[i] + 7, labels[i + 1] - 6); }
   }
+  if (layerOn.marsec && MS.d && !REPLAY.on) drawMS();
   /* wyróżnienie zaznaczonego obiektu */
   if (selected && /^(vs|ah|sc):/.test(selected)) { let pt = null;
     if (selected.startsWith("ah:")) { const h = AHIT.find(x => x[2] === selected); if (h) pt = h; }
@@ -565,7 +566,8 @@ function frame(t) {
   if (t - drCache > 4000 && layerOn.vessel && SHIPS.size) staticDirty = true;
   const live = (AIR.ok || REPLAY.on) && layerOn.air;
   const satSel = selected && /^(s|sc):/.test(selected);
-  if (needDraw || staticDirty || (live && t - lastDraw > 250) || (satSel && t - lastDraw > 2000)) { needDraw = false; lastDraw = t; drawCanvas(); }
+  const msPulse = layerOn.marsec && MS.d && t - lastDraw > 250 && A(MS.d.items).some(x => !x.warn && x.t > Date.now() - 2 * 864e5);
+  if (needDraw || staticDirty || msPulse || (live && t - lastDraw > 250) || (satSel && t - lastDraw > 2000)) { needDraw = false; lastDraw = t; drawCanvas(); }
 }
 requestAnimationFrame(frame);
 window.K7DBG = { draw: () => { const a = performance.now(); staticDirty = true; drawCanvas(); return performance.now() - a; }, air: () => { const a = performance.now(); drawCanvas(); return performance.now() - a; } };
@@ -589,6 +591,7 @@ function tipText(id) {
   if (t === "vs") { const r = seaRec(key), fl = r ? r.flags : 0; return r ? `${r.name || "MMSI " + r.mmsi} · ${SCN[r.cat] || ""}${r.sog != null ? " · " + r.sog + " kn" : ""}${fl & 1 ? " · " + TX("SANKCJE") : ""}${fl & 4 ? " · " + TX("MILCZY") : ""}${fl & 2 ? " · " + TX("NAD KABLEM") : ""}` : ""; }
   if (t === "ah") { const a = airList().find(x => x.hex === key); return a ? `${a.flag || ""} ${a.cs || a.hex} · ${a.desc || (a.model || "").split(" (")[0] || a.t || ""}${a.country ? " · " + TX(a.country) : ""}${a.alt != null ? " · " + a.alt + " ft" : ""}${a.loiter ? " · " + TX("KRĄŻY") : ""}` : ""; }
   if (t === "sc") { const r = satByNorad(+key); return r ? r.name : ""; }
+  if (t === "mi") { const x = A(MS.d && MS.d.items).find(y => y.id === key); return x ? `${x.title || ""} · ${((MS.d.kinds || {})[x.kind] || x.kind)} · ${x.t ? new Date(x.t).toLocaleDateString(LOC) : ""}` : ""; }
   return "";
 }
 
@@ -780,6 +783,78 @@ function shipWatch(r) {
   A(W.sts).filter(x => x.a.mmsi === m || x.b.mmsi === m).forEach(x => { const o = x.a.mmsi === m ? x.b : x.a; out.push(`<b class="red">STS</b> · ${TX("burta w burtę z")} <button class="linkbtn" data-go="vs:${o.mmsi}">${esc(o.name)}</button> · ${x.d} m · ${TX("od")} ${hm(x.since)}`); });
   return out.length ? `<div class="watchbox">${out.map(x => `<p>${x}</p>`).join("")}</div>` : "";
 }
+/* ------------------------------------------------------------ BEZPIECZEŃSTWO MORSKIE (IMB, ReCAAP, NGA, UKHO, EUNAVFOR, MARAD) */
+const MS = { d: null, at: 0, det: {}, loading: {} };
+const MSF = Object.assign({ days: 30, warn: 1, all: 0 }, store.get("msflt", {}));
+const MS_SECW = new Set(["mine", "gnss", "closure", "exercise", "launch", "attack", "missile"]);
+const MS_SRC = { nga: "NGA", ukho: "UKHO", imb: "IMB", recaap: "ReCAAP", eunavfor: "EUNAVFOR", marad: "MARAD" };
+const MS_SYM = { missile: "✸", hijack: "☠", attack: "✕", boarding: "⚑", approach: "◌", robbery: "$", mine: "⊛", gnss: "⌁", closure: "⛔", launch: "↑", exercise: "✚", advisory: "!", casualty: "+", cable: "≈", hazard: "△", other: "·" };
+const msCol = (x) => x.warn ? (x.kind === "mine" || x.kind === "closure" ? "#ff8f6b" : x.kind === "gnss" ? "#ffb347" : "#c48cff") : x.sev >= 4 ? "#ff4b4b" : x.sev === 3 ? "#ffb347" : "#ffe27a";
+function msVisible(x, now) {
+  if (x.warn) return MSF.warn && (MSF.all || MS_SECW.has(x.kind));
+  return (x.t || 0) > now - MSF.days * 864e5;
+}
+const msList = () => { const now = Date.now(); return A(MS.d && MS.d.items).filter(x => msVisible(x, now)); };
+async function pollMS() {
+  try { MS.d = await api("/api/marsec?days=120"); MS.at = Date.now(); renderMS(); needDraw = true; } catch (e) {}
+}
+function drawMS() {
+  const now = Date.now(), k = mode === "globe" ? 1 : T.k;
+  CX.font = "bold 12px " + (getComputedStyle(document.body).getPropertyValue("--f-display") || "monospace"); CX.textAlign = "center"; CX.textBaseline = "middle";
+  for (const x of msList()) {
+    if (!x.pos) continue; const p = scr(x.pos[1], x.pos[0]); if (!p || !inView(p[0], p[1], 14)) continue;
+    const age = (now - (x.t || now)) / 864e5, col = msCol(x), r = x.warn ? 5 : 5 + Math.min(3, x.sev - 1) * 1.2, sel = selected === "mi:" + x.id;
+    CX.globalAlpha = x.warn ? .8 : age < 2 ? 1 : age < 10 ? .8 : .5;
+    CX.beginPath();
+    if (x.warn) CX.rect(p[0] - r, p[1] - r, r * 2, r * 2); else { CX.moveTo(p[0], p[1] - r - 1); CX.lineTo(p[0] + r + 1, p[1]); CX.lineTo(p[0], p[1] + r + 1); CX.lineTo(p[0] - r - 1, p[1]); CX.closePath(); }
+    CX.fillStyle = x.warn ? "rgba(5,8,5,.75)" : col; CX.fill(); CX.lineWidth = sel ? 2.2 : 1.2; CX.strokeStyle = x.warn ? col : cssv("var(--void)"); CX.stroke();
+    if (x.warn || k >= 3) { CX.fillStyle = x.warn ? col : "#050805"; CX.fillText(MS_SYM[x.kind] || "·", p[0], p[1] + .5); }
+    if (!x.warn && age < 2) { CX.beginPath(); CX.arc(p[0], p[1], r + 5 + (now / 120 % 6), 0, 6.2832); CX.strokeStyle = col; CX.lineWidth = 1; CX.globalAlpha = .45; CX.stroke(); }
+    CX.globalAlpha = 1; AHIT.push([p[0], p[1], "mi:" + x.id]);
+  }
+  CX.textAlign = "start"; CX.textBaseline = "alphabetic";
+  const det = selected && selected.startsWith("mi:") && MS.det[selected.slice(3)];
+  if (det && A(det.area).length >= 3) { CX.beginPath(); det.area.forEach((q, i) => { const p = scr(q[1], q[0]); if (!p) return; i ? CX.lineTo(p[0], p[1]) : CX.moveTo(p[0], p[1]); }); CX.closePath();
+    CX.fillStyle = "rgba(196,140,255,.12)"; CX.fill(); CX.setLineDash([4, 3]); CX.strokeStyle = "#c48cff"; CX.lineWidth = 1.4; CX.stroke(); CX.setLineDash([]); }
+}
+function renderMS() {
+  const d = MS.d; if (!d) return; const all = msList(), inc = all.filter(x => !x.warn), w = all.filter(x => x.warn), now = Date.now();
+  const n24 = inc.filter(x => x.t > now - 864e5).length;
+  $("#msT").textContent = `${inc.length} ${TX("incydentów")} · ${w.length} ${TX("ostrzeżeń")}${n24 ? " · " + n24 + " " + TX("w 24 h") : ""}`;
+  $$("#msDays [data-d]").forEach(b => b.setAttribute("aria-pressed", +b.dataset.d === MSF.days));
+  $("#msWarn").setAttribute("aria-pressed", !!MSF.warn); $("#msAll").setAttribute("aria-pressed", !!MSF.all); $("#msAll").hidden = !MSF.warn;
+  const row = x => { const kn = (d.kinds || {})[x.kind] || x.kind, col = msCol(x);
+    return `<li><button data-go="mi:${esc0(x.id)}"><span class="t"><span class="ms-sym" style="color:${col}">${MS_SYM[x.kind] || "·"}</span>${esc(x.title || kn)}</span><span class="dim">${x.t ? new Date(x.t).toLocaleDateString(LOC, { day: "2-digit", month: "2-digit" }) : ""}</span>`
+      + `<span class="sub">${esc(kn)} · ${esc(x.region || "")} · ${A(x.src).map(s => `<b class="ms-src">${MS_SRC[s] || s}</b>`).join(" ")}${A(x.src).length > 1 ? " · " + TX("potwierdzone przez") + " " + A(x.src).length + " " + TX("źródła") : ""}</span></button></li>`; };
+  let h = inc.length ? inc.slice(0, 40).map(row).join("") : `<li class="empty">${TX("Brak incydentów w wybranym okresie.")}</li>`;
+  if (w.length) h += `<li class="hd">${TX("Ostrzeżenia nawigacyjne w mocy")} · ${w.length}</li>` + w.slice(0, 30).map(row).join("");
+  const st = Object.entries(d.status || {}).map(([k, s]) => `<span class="${s.ok ? "" : s.ok === false ? "red" : "dim"}" title="${esc0(s.err || "")}">${esc(s.name || k)}${s.ok ? " ✓" : s.ok === false ? " ✕" : " …"}</span>`).join(" · ");
+  h += `<li class="hd">${TX("Źródła")}</li><li><button tabindex="-1" style="cursor:default"><span class="sub">${st}</span></button></li>`;
+  rowsInto("#marsec", h);
+}
+function msCard(iid, silent) {
+  const r = MS.det[iid];
+  if (!r) { if (!MS.loading[iid]) { MS.loading[iid] = 1; api("/api/marsec/item/" + encodeURIComponent(iid)).then(x => { delete MS.loading[iid]; if (x && x.id) { MS.det[iid] = x; if (selected === "mi:" + iid) { pick(selected, true); needDraw = true; } } }).catch(() => { delete MS.loading[iid]; }); }
+    return chip(TX("BEZPIECZEŃSTWO MORSKIE"), "var(--amber)") + `<p class="hint">${TX("Wczytuję zgłoszenie…")}</p>`; }
+  const kn = ((MS.d || {}).kinds || {})[r.kind] || r.kind, col = msCol(r), ai = r.ai || {}, s = r.ship || {};
+  const when = r.t ? new Date(r.t).toLocaleString(LOC, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+  const inReplay = r.t && Date.now() - r.t < 47 * 3600e3;
+  let h = chip((r.warn ? TX("OSTRZEŻENIE · ") : TX("INCYDENT · ")) + kn.toUpperCase(), col) + `<h2 class="glow">${esc(ai.title || r.title || kn)}</h2>`;
+  if (ai.summary) h += `<p>${esc(ai.summary)}</p>`;
+  h += dd([[TX("KIEDY"), when + " UTC"], [TX("GDZIE"), [r.region, r.pos ? fmtLL(r.pos[0], r.pos[1]) : null].filter(Boolean).join(" · ")], [TX("WAGA"), "●".repeat(r.sev || 1) + "○".repeat(5 - (r.sev || 1))],
+    [TX("STATEK"), s.name ? [s.name, s.type, s.flag ? TX(s.flag) : null, s.imo ? "IMO " + s.imo : null].filter(Boolean).join(" · ") : null],
+    [TX("ŹRÓDŁA"), A(r.reports).map(x => esc(x.name)).join(", ") + (A(r.reports).length > 1 ? " – " + TX("połączone w jedno zdarzenie") : ""), 1]]);
+  h += A(r.reports).map(x => `<details class="ms-rep"><summary>${esc(x.name)} · ${esc(x.ref || "")}${x.t ? " · " + new Date(x.t).toISOString().slice(0, 16).replace("T", " ") + " UTC" : ""}</summary><pre>${esc0(x.text || x.title || "")}</pre>${x.url ? L(x.url, TX("otwórz źródło")) : ""}</details>`).join("");
+  if (inReplay) h += `<p><button class="btn" data-msreplay="${r.t}">${TX("ODTWÓRZ RUCH STATKÓW I SAMOLOTÓW Z TEJ CHWILI")}</button></p>`;
+  h += `<p class="hint">${ai.title ? TX("Tytuł i streszczenie: lokalne AI na podstawie oryginalnych zgłoszeń (poniżej).") : TX("Lokalne AI jeszcze nie przeanalizowało tego zgłoszenia – zrobi to w wolnej chwili.")} ${r.warn ? TX("Ostrzeżenie zniknie z mapy, gdy źródło je wycofa.") : ""}</p>`;
+  setTimeout(() => { const b = $("#detail [data-msreplay]"); if (b) b.addEventListener("click", async () => { await replayOpen(); if (REPLAY.on) replayFetch(Math.max(REPLAY.from, Math.min(REPLAY.to, +b.dataset.msreplay))); }); }, 0);
+  return h;
+}
+$$("#msDays [data-d]").forEach(b => b.addEventListener("click", () => { MSF.days = +b.dataset.d; store.set("msflt", MSF); renderMS(); needDraw = true; }));
+$("#msWarn").addEventListener("click", () => { MSF.warn = MSF.warn ? 0 : 1; store.set("msflt", MSF); renderMS(); needDraw = true; });
+$("#msAll").addEventListener("click", () => { MSF.all = MSF.all ? 0 : 1; store.set("msflt", MSF); renderMS(); needDraw = true; });
+setInterval(() => { if (!document.hidden) pollMS(); }, 5 * 60e3);
+
 /* --- filtry warstw */
 function renderFilterCounts() {
   if ($("#filtModal").hidden) return; const sc = {}, ac = {};
@@ -1159,7 +1234,7 @@ const frontOf = cid => A(S.fronts).filter(f => f.conflict === cid);
 function go(id) { go.busy = true; try { go2(id); } finally { go.busy = false; } }
 function go2(id) {
   if (!go.remote && BC && mapHidden()) BC.postMessage({ t: "go", id });   // mapa jest w innym oknie – tam też pokaż
-  const parts = id.split(":"), t = parts[0], key = parts[1];
+  const parts = id.split(":"), t = parts[0], key = t === "mi" ? id.slice(3) : parts[1];
   const fly = (lat, lon, s, layer) => { ensureLayer(layer); setView("map"); flyTo(lat, lon, s); };
   if (t === "f") { const f = A(S.fronts).find(x => x.id === key); if (f) { ensureLayer("front"); setView("map"); const th = THEATERS.find(x => x[0] === f.theater); if (th) setTheater(th[0], true); else flyPts([].concat(...A(f.line))); } }
   else if (t === "m") { const f = A(S.fronts).find(x => x.id === key), m = f && A(f.moves)[+parts[2]]; if (m) { ensureLayer("move"); setView("map"); flyPts([m.from, m.to]); } }
@@ -1180,6 +1255,7 @@ function locExtra(t, key) {
   if (t === "vs") { const r = seaRec(key); if (!r) return null; const p = seaPos(r, Date.now() + SEA.skew); return [p[0], p[1], 5, "vessel"]; }
   if (t === "ah") { const a = A(AIR.d && AIR.d.ac).find(x => x.hex === key); if (!a) return null; const p = airPos(a, Date.now() + AIR.skew); return [p[0], p[1], 4, "air"]; }
   if (t === "gd") { const g = A(f.gdacs)[+key]; return g && [g.lat, g.lon, 12, "haz"]; }
+  if (t === "mi") { const x = A(MS.d && MS.d.items).find(y => y.id === key); return x && x.pos && [x.pos[0], x.pos[1], 4, "marsec"]; }
   if (t === "nhc") { const n = A(f.nhc)[+key]; return n && [n.lat, n.lon, 12, "haz"]; }
   if (t === "asp") { const a = A(S.airspace).find(x => x.id === key); return a && [a.lat, a.lon, 14, "asp"]; }
   if (t === "net") { const n = A(f.ioda)[+key]; return n && [n.lat, n.lon, 14, "net"]; }
@@ -1276,6 +1352,7 @@ function pick(id, silent) {
         [TX("STATUS"), r.nav === 14 ? TX("ALARM AIS-SART") : NAV[r.nav]], [TX("POZYCJA"), fmtLL(p[0], p[1]) + (r.zone ? " · " + esc(r.zone) : "")], [TX("OSTATNI ODCZYT"), agoTxt(age)],
         [TX("MMSI"), r.mmsi], [TX("IMO"), r.imo], [TX("ZNAK WYWOŁAWCZY"), r.cs], [TX("ŹRÓDŁO"), r.src], [TX("PODGLĄD"), L(r.u, TX("MarineTraffic")), 1]]) + shipWatch(r) +
         `<p class="hint">${TX("Dane AIS nadaje sam statek, więc nazwa, typ i cel podróży mogą być nieaktualne lub fałszywe. Okręty zwykle wyłączają AIS. Linia przerywana to trasa z ostatnich godzin.")}</p>`; }
+  } else if (t === "mi") { h = msCard(id.slice(3), silent);
   } else if (t === "ah") { const a = A(AIR.d && AIR.d.ac).find(x => x.hex === key);
     if (!a) h = chip(TX("ADS-B NA ŻYWO"), "var(--cyan)") + `<h2 class="glow">${esc(key)}</h2><p class="hint">${TX("Samolot przestał nadawać albo zniknął z zasięgu odbiorników.")}</p>`;
     else { const now = Date.now() + AIR.skew, p = airPos(a, now), age = airAge(a, now);
@@ -1863,7 +1940,8 @@ function runCmd(c) {
     case "audio": setAudio(tri3(a, audioOn)); break;
     case "view": setView(a === "chain" ? "chain" : "map"); break;
     case "voice": voiceToggle(); break;
-    case "event": {   // pokaż najnowszy kontakt: air, sea albo dowolny
+    case "event": {   // pokaż najnowszy kontakt: air, sea, inc (incydent morski) albo dowolny
+      if (a === "inc") { const x = A(MS.d && MS.d.items).filter(y => !y.warn).sort((p, q) => (q.t || 0) - (p.t || 0))[0]; if (x) { const z = AUTOZ; AUTOZ = true; ensureLayer("marsec"); setView("map"); go("mi:" + x.id); AUTOZ = z; } break; }
       const ev = [].concat(a !== "sea" ? A(AIR.d && AIR.d.events).map(e => Object.assign({ id: e.go || "ah:" + e.hex }, e)) : [],
                            a !== "air" ? A(SEA.d && SEA.d.events).map(e => Object.assign({ id: "vs:" + e.mmsi }, e)) : []).sort((x, y) => y.at - x.at)[0];
       if (ev) { const z = AUTOZ; AUTOZ = true; setView("map"); go(ev.id); AUTOZ = z; } break; }
@@ -2045,7 +2123,7 @@ function boot(done) {
   let seen = false; try { seen = sessionStorage.getItem("k7-boot") === "1"; } catch (e) { seen = true; }
   if (!needSetup && (seen || reduce)) return done();
   const B = $("#boot"); B.hidden = false; const e = STATUS ? STATUS.engine : null, C = CURRENT || {};
-  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.11"), TX("TEST PAMIĘCI ........ OK"),
+  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.12"), TX("TEST PAMIĘCI ........ OK"),
     TX("PROCESOR GRAFICZNY ..") + " " + (e ? TX(e.hardware.gpu_name) + (e.hardware.vram_gb ? " / " + e.hardware.vram_gb + " " + TX("GB") : "") : "?"),
     TX("RDZEŃ ANALITYCZNY ...") + " " + (e && e.model ? e.model.toUpperCase() : TX("NIEAKTYWNY")),
     TX("BAZA KONFLIKTÓW .....") + " " + A(C.conflicts).length + " " + TX("WĘZŁÓW"), TX("FRONTY ..............") + " " + A(C.fronts).length + " " + TX("TEATRÓW"),
@@ -2081,7 +2159,7 @@ if (window.ResizeObserver) new ResizeObserver(() => { const h = $("#map").getBou
   try { STATUS = await api("/api/status"); } catch (e) {}
   await loadSettings();
   await loadState();
-  pollAir(); pollSea(); loadHist();
+  pollAir(); pollSea(); loadHist(); pollMS();
   renderSys(); renderSrc();
   if (mode === "flat") setTheater(theater || "world", false);
   loadMarkets(); setInterval(loadMarkets, 5 * 60 * 1000);

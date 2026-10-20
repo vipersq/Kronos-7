@@ -17,8 +17,9 @@ KINDS = {  # rodzaj zdarzenia: (opis PL, opis EN)
     "sts": ("Możliwy przeładunek STS", "Possible STS transfer"),
     "cable": ("Statek stoi nad kablem podmorskim", "Ship stationary over an undersea cable"),
     "pass": ("Przelot satelity nad QTH", "Satellite pass over your QTH"),
+    "marsec": ("Incydent bezpieczeństwa morskiego (piractwo, atak, porwanie)", "Maritime security incident (piracy, attack, hijacking)"),
 }
-DEFAULT_ON = {"threat", "loiter", "squawk", "sanc", "sts", "cable", "pass"}
+DEFAULT_ON = {"threat", "loiter", "squawk", "sanc", "sts", "cable", "pass", "marsec"}
 
 
 def kind_of(src, ev):

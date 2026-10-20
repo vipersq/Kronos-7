@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-from kronos import analyst, collector, history, i18n, live_air, live_sea, llm, notify, report, satinfo, sats, tts  # noqa: E402
+from kronos import analyst, collector, history, i18n, live_air, live_sea, llm, marsec, notify, report, satinfo, sats, tts  # noqa: E402
 
 DATA = ROOT / "data"; ARCH = DATA / "archive"; WEB = ROOT / "web"
 ARCH.mkdir(parents=True, exist_ok=True)
@@ -77,11 +77,12 @@ SEA = live_sea.LiveSea(CFG, log, DATA)
 SATS = sats.Catalog(DATA, log)
 SATINFO = satinfo.SatInfo(DATA, SATS, log)
 HIST = history.History(DATA, log)
+MARSEC = marsec.MarSec(DATA, log)
 TTS = tts.TTS(DATA, log)
 atexit.register(TTS.stop_all)
 NOTIFY = notify.Notifier(log)
 NOTIFY.configure(SETTINGS)
-EMO = {"air": "✈", "sea": "⚓"}
+EMO = {"air": "✈", "sea": "⚓", "marsec": "🏴‍☠️"}
 HIST.on_event = lambda src, e: NOTIFY.send(notify.kind_of(src, e), f"{EMO.get(src, '')} {e.get('msg')}")
 
 
@@ -99,7 +100,8 @@ def run_refresh():
         JOB.update(running=True, started=datetime.now().isoformat(), error=None, pct=0, step="start")
         try:
             ENGINE.refresh()
-            st = analyst.Pipeline(CFG, ENGINE, log, progress).run(STATE)
+            base = dict(STATE); base["marsec"] = MARSEC.brief()
+            st = analyst.Pipeline(CFG, ENGINE, log, progress).run(base)
             with STATE_LOCK:
                 prev = (STATE.get("threat") or {}).get("level")
                 STATE = st
@@ -350,6 +352,7 @@ def deck_state():
             "air": {"n": len(ac), "isr": sum(1 for r in ac if r.get("cat") == "isr"), "tanker": sum(1 for r in ac if r.get("cat") == "tanker"),
                     "bomber": sum(1 for r in ac if r.get("cat") == "bomber"), "loiter": sum(1 for r in ac if r.get("loiter")),
                     "ev": aev[0] if aev else None},
+            "inc": MARSEC.counts(),
             "sea": {"n": sm.get("total", 0), "mil": cats.get("military", 0) + cats.get("law", 0), "sanc": len(w.get("sanc", [])), "dark": len(w.get("dark", [])),
                     "sts": len(w.get("sts", [])), "cable": len(w.get("cable", [])), "ev": sev[0] if sev else None},
             "ui": dict(UI, age=round(now - UI.get("at", 0)))}
@@ -581,6 +584,13 @@ class H(BaseHTTPRequestHandler):
             self.end_headers(); self.wfile.write(b); return
         if p == "/api/deck":
             return self._json(deck_state())
+        if p == "/api/marsec":
+            d = int((re.search(r"days=(\d+)", self.path) or [0, 60])[1])
+            return self._json(MARSEC.view(max(1, min(120, d))))
+        m = re.match(r"^/api/marsec/item/(.+)$", p)
+        if m:
+            r = MARSEC.detail(urllib.parse.unquote(m.group(1)))
+            return self._json(r or {"error": "brak"}, 200 if r else 404)
         if p == "/api/cmd/wait":
             if "init=1" in self.path:
                 return self._json({"cmds": [], "last": CMD_N[0]})
@@ -799,7 +809,7 @@ class H(BaseHTTPRequestHandler):
 def main():
     port = int(os.environ.get("KRONOS_PORT", CFG.get("port", 7707)))
     st = ENGINE.status()
-    log("KRONOS-7 v3.11 · start")
+    log("KRONOS-7 v3.12 · start")
     log(f"Sprzęt: {st['hardware']['gpu_name']} · VRAM {st['hardware']['vram_gb']} GB · RAM {st['hardware']['ram_gb']} GB")
     log(f"AI: {st['backend'] or 'brak (zainstaluj Ollamę)'} · model: {st['model'] or '—'} · zalecany: {st['recommended']}")
     log(st["reason"])
@@ -813,7 +823,9 @@ def main():
     if CFG.get("live_sea", {}).get("enabled", True) and os.environ.get("KRONOS_NO_LIVE") != "1":
         SEA.start(); SEA.set_key(SETTINGS.get("aisstream_key", ""), SETTINGS.get("ais_scope", "world")); atexit.register(SEA.save)
         log("Statki na żywo: Digitraffic (Bałtyk, bez klucza)" + (" + aisstream.io (świat)" if SETTINGS.get("aisstream_key") else "; świat po wpisaniu klucza aisstream.io w oknie OPERATOR"))
-    HIST.start(AIR, SEA, lambda: STATE, lambda: MARKETS["data"])
+    HIST.start(AIR, SEA, lambda: STATE, lambda: MARKETS["data"], MARSEC)
+    if os.environ.get("KRONOS_NO_LIVE") != "1" or os.environ.get("KRONOS_MARSEC") == "1":
+        MARSEC.start(ENGINE, lambda: JOB["running"])
     url = f"http://127.0.0.1:{port}"
     log(f"Terminal: {url}")
     if CFG.get("open_browser", True) and os.environ.get("KRONOS_NO_BROWSER") != "1":

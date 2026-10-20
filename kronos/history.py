@@ -26,6 +26,7 @@ METRIC_LABELS = {
     "sea.dark": ("„Ciemne” statki (24 h)", "“Dark” ships (24 h)"), "sea.sts": ("Możliwe przeładunki STS", "Possible STS transfers"),
     "sea.sanc": ("Statki z listy sankcji OFAC", "OFAC-sanctioned ships"), "sea.cable": ("Statki nad kablami", "Ships over cables"),
     "hormuz.transits": ("Ormuz – przejścia/dobę (PortWatch)", "Hormuz – transits/day (PortWatch)"),
+    "marsec.24h": ("Incydenty morskie (24 h)", "Maritime incidents (24 h)"), "marsec.hi24": ("Poważne incydenty morskie (24 h)", "Serious maritime incidents (24 h)"),
 }
 
 
@@ -40,6 +41,7 @@ class History:
         self.last_air = self.last_sea = self.last_met = self.last_clean = 0
         self.ev_seen = {}
         self.on_event = None
+        self.marsec = None
 
     # ------------------------------------------------ zapis
     def sample(self, air, sea, state, markets):
@@ -62,7 +64,7 @@ class History:
                                                                                    or (r["cat"] == "tanker" and zone_of(r["lat"], r["lon"])))]
                 self.db.executemany("INSERT INTO sea VALUES(?,?,?,?,?,?,?,?)", srows)
             # zdarzenia z modułów na żywo
-            for src, mod in (("air", air), ("sea", sea)):
+            for src, mod in (("air", air), ("sea", sea), ("marsec", self.marsec)):
                 if not mod:
                     continue
                 last = self.ev_seen.get(src, 0)
@@ -75,7 +77,7 @@ class History:
                             try: self.on_event(src, e)
                             except Exception: pass
                     self.db.executemany("INSERT INTO events VALUES(?,?,?,?,?)",
-                                        [(int(e["at"] / 1000), e.get("kind"), src, e.get("msg"), str(e.get("hex") or e.get("mmsi") or "")) for e in new])
+                                        [(int(e["at"] / 1000), e.get("kind"), src, e.get("msg"), str(e.get("hex") or e.get("mmsi") or e.get("id") or "")) for e in new])
             if now - self.last_met >= 3600 or self.last_met == 0:
                 self.last_met = now
                 self._metrics(int(now // 3600 * 3600), air, sea, state, markets)
@@ -107,6 +109,9 @@ class History:
             m["air.isr"] = sum(1 for r in ac if r.get("cat") == "isr")
             m["air.isr_zones"] = sum(1 for r in ac if r.get("cat") == "isr" and zone_of(r["lat"], r["lon"]))
             m["air.loiter"] = sum(1 for r in ac if r.get("loiter"))
+        if self.marsec:
+            c = self.marsec.counts()
+            m["marsec.24h"], m["marsec.hi24"] = c["n24"], c["hi24"]
         if sea:
             sm = sea.summary or {}
             m["sea.total"] = sm.get("total", 0)
@@ -169,5 +174,6 @@ class History:
                 self.log(f"Historia: {e}")
             time.sleep(20)
 
-    def start(self, air, sea, get_state, get_markets):
+    def start(self, air, sea, get_state, get_markets, marsec=None):
+        self.marsec = marsec
         threading.Thread(target=self.loop, args=(air, sea, get_state, get_markets), daemon=True, name="history").start()

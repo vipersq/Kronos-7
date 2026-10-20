@@ -18,3 +18,5 @@ data/tle/
 streamdeck/node_modules/
 data/sounds/
 data/tts/
+data/marsec.json
+data/marsec.tmp

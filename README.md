@@ -21,6 +21,25 @@ Lokalny terminal w stylu komputerów pokładowych z filmów science fiction. Pok
 - **Polecenia głosowe** (przycisk GŁOS albo Alt+V), np. „sitrep Bałtyk”, „pokaż Ormuz”, „odśwież”, „briefing”, „odtwórz”, „na żywo”, „warstwa kable”, „pełny ekran”; wszystko inne trafia jako pytanie do AI. W Chrome i Edge rozpoznawanie mowy przetwarzają serwery Google/Microsoft.
 - Wydajność: mapa rysowana na płótnie, obliczenia orbit i przelotów w osobnym wątku, zapis historii w tle.
 
+## Bezpieczeństwo morskie (v3.12)
+
+Panel **BEZPIECZEŃSTWO MORSKIE** i warstwa mapy **INCYDENTY MORSKIE**: piractwo, ataki, porwania, abordaże oraz ostrzeżenia nawigacyjne (miny, zakłócenia GNSS, strzelania i starty rakiet, zamknięte akweny). Źródła, wszystkie oficjalne i bez kluczy, sprawdzane co 30 minut:
+
+| Źródło | Co daje | Zasięg |
+|---|---|---|
+| NGA MSI (USA) | ostrzeżenia NAVAREA, HYDROLANT, HYDROPAC z pozycją i obszarem | cały świat |
+| UKHO (Wielka Brytania) | ostrzeżenia radiowe NAVAREA I i przybrzeżne UK | północno-wschodni Atlantyk, UK |
+| IMB Piracy Reporting Centre (ICC) | incydenty piractwa i rabunku z pozycją | cały świat |
+| ReCAAP ISC | incydenty z pozycją, statkiem i opisem | Azja |
+| EUNAVFOR ATALANTA | komunikaty operacji UE | Somalia, Zatoka Adeńska |
+| MARAD MSCI (USA) | ostrzeżenia i porady dla żeglugi | strefy ryzyka |
+
+- **Bez powtórzeń:** ten sam incydent zgłoszony przez kilka źródeł (np. IMB i ReCAAP) jest pokazywany raz, z listą wszystkich zgłoszeń. Łączenie robi program (ten sam statek, numer ostrzeżenia, miejsce i czas), a w wątpliwych przypadkach decyduje lokalne AI. Powiadomienia też idą tylko raz.
+- **Analiza AI:** każde zgłoszenie z ostatnich 30 dni lokalne AI czyta tylko raz: pisze krótki tytuł i streszczenie, ustala rodzaj i wagę (1–5). Robi to porcjami i nie wtedy, gdy trwa główna analiza. Incydenty z ostatniego tygodnia trafiają do briefingu i oceny poziomu napięcia.
+- Karta incydentu: streszczenie, oryginalne zgłoszenia z linkami, statek, pozycja; dla świeżych zdarzeń przycisk odtworzenia ruchu statków i samolotów z tej chwili. Ostrzeżenia pokazują swój obszar na mapie.
+- Powiadomienia Telegram/Discord (rodzaj „Incydent bezpieczeństwa morskiego”), licznik w HISTORII i na Stream Decku (wtyczka 1.1).
+- Na razie bez UKMTO (do zrobienia osobno). MDAT-GoG (Zatoka Gwinejska), IFC-IOR (Ocean Indyjski) i EUNAVFOR ASPIDES nie mają danych do automatycznego pobierania albo nie dało się ich sprawdzić. MARAD bywa blokowany przez zaporę serwera – wtedy w panelu widać „✕” przy tym źródle.
+
 ## Dźwięki i głos lektora (v3.11)
 
 **OPERATOR → DŹWIĘKI I GŁOS LEKTORA…**
@@ -205,6 +224,7 @@ Dane startowe w repozytorium (`data/seed.json`) to odczyt z 18.10.2026, 14:33. P
 - `data/state.json` – Twój bieżący odczyt (lokalny, poza gitem)
 - `data/archive/` – kopie każdego odczytu, ostatnie 120 (lokalne)
 - `data/settings.json` – ustawienia operatora (lokalne)
+- `data/marsec.json` – incydenty i ostrzeżenia morskie z analizą AI (lokalne)
 - `data/sounds/` – Twoje pliki dźwiękowe; `data/tts/` – program Piper i pobrane głosy
 - `data/history.db` – historia: pozycje, wskaźniki i zdarzenia (lokalne)
 - `data/satinfo/`, `data/tle/`, `data/cables.json`, `data/ofac_vessels.json` – pamięć podręczna danych (lokalne)

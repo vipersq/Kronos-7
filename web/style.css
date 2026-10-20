@@ -486,3 +486,11 @@ body.xeneon .maptools .btn{font-size:15px;padding:1px 6px;white-space:nowrap}
 .tts-voices .btn{padding:1px 8px}
 #sndOpen{justify-self:start}
 @media (max-width:700px){.snd-row{grid-template-columns:1fr 1fr}}
+
+/* v3.12 – bezpieczeństwo morskie */
+.ms-sym{display:inline-block;width:1.3em;text-align:center;font-weight:700}
+.ms-src{font-weight:500;color:var(--cyan);font-size:calc(10.5*var(--u));letter-spacing:.08em}
+.ms-rep{border:1px solid var(--phos-faint);padding:4px 8px;font-size:calc(12*var(--u))}
+.ms-rep summary{cursor:pointer;color:var(--phos-dim);letter-spacing:.06em}
+.ms-rep pre{white-space:pre-wrap;font-family:var(--f-body);font-size:calc(11.5*var(--u));margin:6px 0;max-height:260px;overflow:auto;color:var(--text)}
+#msWarn[aria-pressed=true],#msAll[aria-pressed=true]{background:var(--phos);color:var(--void)}

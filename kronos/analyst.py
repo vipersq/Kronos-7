@@ -438,6 +438,7 @@ Jeśli nie ma takich wydarzeń, zwróć pustą listę.
                  f"UDERZENIA (7 dni): {len(st.get('strikes', []))}; FLANKA NATO: {'; '.join(e['t'] for e in st.get('eastflank', [])[:4])}\n"
                  f"FRONTY: {'; '.join(f['name'] + ': ' + (f.get('note') or '')[:160] for f in st.get('fronts', []))}")
         chg = st["changes"]
+        msec = "\n".join("- {} [{}, waga {}] {}: {}".format(x.get("when"), x.get("kind"), x.get("sev"), x.get("where") or "", x.get("what") or "") for x in st.get("marsec", [])[:15])
         prompt = f"""Oceń globalny poziom napięcia i przygotuj briefing.
 level: 1 (spokój) do 5 (kryzys globalny). label: jedno słowo (NISKI, UMIARKOWANY, PODWYŻSZONY, WYSOKI, KRYTYCZNY). note: główne ogniska, do 60 znaków.
 briefing: 120–170 słów po polsku do odczytania na głos przez komputer pokładowy; zacznij od "{i18n.L("Raport KRONOS-7" + (" dla operatora " + op if op else ""), "KRONOS-7 report" + (" for operator " + op if op else ""))}."; najważniejsze sprawy: co, gdzie, dlaczego. Bez list i skrótów trudnych do przeczytania.
@@ -460,6 +461,9 @@ ZAGROŻENIA NATURALNE:
 
 ŻEGLUGA (zakłócenia):
 {cps or 'brak'}
+
+BEZPIECZEŃSTWO MORSKIE – incydenty z 7 dni (IMB, ReCAAP, NGA, UKHO, EUNAVFOR, MARAD; już bez duplikatów):
+{msec or "brak"}
 
 ZMIANY: nowe depesze {len(chg['new_items'])}, zmiany statusu konfliktów {chg['trend_changes']}, nowe konflikty {chg['new_conflicts']}"""
         try:
@@ -506,11 +510,12 @@ def context_for(st, focus=None, limit=14000):
            "humanitarian": [{k: x.get(k) for k in ("t", "where", "note")} for x in st.get("humanitarian", [])],
            "shipping": [{k: x.get(k) for k in ("name", "status", "metric", "why")} for x in st.get("shipping", [])],
            "forecasts": [{"t": e["t"], "m": e["m"][:3]} for e in ((st.get("feeds") or {}).get("polymarket") or [])],
-           "marketsNote": st.get("marketsNote")}
+           "marketsNote": st.get("marketsNote"),
+           "maritime_security": st.get("marsec", [])[:15]}
     s = json.dumps(ctx, ensure_ascii=False)
     while len(s) > limit and len(ctx["items"]) > 10:
         ctx["items"] = ctx["items"][:-3]; s = json.dumps(ctx, ensure_ascii=False)
-    for k in ("forecasts", "econ", "humanitarian", "sanctions", "forces", "nuclear", "hazards", "calendar", "eastflank", "strikes", "airwar", "shipping"):
+    for k in ("maritime_security", "forecasts", "econ", "humanitarian", "sanctions", "forces", "nuclear", "hazards", "calendar", "eastflank", "strikes", "airwar", "shipping"):
         if len(s) <= limit:
             break
         ctx.pop(k, None); s = json.dumps(ctx, ensure_ascii=False)

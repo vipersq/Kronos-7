@@ -3772,7 +3772,9 @@ var COUNTERS = {
   "sea.sanc": ["SANKCJE", "SANCTIONS", "sea"],
   "sea.dark": ["CIEMNE", "DARK", "sea"],
   "sea.sts": ["STS", "STS", "sea"],
-  "sea.cable": ["NAD KABLEM", "ON CABLE", "sea"]
+  "sea.cable": ["NAD KABLEM", "ON CABLE", "sea"],
+  "inc.n24": ["INCYDENTY 24H", "INCIDENTS 24H", "inc"],
+  "inc.hi24": ["POWA\u017BNE 24H", "SERIOUS 24H", "inc"]
 };
 var CMDS = {
   briefing: ["BRIEFING", "BRIEFING"],
@@ -3873,7 +3875,7 @@ function render(c) {
   }
   if (a === "counter") {
     const key = st.metric || "air.n", m = COUNTERS[key] || COUNTERS["air.n"], [grp, f] = key.split("."), val = (D[grp] || {})[f];
-    const ev = (D[grp] || {}).ev, fresh = ev && ev.at > (k.seen || 0) && now - ev.at < 30 * 6e4, warn = ["sanc", "dark", "sts", "cable", "loiter"].includes(f) && val > 0;
+    const ev = (D[grp] || {}).ev, fresh = ev && ev.at > (k.seen || 0) && now - ev.at < 30 * 6e4, warn = ["sanc", "dark", "sts", "cable", "loiter", "n24", "hi24"].includes(f) && val > 0;
     const blink = fresh && now % 1400 < 700;
     return setImage(c, keySvg({
       top: en() ? m[1] : m[0],
