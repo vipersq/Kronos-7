@@ -1,4 +1,4 @@
-/* KRONOS-7 v3.15 — interfejs terminala. Dane: lokalny serwer (/api/*). */
+/* KRONOS-7 v3.16 — interfejs terminala. Dane: lokalny serwer (/api/*). */
 (function () {
 "use strict";
 const $ = s => document.querySelector(s);
@@ -239,6 +239,7 @@ function placeMarkers() {
   });
 }
 function redraw() {
+  if (typeof seaViewCheck === "function" && mode === "globe") seaViewCheck();
   root.attr("transform", mode === "globe" ? null : T);
   gSphere.attr("d", mode === "globe" ? path(sphere) : null);
   gGrat.attr("d", path(grat));
@@ -258,7 +259,7 @@ function loadHi() {
 }
 const zoom = d3.zoom().scaleExtent([1, MERC ? 4000 : 320]).translateExtent(flatExtent()).extent([[0, 0], [W, H]])
   .filter(ev => mode === "flat" && (ev.type === "wheel" || ev.type === "dblclick" || ev.type === "mousedown" ? !ev.button : (ev.touches ? ev.touches.length > 1 : true)))
-  .on("zoom", ev => { T = ev.transform; root.attr("transform", T); placeMarkers(); zoomClasses();
+  .on("zoom", ev => { T = ev.transform; root.attr("transform", T); placeMarkers(); zoomClasses(); if (typeof seaViewCheck === "function") seaViewCheck();
     const hi = T.k >= 2.5; if (hi !== landHi) { landHi = hi; if (hi) loadHi(); gLand.attr("d", path(hi && land50 ? land50 : land110)); } });
 svg.call(zoom).on("dblclick.zoom", null);
 svg.style("touch-action", "pan-y");
@@ -577,7 +578,7 @@ function drawStatic() {
   /* przy dużej liczbie punktów piksele zapisujemy wprost do bufora – to kilkanaście razy szybsze niż ścieżki */
   if (!drawStatic.img || drawStatic.img.width !== w2 || drawStatic.img.height !== h2) { drawStatic.img = SX.createImageData(w2, h2); drawStatic.buf = new Uint32Array(drawStatic.img.data.buffer); }
   const img = drawStatic.img, buf = drawStatic.buf; buf.fill(0);
-  const cap = SHIPS.size + Object.values(SATG).reduce((a, g) => a + (g.names ? g.names.length : 0), 0);
+  const cap = SHIPS.size + CELLS.length + Object.values(SATG).reduce((a, g) => a + (g.names ? g.names.length : 0), 0);
   if (SHIT.x.length < cap) SHIT = { n: 0, x: new Float32Array(cap + 1000), y: new Float32Array(cap + 1000), k: new Uint8Array(cap + 1000), v: new Float64Array(cap + 1000) };
   let n = 0; const H_ = SHIT;
   const dot = (x, y, sz, col) => { const px = Math.round(x * DPR), py = Math.round(y * DPR), r = sz >> 1;
@@ -588,9 +589,9 @@ function drawStatic() {
     for (let i = 0; i < g.names.length; i++) { const la = g.pos[i * 3], lo = g.pos[i * 3 + 1]; if (la !== la) continue; const p = scr(lo, la); if (!p || !inView(p[0], p[1], 2)) continue;
       dot(p[0], p[1], sz, col); H_.x[n] = p[0]; H_.y[n] = p[1]; H_.k[n] = 3; H_.v[n] = g.norad[i]; n++; } }
   /* statki */
-  const names = [], tris = [], rings = [];
+  const names = [], tris = [], rings = [], cl = [];
   const SRC = REPLAY.on ? REPLAY.ships : SHIPS;
-  if (layerOn.vessel && SRC.size) {
+  if (layerOn.vessel && (SRC.size || (!REPLAY.on && CELLS.length))) {
     const nowS = (REPLAY.on ? REPLAY.t : nowMs + SEA.skew) / 1000, recalc = REPLAY.on || nowMs - drCache > 4000, useTri = k >= 4, s0 = Math.max(1.4, Math.min(4.5, 1.2 + Math.log2(k) * .7));
     if (recalc) drCache = nowMs;
     const cols = SCATS.map(c => [rgb32(SCOL[c], c === "other" || c === "service" ? .8 : 1), rgb32(SCOL[c], .35)]);
@@ -608,11 +609,27 @@ function drawStatic() {
       cV++;
       if (FLT.shipNames && w[7] && (k >= 8 || (k >= 3 && SHOT.has(cat)))) names.push(p[0], p[1], w[7]);
     }
+    /* kratki (widok oddalony): kółko z liczbą, kolor przeważającej kategorii spośród włączonych w FILTRACH */
+    if (!REPLAY.on && CELLS.length && !FLT.suspect) {
+      const lab = [];
+      for (let ci2 = 0; ci2 < CELLS.length; ci2++) { const c = CELLS[ci2]; let tot = 0, best = -1, bn = 0;
+        for (let j = 0; j < SCATS.length; j++) { const v = c[2 + j] || 0; if (!v || !FLT.ship[SCATS[j]]) continue; tot += v; if (v > bn) { bn = v; best = j; } }
+        if (!tot) continue; const p = scr(c[1], c[0]); if (!p || !inView(p[0], p[1], 20)) continue;
+        cl.push(p[0], p[1], Math.min(12, 2.2 + Math.log2(tot + 1) * 1.1), best, tot);
+        H_.x[n] = p[0]; H_.y[n] = p[1]; H_.k[n] = 5; H_.v[n] = ci2; n++; cV += tot; }
+    }
     Object.assign(SHIPSTAT, { view: cV, filt: cF, old: cO, total: SRC.size, at: Date.now() });
   }
   SX.putImageData(img, 0, 0); SX.setTransform(DPR, 0, 0, DPR, 0, 0);
   if (layerOn.cable && CABLES.lines) drawCables(k);   // pod punktami (destination-over)
   if (layerOn.dstate && IN.ds) drawDS(k);
+  if (cl.length) { SX.lineWidth = 1;
+    SCATS.forEach((cat, ci) => { SX.beginPath(); let any = false;
+      for (let i = 0; i < cl.length; i += 5) if (cl[i + 3] === ci) { any = true; SX.moveTo(cl[i] + cl[i + 2], cl[i + 1]); SX.arc(cl[i], cl[i + 1], cl[i + 2], 0, 6.2832); }
+      if (any) { SX.globalAlpha = .28; SX.fillStyle = cssv(SCOL[cat]); SX.fill(); SX.globalAlpha = .9; SX.strokeStyle = cssv(SCOL[cat]); SX.stroke(); } });
+    SX.globalAlpha = 1; SX.font = FONT(); SX.textAlign = "center"; SX.fillStyle = cssv("var(--text)");
+    for (let i = 0; i < cl.length; i += 5) if (cl[i + 4] >= 100 || (cl[i + 4] >= 25 && k >= 2)) { const t = cl[i + 4] >= 1000 ? (cl[i + 4] / 1000).toFixed(cl[i + 4] >= 1e4 ? 0 : 1) + "k" : String(cl[i + 4]); SX.fillText(t, cl[i], cl[i + 1] + 3.5); }
+    SX.textAlign = "start"; }
   if (tris.length) { const s0 = Math.max(1.4, Math.min(4.5, 1.2 + Math.log2(k) * .7));
     SCATS.forEach((cat, ci) => { for (const old of [0, 1]) { SX.beginPath(); let any = false; const s = SHOT.has(cat) ? s0 * 1.35 : s0;
       for (let i = 0; i < tris.length; i += 5) { if (tris[i + 3] !== ci || tris[i + 4] !== old) continue; any = true; const x = tris[i], y = tris[i + 1], ang = tris[i + 2];
@@ -697,17 +714,18 @@ function frame(t) {
   if (needDraw || staticDirty || msPulse || (live && t - lastDraw > (slow && !REPLAY.on ? 2000 : 250)) || (satSel && t - lastDraw > 2000)) { needDraw = false; lastDraw = t; drawCanvas(); }
 }
 requestAnimationFrame(frame);
-window.K7DBG = { draw: () => { const a = performance.now(); staticDirty = true; drawCanvas(); return performance.now() - a; }, air: () => { const a = performance.now(); drawCanvas(); return performance.now() - a; } };
+window.K7DBG = { sea: () => ({ ships: SHIPS.size, cells: CELLS.length, cell: SEAQ && SEAQ.cell, bbox: SEAQ && SEAQ.bbox, view: SHIPSTAT.view, hit: (() => { for (let i = 0; i < SHIT.n; i++) if (SHIT.k[i] === 5) return [SHIT.x[i], SHIT.y[i]]; return null; })() }), draw: () => { const a = performance.now(); staticDirty = true; drawCanvas(); return performance.now() - a; }, air: () => { const a = performance.now(); drawCanvas(); return performance.now() - a; } };
 function hitAt(x, y, lim = 8) {
   let best = null, bd = lim * lim;
   for (const h of AHIT) { const d = (h[0] - x) ** 2 + (h[1] - y) ** 2; if (d < bd) { bd = d; best = h[2]; } }
   if (best) return best;
   const H_ = SHIT; let bi = -1;
   for (let i = 0; i < H_.n; i++) { const dx = H_.x[i] - x; if (dx > lim || dx < -lim) continue; const d = dx * dx + (H_.y[i] - y) ** 2; if (d < bd) { bd = d; bi = i; } }
-  return bi < 0 ? null : (H_.k[bi] === 1 ? "vs:" : "sc:") + H_.v[bi];
+  return bi < 0 ? null : (H_.k[bi] === 1 ? "vs:" : H_.k[bi] === 5 ? "cl:" : "sc:") + H_.v[bi];
 }
 const evXY = ev => { const r = CV.getBoundingClientRect(); return [ev.clientX - r.left, ev.clientY - r.top]; };
-svg.on("click.canvas", ev => { if (ev.target.closest && ev.target.closest(".mk")) return; const id = hitAt(...evXY(ev)); if (id) { ev.stopPropagation(); if (id.startsWith("sc:")) SATCLICK = satByNorad(+id.slice(3)); go(id); } });
+svg.on("click.canvas", ev => { if (ev.target.closest && ev.target.closest(".mk")) return; const id = hitAt(...evXY(ev), 12); if (id && id.startsWith("cl:")) { ev.stopPropagation(); const c = CELLS[+id.slice(3)], h2 = (SEAQ && SEAQ.cell || 2) * 1.2; if (c) zoomBox([[c[1] - h2, c[0] - h2 / 2], [c[1] + h2, c[0] + h2 / 2]], true); return; }
+  if (id) { ev.stopPropagation(); if (id.startsWith("sc:")) SATCLICK = satByNorad(+id.slice(3)); go(id); } });
 let tipT = 0;
 svg.on("mousemove.canvas", ev => { const now = performance.now(); if (now - tipT < 60) return; tipT = now; const [x, y] = evXY(ev), id = hitAt(x, y, 7);
   if (!id) { TIP.hidden = true; svg.style("cursor", null); return; } svg.style("cursor", "pointer"); TIP.hidden = false; TIP.textContent = tipText(id);
@@ -715,6 +733,8 @@ svg.on("mousemove.canvas", ev => { const now = performance.now(); if (now - tipT
 svg.on("mouseleave.canvas", () => { TIP.hidden = true; });
 function tipText(id) {
   const t = id.slice(0, 2), key = id.slice(3);
+  if (t === "cl") { const c = CELLS[+key]; if (!c) return ""; const parts = SCATS.map((c2, j) => [c2, c[2 + j] || 0]).filter(x => x[1] && FLT.ship[x[0]]).sort((a, b) => b[1] - a[1]);
+    return `${parts.reduce((a, x) => a + x[1], 0)} ${TX("statków")} · ` + parts.slice(0, 3).map(x => (SCN[x[0]] || x[0]) + " " + x[1]).join(", ") + " · " + TX("kliknij, aby przybliżyć"); }
   if (t === "vs") { const r = seaRec(key), fl = r ? r.flags : 0; return r ? `${r.name || "MMSI " + r.mmsi} · ${SCN[r.cat] || ""}${r.sog != null ? " · " + r.sog + " kn" : ""}${fl & 1 ? " · " + TX("SANKCJE") : ""}${fl & 4 ? " · " + TX("MILCZY") : ""}${fl & 2 ? " · " + TX("NAD KABLEM") : ""}` : ""; }
   if (t === "ah") { const a = airList().find(x => x.hex === key); return a ? `${a.flag || ""} ${a.cs || a.hex} · ${a.desc || (a.model || "").split(" (")[0] || a.t || ""}${a.country ? " · " + TX(a.country) : ""}${a.alt != null ? " · " + a.alt + " ft" : ""}${a.loiter ? " · " + TX("KRĄŻY") : ""}` : ""; }
   if (t === "sc") { const r = satByNorad(+key); return r ? r.name : ""; }
@@ -756,19 +776,43 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) { po
 
 /* --- statki: pobieranie (tylko zmiany od poprzedniego odczytu) */
 let seaT = null;
+/* v3.15: serwer wysyła tylko statki z widocznego obszaru (z zapasem); przy oddaleniu zwykłe statki przychodzą jako kratki z liczbą,
+   a pojedynczo tylko okręty, straż, SAR i statki z listy obserwacji. Przy przesunięciu mapy poza pobrany obszar – dociągnięcie. */
+let SEAQ = null, CELLS = [], seaVT = null, seaBusy = false, seaAgain = false;
+const CELL_STEPS = [0.5, 1, 2, 3, 5, 8];
+function seaWant() {
+  const world = [-180, -90, 180, 90], cl = FLT.cluster !== 0;
+  if (mode !== "flat" || !cvW) return { bbox: world, view: world, cell: cl ? 3 : 0 };
+  viewFit();
+  const inv = (sx, sy) => flat.invert([((sx - vX) / vS - T.x) / T.k, ((sy - vY) / vS - T.y) / T.k]);
+  const a = inv(0, 0), b = inv(cvW, cvH); if (!a || !b) return { bbox: world, view: world, cell: cl ? 3 : 0 };
+  const v = [Math.max(-180, a[0]), Math.max(-90, b[1]), Math.min(180, b[0]), Math.min(90, a[1])], sx = v[2] - v[0], sy = v[3] - v[1];
+  const cellRaw = sx / Math.max(20, cvW / 26), cell = cl && sx > 45 ? CELL_STEPS.find(c => c >= cellRaw) || 8 : 0;
+  const bb = sx > 250 ? world : [Math.max(-180, v[0] - sx * .5), Math.max(-90, v[1] - sy * .5), Math.min(180, v[2] + sx * .5), Math.min(90, v[3] + sy * .5)].map(x => +x.toFixed(2));
+  return { bbox: bb, view: v, cell };
+}
+const bbIn = (v, bb) => v[0] >= bb[0] - .01 && v[1] >= bb[1] - .01 && v[2] <= bb[2] + .01 && v[3] <= bb[3] + .01;
+function seaViewCheck() { clearTimeout(seaVT); seaVT = setTimeout(() => { const w = seaWant(); if (!SEAQ || w.cell !== SEAQ.cell || !bbIn(w.view, SEAQ.bbox)) pollSea(); }, 400); }
 async function pollSea() {
-  clearTimeout(seaT); let next = 20000;
+  if (seaBusy) { seaAgain = true; return; }
+  clearTimeout(seaT); let next = 20000; seaBusy = true;
   try {
-    const d = await api(`/api/sea?since=${SEA.since || 0}&ev=${SEA.lastEv}`); next = (d.interval || 20) * 1000;
+    const w = seaWant(), re = !SEAQ || w.cell !== SEAQ.cell || !bbIn(w.view, SEAQ.bbox) || SEAQ.old !== (FLT.shipOld ? 1 : 0);
+    if (re) SEAQ = Object.assign(w, { old: FLT.shipOld ? 1 : 0 });
+    const sel = selected && selected.startsWith("vs:") ? selected.slice(3) : 0;
+    const d = await api(`/api/sea?since=${re || SEAQ.cell ? 0 : SEA.since || 0}&ev=${SEA.lastEv}&bbox=${SEAQ.bbox.join(",")}&cell=${SEAQ.cell}&old=${SEAQ.old}&sel=${sel}`); next = (d.interval || 20) * 1000;
     if (d.full) SHIPS.clear(); if (A(d.cats).length) SCATS = d.cats;
     A(d.rows).forEach(w => { w[11] = w[9] || 0; w[9] = null; SHIPS.set(w[0], w); });
+    CELLS = A(d.cells); SEA.total = d.total || SHIPS.size; SEA.catn = d.catn || null;
     const lim = d.now / 1000 - (d.keep_s || 21600); for (const [k2, w] of SHIPS) if (w[6] < lim) SHIPS.delete(k2);
-    SEA.since = d.now; SEA.skew = d.now - Date.now(); SEA.ok = SHIPS.size > 0; drCache = 0; markStatic();
-    SEA.d = Object.assign({}, d, { rows: null, events: (SEA.d ? A(SEA.d.events) : []).concat(A(d.events)).slice(-30) });
+    SEA.since = d.now; SEA.skew = d.now - Date.now(); SEA.ok = SHIPS.size > 0 || CELLS.length > 0; drCache = 0; markStatic();
+    SEA.d = Object.assign({}, d, { rows: null, cells: null, events: (SEA.d ? A(SEA.d.events) : []).concat(A(d.events)).slice(-30) });
     A(d.events).forEach(e => { SEA.lastEv = Math.max(SEA.lastEv, e.at); if (!SEA.first) { airToast(Object.assign({}, e, { hex: null, go: "vs:" + e.mmsi })); contactSound(e.kind === "alarm" ? "squawk" : e.kind); } });
     SEA.first = false; renderSea(); renderFilterCounts();
     if (selected && selected.startsWith("vs:")) pick(selected, true);
   } catch (e) {}
+  seaBusy = false;
+  if (seaAgain) { seaAgain = false; setTimeout(pollSea, 50); return; }
   seaT = setTimeout(pollSea, document.hidden ? 60000 : next);
 }
 async function loadShipDetail(mmsi) {
@@ -776,11 +820,12 @@ async function loadShipDetail(mmsi) {
 }
 function renderSea() {
   const d = SEA.d; if (!d) return; const st = d.status || {}, dt = st.digitraffic || {}, ai = st.aisstream || {}, sm = d.summary || {}, now = Date.now() + SEA.skew;
-  $("#seaT").innerHTML = SHIPS.size ? `<span class="livedot"></span>${TX("NA ŻYWO ·")} ${SHIPS.size.toLocaleString(LOC)} ${TX("jednostek")}` : "";
+  const tot = SEA.total || SHIPS.size;
+  $("#seaT").innerHTML = tot ? `<span class="livedot"></span>${TX("NA ŻYWO ·")} ${tot.toLocaleString(LOC)} ${TX("jednostek")}` : "";
   const srcLine = (n, s, extra) => `<li><button tabindex="-1" style="cursor:default"><span class="t">${n}</span><span class="${s.ok ? "" : s.ok === false ? "red" : "dim"}">${s.ok ? (s.n || 0).toLocaleString(LOC) + " " + TX("statków") : s.ok === false ? TX("BŁĄD") : "—"}</span><span class="sub">${esc(s.err || extra || "")}</span></button></li>`;
   const ist = (IN.d && IN.d.status) || {}, extra = Object.entries(ist).filter(([k]) => k.startsWith("tcp:") || k === "aishub" || k === "ais").filter(([, v]) => v && !v.off)
     .map(([k, v]) => srcLine(k === "aishub" ? "AISHub" : k === "ais" ? TX("Twój odbiornik AIS (UDP)") : esc(v.name || k), { ok: v.ok, n: v.n, err: v.err }, k === "tcp:kystverket" ? TX("Norwegia, bez klucza") : "")).join("");
-  const diag = `<li><button tabindex="-1" style="cursor:default"><span class="t">${TX("Na mapie (w widoku)")}</span><span>${SHIPSTAT.view.toLocaleString(LOC)}</span><span class="sub">${TX("w pamięci")} ${SHIPS.size.toLocaleString(LOC)} · ${TX("ukryte filtrem")} ${SHIPSTAT.filt.toLocaleString(LOC)} · ${TX("starsze niż 1 h (ukryte)")} ${SHIPSTAT.old.toLocaleString(LOC)}${!layerOn.vessel ? " · " + TX("warstwa STATKI wyłączona") : ""}</span></button></li>`;
+  const diag = `<li><button tabindex="-1" style="cursor:default"><span class="t">${TX("Na mapie (w widoku)")}</span><span>${SHIPSTAT.view.toLocaleString(LOC)}</span><span class="sub">${TX("na serwerze")} ${(SEA.total || SHIPS.size).toLocaleString(LOC)} · ${TX("pobrane dla widoku")} ${SHIPS.size.toLocaleString(LOC)}${CELLS.length ? " + " + CELLS.length + " " + TX("kratek") : ""} · ${TX("ukryte filtrem")} ${SHIPSTAT.filt.toLocaleString(LOC)} · ${TX("starsze niż 1 h (ukryte)")} ${SHIPSTAT.old.toLocaleString(LOC)}${!layerOn.vessel ? " · " + TX("warstwa STATKI wyłączona") : ""}</span></button></li>`;
   let h = `<li class="hd">${TX("Źródła")}</li>` + diag + srcLine(TX("Digitraffic · północny Bałtyk"), dt, TX("bez klucza"))
     + srcLine(d.scope === "world" ? TX("aisstream.io · cały świat") : TX("aisstream.io · obserwowane rejony świata"), ai, d.key ? (ai.rate ? ai.rate + " " + TX("komunikatów/s") : TX("łączenie…")) : TX("wpisz darmowy klucz w oknie OPERATOR")) + extra;
   const ev = A(d.events).slice(-8).reverse();
@@ -994,7 +1039,7 @@ setInterval(() => { if (!document.hidden) pollMS(); }, 5 * 60e3);
 /* --- filtry warstw */
 function renderFilterCounts() {
   if ($("#filtModal").hidden) return; const sc = {}, ac = {};
-  for (const w of SHIPS.values()) { const c = SCATS[w[5]] || "other"; sc[c] = (sc[c] || 0) + 1; }
+  if (SEA.catn) SCATS.forEach((c, i) => sc[c] = SEA.catn[i] || 0); else for (const w of SHIPS.values()) { const c = SCATS[w[5]] || "other"; sc[c] = (sc[c] || 0) + 1; }
   A(AIR.d && AIR.d.ac).forEach(a => ac[a.cat] = (ac[a.cat] || 0) + 1);
   $$("#filtModal [data-fs]").forEach(i => { const em = i.parentNode.querySelector("em"); if (em) em.textContent = (sc[i.dataset.fs] || 0).toLocaleString(LOC); });
   $$("#filtModal [data-fa]").forEach(i => { const em = i.parentNode.querySelector("em"); if (em) em.textContent = ac[i.dataset.fa] || 0; });
@@ -1002,12 +1047,12 @@ function renderFilterCounts() {
 function openFilters() {
   const S2 = SCATS.map(c => `<label class="chk"><input type="checkbox" data-fs="${c}"${FLT.ship[c] ? " checked" : ""}><i style="background:${cssv(SCOL[c])}"></i>${esc(SCN[c] || c)}<em></em></label>`).join("");
   const A2 = Object.keys(FLT.air).map(c => `<label class="chk"><input type="checkbox" data-fa="${c}"${FLT.air[c] ? " checked" : ""}><i style="background:${cssv(ACOL[c])}"></i>${esc(ACN[c] || c)}<em></em></label>`).join("");
-  $("#filtShips").innerHTML = S2 + `<label class="chk"><input type="checkbox" data-fo="shipOld"${FLT.shipOld ? " checked" : ""}>${TX("Pokaż pozycje starsze niż 1 h (wyblakłe)")}</label><label class="chk"><input type="checkbox" data-fo="shipNames"${FLT.shipNames ? " checked" : ""}>${TX("Nazwy statków po przybliżeniu")}</label>`
+  $("#filtShips").innerHTML = S2 + `<label class="chk"><input type="checkbox" data-fo="shipOld"${FLT.shipOld ? " checked" : ""}>${TX("Pokaż pozycje starsze niż 1 h (wyblakłe)")}</label><label class="chk"><input type="checkbox" data-fo="shipNames"${FLT.shipNames ? " checked" : ""}>${TX("Nazwy statków po przybliżeniu")}</label><label class="chk"><input type="checkbox" data-fo="cluster"${FLT.cluster !== 0 ? " checked" : ""}>${TX("Przy oddaleniu grupuj statki w kratki z liczbą (szybciej; okręty, straż i statki z listy obserwacji zawsze osobno)")}</label>`
     + `<label class="chk"><input type="checkbox" data-fo="watch"${FLT.watch ? " checked" : ""}>${TX("Wyróżniaj: sankcje (czerwony), milczące AIS (bursztyn), nad kablem (fiolet), STS")}</label><label class="chk"><input type="checkbox" data-fo="suspect"${FLT.suspect ? " checked" : ""}>${TX("Tylko podejrzane statki (oraz okręty i straż)")}</label>`;
   $("#filtAir").innerHTML = A2 + `<label class="chk"><input type="checkbox" data-fo="airTrails"${FLT.airTrails ? " checked" : ""}>${TX("Trasy rozpoznania, tankowców i bombowców")}</label><label class="chk"><input type="checkbox" data-fo="airNames"${FLT.airNames ? " checked" : ""}>${TX("Znaki wywoławcze")}</label>`;
   $$("#filtModal input").forEach(i => i.addEventListener("change", () => {
     if (i.dataset.fs) FLT.ship[i.dataset.fs] = i.checked ? 1 : 0; else if (i.dataset.fa) FLT.air[i.dataset.fa] = i.checked ? 1 : 0; else FLT[i.dataset.fo] = i.checked ? 1 : 0;
-    saveFlt(); markStatic(); }));
+    saveFlt(); markStatic(); if (i.dataset.fo === "cluster" || i.dataset.fo === "shipOld") pollSea(); }));
   $("#filtModal").hidden = false; renderFilterCounts();
 }
 $("#filtBtn").addEventListener("click", openFilters);
@@ -2541,7 +2586,7 @@ function boot(done) {
   let seen = false; try { seen = sessionStorage.getItem("k7-boot") === "1"; } catch (e) { seen = true; }
   if (!needSetup && (seen || reduce)) return done();
   const B = $("#boot"); B.hidden = false; const e = STATUS ? STATUS.engine : null, C = CURRENT || {};
-  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.15"), TX("TEST PAMIĘCI ........ OK"),
+  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.16"), TX("TEST PAMIĘCI ........ OK"),
     TX("PROCESOR GRAFICZNY ..") + " " + (e ? TX(e.hardware.gpu_name) + (e.hardware.vram_gb ? " / " + e.hardware.vram_gb + " " + TX("GB") : "") : "?"),
     TX("RDZEŃ ANALITYCZNY ...") + " " + (e && e.model ? e.model.toUpperCase() : TX("NIEAKTYWNY")),
     TX("BAZA KONFLIKTÓW .....") + " " + A(C.conflicts).length + " " + TX("WĘZŁÓW"), TX("FRONTY ..............") + " " + A(C.fronts).length + " " + TX("TEATRÓW"),

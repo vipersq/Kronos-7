@@ -598,6 +598,55 @@ class LiveSea:
         return {"now": int(now * 1000), "interval": self.interval, "keep_s": KEEP_S, "full": not since, "status": st, "key": bool(self.key),
                 "scope": self.scope, "cats": CATS, "rows": rows, "summary": self.summary, "events": ev}
 
+    def view(self, since=0, since_ev=0, bbox=None, cell=0.0, sel=0, old=False):
+        """Statki tylko dla tego, co widać na mapie.
+        bbox = (lon0, lat0, lon1, lat1) – obszar z zapasem; poza nim nic nie wysyłamy (lon0 > lon1 = przez linię zmiany daty).
+        cell > 0 – widok oddalony: zwykłe statki łączone w kratki cell° × cell° z liczbą na kategorię,
+        pojedynczo tylko okręty, straż, SAR, statki z listy obserwacji (sankcje, kable, „ciemne”) i zaznaczony statek."""
+        if time.time() - self.last_view > 120:
+            self.wake.set()
+        self.last_view = time.time()
+        now = time.time()
+        th = since / 1000 - 2 if since and not cell else 0
+        lo0, la0, lo1, la1 = bbox or (-180, -90, 180, 90)
+        wrap = lo0 > lo1
+        fresh = now - 3600
+        nc = len(CATS); grid = {}; rows = []; catn = [0] * nc; total = 0
+        keep = {CAT_I["military"], CAT_I["law"], CAT_I["sar"]}
+        with self.lock:
+            wd, wc = self.watch["dark"], self.watch["cable"]
+            for r in self.ships.values():
+                if "lat" not in r:
+                    continue
+                ci = CAT_I.get(r["cat"], 9); total += 1; catn[ci] += 1
+                la, lo = r["lat"], r["lon"]; m = r["mmsi"]
+                fl = (1 if r.get("sanc") else 0) | (2 if m in wc else 0) | (4 if m in wd else 0)
+                if m != sel and not (la0 <= la <= la1 and ((lo >= lo0 or lo <= lo1) if wrap else lo0 <= lo <= lo1)):
+                    continue
+                ts = (r.get("ts") or 0) / 1000
+                if cell and not fl and ci not in keep and m != sel:
+                    if ts < fresh and not old:
+                        continue
+                    key = (int((la + 90) // cell), int((lo + 180) // cell))
+                    g = grid.get(key)
+                    if g is None:
+                        g = grid[key] = [0.0, 0.0] + [0] * nc
+                    g[0] += la; g[1] += lo; g[2 + ci] += 1
+                    continue
+                if (r.get("upd") or 0) <= th:
+                    continue
+                rows.append([m, la, lo, r.get("sog"), None if r.get("cog") is None else int(r["cog"]), ci, int(ts), r.get("name") or "",
+                             None if r.get("hdg") is None else int(r["hdg"]), fl])
+            ev = [e for e in self.events if e["at"] > since_ev]
+            st = json.loads(json.dumps(self.status))
+        cells = []
+        for g in grid.values():
+            n = sum(g[2:])
+            cells.append([round(g[0] / n, 3), round(g[1] / n, 3)] + g[2:])
+        return {"now": int(now * 1000), "interval": self.interval, "keep_s": KEEP_S, "full": not th, "status": st, "key": bool(self.key),
+                "scope": self.scope, "cats": CATS, "rows": rows, "cells": cells if cell else None, "cell": cell, "catn": catn, "total": total,
+                "summary": self.summary, "events": ev}
+
     def ship(self, mmsi):
         with self.lock:
             r = self.ships.get(mmsi)

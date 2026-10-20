@@ -878,6 +878,14 @@ class H(BaseHTTPRequestHandler):
             return self._json({"sats": SATS.tles(ids)})
         if p == "/api/sea":
             g = lambda k: int((re.search(k + r"=(\d+)", self.path) or [0, 0])[1])
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            if "bbox" in q:                    # v3.15: tylko widoczny obszar, przy oddaleniu kratki zamiast pojedynczych statków
+                try:
+                    bb = [float(x) for x in q["bbox"][0].split(",")][:4]
+                    cell = max(0.0, min(20.0, float((q.get("cell") or ["0"])[0])))
+                except ValueError:
+                    bb, cell = None, 0.0
+                return self._json(SEA.view(g("since"), g("ev"), bb if bb and len(bb) == 4 else None, cell, g("sel"), (q.get("old") or ["0"])[0] == "1"))
             return self._json(SEA.snapshot(g("since"), g("ev")))
         m = re.match(r"^/api/sea/ship/(\d+)$", p)
         if m:
@@ -1105,7 +1113,7 @@ class H(BaseHTTPRequestHandler):
 def main():
     port = int(os.environ.get("KRONOS_PORT", CFG.get("port", 7707)))
     st = ENGINE.status()
-    log("KRONOS-7 v3.15 · start")
+    log("KRONOS-7 v3.16 · start")
     log(f"Sprzęt: {st['hardware']['gpu_name']} · VRAM {st['hardware']['vram_gb']} GB · RAM {st['hardware']['ram_gb']} GB")
     log(f"AI: {st['backend'] or 'brak (zainstaluj Ollamę)'} · model: {st['model'] or '—'} · zalecany: {st['recommended']}")
     log(st["reason"])

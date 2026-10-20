@@ -21,6 +21,13 @@ Lokalny terminal w stylu komputerów pokładowych z filmów science fiction. Pok
 - **Polecenia głosowe** (przycisk GŁOS albo Alt+V), np. „sitrep Bałtyk”, „pokaż Ormuz”, „odśwież”, „briefing”, „odtwórz”, „na żywo”, „warstwa kable”, „pełny ekran”; wszystko inne trafia jako pytanie do AI. W Chrome i Edge rozpoznawanie mowy przetwarzają serwery Google/Microsoft.
 - Wydajność: mapa rysowana na płótnie, obliczenia orbit i przelotów w osobnym wątku, zapis historii w tle.
 
+## Statki tylko dla widoku (v3.16)
+
+- Serwer wysyła do przeglądarki tylko statki z widocznego obszaru mapy, z zapasem na przesuwanie. Gdy przesuniesz mapę dalej, sam dociąga nowy obszar. Przykład: widok Ormuzu to kilkaset statków i kilka kilobajtów, a nie ~45 tys. statków i ok. 1 MB co odświeżenie.
+- Przy oddaleniu (widok szerszy niż ok. 45°) zwykłe statki łączą się w **kratki z liczbą**. Kolor kratki to przeważająca kategoria spośród włączonych w FILTRACH. Kliknięcie kratki przybliża mapę.
+- Okręty, straż, SAR i statki z listy obserwacji (sankcje, „ciemne”, nad kablami) zawsze są pokazywane osobno.
+- Grupowanie można wyłączyć w FILTRACH. Liczby w FILTRACH i nagłówku panelu STATKI dotyczą wszystkich statków na serwerze.
+
 ## Płynniej i chłodniej, więcej źródeł (v3.15)
 
 **Mapy lokalnie**

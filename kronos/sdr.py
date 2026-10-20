@@ -347,7 +347,7 @@ class APRS:
                 s = socket.create_connection(("rotate.aprs2.net", 14580), timeout=30)
                 s.settimeout(90)
                 user = re.sub(r"[^A-Z0-9-]", "", call.upper())[:9] or "N0CALL"
-                s.sendall(f"user {user} pass -1 vers KRONOS-7 3.15 filter r/{q['lat']:.3f}/{q['lon']:.3f}/{km}\r\n".encode())
+                s.sendall(f"user {user} pass -1 vers KRONOS-7 3.16 filter r/{q['lat']:.3f}/{q['lon']:.3f}/{km}\r\n".encode())
                 self.status.update(off=False, ok=True, err=None, server="rotate.aprs2.net")
                 self.log(i18n.L(f"APRS: połączono z APRS-IS (promień {km} km).", f"APRS: connected to APRS-IS (radius {km} km)."))
                 buf = b""; cfg0 = (on, q.get("lat"), q.get("lon"), km)
