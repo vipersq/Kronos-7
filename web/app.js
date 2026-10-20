@@ -1,4 +1,4 @@
-/* KRONOS-7 v3.9 — interfejs terminala. Dane: lokalny serwer (/api/*). */
+/* KRONOS-7 v3.10 — interfejs terminala. Dane: lokalny serwer (/api/*). */
 (function () {
 "use strict";
 const $ = s => document.querySelector(s);
@@ -1804,6 +1804,67 @@ function voiceToggle() {
 $("#voiceBtn").addEventListener("click", voiceToggle);
 document.addEventListener("keydown", e => { if (e.key === "v" && e.altKey) { e.preventDefault(); voiceToggle(); } });
 
+
+/* --- STREAM DECK i inne piloty: polecenia z serwera (/api/cmd) i raport stanu interfejsu (/api/ui) */
+const MAPCMD = new Set(["theater", "layer", "zoom", "replay", "globe", "autozoom", "event", "sat", "view"]);
+const cmdMine = c => SOLO ? SOLO === "mapa" && MAPCMD.has(c.do) : !(MAPCMD.has(c.do) && mapHidden());
+const tri3 = (v, cur) => v === "on" ? true : v === "off" ? false : !cur;
+function runCmd(c) {
+  const a = String(c.arg || "");
+  switch (c.do) {
+    case "theater": if (THEATERS.some(t => t[0] === a)) { setView("map"); setTheater(a, true); beep(800); } break;
+    case "layer": { const [k, v] = a.split(":"); if (!(k in layerOn)) break; if (tri3(v, layerOn[k]) !== !!layerOn[k]) $(`[data-layer="${k}"]`).click(); break; }
+    case "zoom": setView("map");
+      if (a === "reset") setTheater("world", true);
+      else if (mode === "flat") svg.transition().duration(reduce ? 0 : 160).call(zoom.scaleBy, Math.pow(1.3, +a || 0));
+      else { rot = [rot[0] - (+a || 0) * 8, rot[1]]; globe.rotate(rot); redraw(); }
+      break;
+    case "replay":
+      if (a === "toggle") REPLAY.on ? replayClose() : replayOpen();
+      else if (a === "open") { if (!REPLAY.on) replayOpen(); }
+      else if (a === "live") { if (REPLAY.on) replayClose(); }
+      else if (a === "play") { if (REPLAY.on) replayPlay(!REPLAY.playing); else replayOpen().then(() => { if (REPLAY.on) replayPlay(true); }); }
+      else if (/^-?\d+$/.test(a)) { if (!REPLAY.on) { replayOpen(); break; } replayPlay(false); const base = REPLAY.want || REPLAY.t; replayFetch(Math.max(REPLAY.from, Math.min(REPLAY.to, base + +a * 60e3))); }
+      break;
+    case "briefing": $("#speakBtn").click(); break;
+    case "sitrep": $("#sitIn").value = a || TX("Świat"); sitrep(); break;
+    case "ask": if (a) { $("#q").value = a; ask(); } break;
+    case "stop": if ("speechSynthesis" in window) speechSynthesis.cancel(); stopKlaxon(); if (!$("#sitModal").hidden) sitClose(); break;
+    case "globe": if ((a === "on") !== (mode === "globe") || !a) $("#projBtn").click(); break;
+    case "autozoom": setAutoZ(tri3(a, AUTOZ)); break;
+    case "alert": if (tri3(a, document.body.classList.contains("alert")) !== document.body.classList.contains("alert")) $("#alertBtn").click(); break;
+    case "audio": setAudio(tri3(a, audioOn)); break;
+    case "view": setView(a === "chain" ? "chain" : "map"); break;
+    case "voice": voiceToggle(); break;
+    case "event": {   // pokaż najnowszy kontakt: air, sea albo dowolny
+      const ev = [].concat(a !== "sea" ? A(AIR.d && AIR.d.events).map(e => Object.assign({ id: e.go || "ah:" + e.hex }, e)) : [],
+                           a !== "air" ? A(SEA.d && SEA.d.events).map(e => Object.assign({ id: "vs:" + e.mmsi }, e)) : []).sort((x, y) => y.at - x.at)[0];
+      if (ev) { const z = AUTOZ; AUTOZ = true; setView("map"); go(ev.id); AUTOZ = z; } break; }
+    case "sat": { const n = +a; const r = n && satByNorad(n); if (r) { SATCLICK = r; const z = AUTOZ; AUTOZ = true; go("sc:" + n); AUTOZ = z; } break; }
+  }
+}
+let cmdLast = -1;
+async function cmdLoop() {
+  for (;;) {
+    try {
+      const d = await api(cmdLast < 0 ? "/api/cmd/wait?init=1" : "/api/cmd/wait?after=" + cmdLast);
+      if (cmdLast >= 0 && d.last < cmdLast) cmdLast = 0;           // serwer uruchomiony ponownie
+      if (cmdLast < 0) cmdLast = d.last;
+      for (const c of A(d.cmds)) { if (c.id <= cmdLast) continue; cmdLast = c.id; if (cmdMine(c)) try { runCmd(c); } catch (e) { console.warn("cmd", c, e); } }
+    } catch (e) { await new Promise(r => setTimeout(r, 3000)); }
+  }
+}
+let uiLast = "", uiAt = 0;
+function reportUI() {
+  const st = { alert: document.body.classList.contains("alert"), audio: audioOn };
+  if (!mapHidden()) Object.assign(st, { layers: layerOn, autoz: AUTOZ, theater: theater || "", mode, view,
+    replay: { on: REPLAY.on, playing: REPLAY.playing, t: REPLAY.t, from: REPLAY.from, to: REPLAY.to } });
+  if (!SOLO) { const now = Date.now(), p = PASS.list.find(x => x.los > now); st.pass = p ? { name: p.name, norad: p.norad, aos: p.aos, los: p.los, maxEl: p.maxEl, vis: p.vis } : null; }
+  const j = JSON.stringify(st), now = Date.now();
+  if (j === uiLast && now - uiAt < 15000) return;
+  uiLast = j; uiAt = now; fetch("/api/ui", { method: "POST", headers: { "Content-Type": "application/json" }, body: j }).catch(() => {});
+}
+if (!SOLO || SOLO === "mapa") { cmdLoop(); setInterval(() => { if (!document.hidden || !SOLO) reportUI(); }, 700); }
 /* ------------------------------------------------------------ START */
 function boot(done) {
   if (SOLO) return done();
@@ -1811,7 +1872,7 @@ function boot(done) {
   let seen = false; try { seen = sessionStorage.getItem("k7-boot") === "1"; } catch (e) { seen = true; }
   if (!needSetup && (seen || reduce)) return done();
   const B = $("#boot"); B.hidden = false; const e = STATUS ? STATUS.engine : null, C = CURRENT || {};
-  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.9"), TX("TEST PAMIĘCI ........ OK"),
+  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.10"), TX("TEST PAMIĘCI ........ OK"),
     TX("PROCESOR GRAFICZNY ..") + " " + (e ? TX(e.hardware.gpu_name) + (e.hardware.vram_gb ? " / " + e.hardware.vram_gb + " " + TX("GB") : "") : "?"),
     TX("RDZEŃ ANALITYCZNY ...") + " " + (e && e.model ? e.model.toUpperCase() : TX("NIEAKTYWNY")),
     TX("BAZA KONFLIKTÓW .....") + " " + A(C.conflicts).length + " " + TX("WĘZŁÓW"), TX("FRONTY ..............") + " " + A(C.fronts).length + " " + TX("TEATRÓW"),

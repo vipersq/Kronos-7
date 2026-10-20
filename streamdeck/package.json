@@ -1,0 +1,12 @@
+{
+  "name": "kronos7-streamdeck",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Wtyczka Stream Deck dla terminala KRONOS-7",
+  "scripts": {
+    "build": "node build.mjs",
+    "pack": "node build.mjs && streamdeck pack com.vipersq.kronos7.sdPlugin --output dist --force"
+  },
+  "dependencies": { "ws": "^8.18.0" },
+  "devDependencies": { "esbuild": "^0.24.0", "@elgato/cli": "^1.10.3" }
+}

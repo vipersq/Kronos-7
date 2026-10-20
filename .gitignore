@@ -15,3 +15,4 @@ data/satinfo/
 data/ofac_vessels.json
 data/cables.json
 data/tle/
+streamdeck/node_modules/

@@ -21,6 +21,27 @@ Lokalny terminal w stylu komputerów pokładowych z filmów science fiction. Pok
 - **Polecenia głosowe** (przycisk GŁOS albo Alt+V), np. „sitrep Bałtyk”, „pokaż Ormuz”, „odśwież”, „briefing”, „odtwórz”, „na żywo”, „warstwa kable”, „pełny ekran”; wszystko inne trafia jako pytanie do AI. W Chrome i Edge rozpoznawanie mowy przetwarzają serwery Google/Microsoft.
 - Wydajność: mapa rysowana na płótnie, obliczenia orbit i przelotów w osobnym wątku, zapis historii w tle.
 
+## Stream Deck (v3.10)
+
+Wtyczka w `streamdeck/dist/com.vipersq.kronos7.streamDeckPlugin` – kliknij plik dwa razy, a aplikacja Stream Deck sama ją zainstaluje (wymaga Stream Deck 6.4 lub nowszego). Akcje pojawią się w kategorii **KRONOS-7**. Przyciski działają, gdy KRONOS jest uruchomiony, a polecenia mapy i głosu – gdy terminal jest otwarty w przeglądarce (może być w tle albo na innym monitorze).
+
+| Akcja | Co pokazuje | Naciśnięcie |
+|---|---|---|
+| Poziom napięcia | 1–5 z kolorem, przy 5 miga | otwiera terminal |
+| Analiza AI | odliczanie do analizy; w trakcie postęp % (GPU zajęte) | uruchamia analizę |
+| Teatr działań | nazwa regionu, podświetlony gdy aktywny | przybliża mapę |
+| Warstwa mapy | WŁ./WYŁ. | przełącza warstwę |
+| Licznik kontaktów | samoloty, rozpoznanie, tankowce, bombowce, krążące, statki, okręty, sankcje, „ciemne”, STS, kable; miga przy nowym kontakcie | pokazuje ostatni kontakt na mapie |
+| Przelot satelity | odliczanie do najbliższego przelotu nad QTH, AOS/LOS, elewacja | pokazuje satelitę |
+| Polecenie | briefing, SITREP (z regionem), pytanie do AI, stop, odśwież, PRIORYTET JEDEN, globus, AUTO-ZOOM, odtwarzanie, zoom, widok, kontakt, audio, głos, raport, terminal | wykonuje polecenie |
+| Pokrętło (Stream Deck +) | zoom mapy, odtwarzanie 48 h albo wybór teatru – na ekranie dotykowym | obrót / naciśnięcie / dotyk |
+
+Ustawienia przycisku (region, warstwa, licznik, polecenie, tryb pokrętła, adres serwera) są w panelu pod przyciskiem w aplikacji Stream Deck; tam też jest **SPRAWDŹ POŁĄCZENIE**. Żółty trójkąt na przycisku oznacza, że terminal nie jest otwarty albo serwer nie działa.
+
+Polecenia można też wysyłać z innych programów: `http://127.0.0.1:7707/api/cmd?do=theater&arg=hz` (do: theater, layer, zoom, replay, briefing, sitrep, ask, stop, globe, autozoom, alert, audio, view, event, sat, voice, refresh). Stan dla przycisków: `/api/deck`.
+
+Budowanie wtyczki ze źródeł: `cd streamdeck && npm install && npm run pack`.
+
 ## Szybki start
 
 ```

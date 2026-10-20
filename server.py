@@ -216,6 +216,60 @@ def settings_view():
 
 CABLES_GZ = None
 
+# ------------------------------------------------ Stream Deck: kolejka poleceń dla terminala i stan do wyświetlenia na przyciskach
+CMDS = deque(maxlen=50)
+CMD_CV = threading.Condition()
+CMD_N = [0]
+UI = {"at": 0}
+CMD_OK = {"theater", "layer", "zoom", "replay", "briefing", "sitrep", "stop", "globe", "autozoom", "alert", "event", "sat", "voice", "audio", "ask", "view"}
+
+
+def push_cmd(do, arg=""):
+    if do == "refresh":
+        return {"ok": True, "started": run_refresh()}
+    if do not in CMD_OK:
+        return {"ok": False, "error": "unknown command"}
+    with CMD_CV:
+        CMD_N[0] += 1
+        CMDS.append({"id": CMD_N[0], "do": do, "arg": str(arg)[:200], "at": time.time()})
+        CMD_CV.notify_all()
+    fresh = time.time() - UI.get("at", 0) < 40
+    return {"ok": True, "id": CMD_N[0], "terminal": fresh}
+
+
+def wait_cmds(after, timeout=25):
+    end = time.time() + timeout
+    with CMD_CV:
+        while True:
+            new = [c for c in CMDS if c["id"] > after and time.time() - c["at"] < 30]
+            if new or time.time() >= end:
+                return {"cmds": new, "last": CMD_N[0]}
+            CMD_CV.wait(max(0.1, end - time.time()))
+
+
+def deck_state():
+    now = time.time()
+    with AIR.lock:
+        ac = [r for r in AIR.ac.values() if now - r.get("upd", 0) < 300]
+    aev = list(AIR.events)[-1:] if AIR.events else []
+    sev = list(SEA.events)[-1:] if SEA.events else []
+    sm = SEA.summary or {}
+    w = sm.get("watch") or {}
+    cats = sm.get("cats") or {}
+    th = STATE.get("threat") or {}
+    ns = next_slot()
+    pull = ENGINE.pull or {}
+    return {"now": int(now * 1000), "lang": "en" if i18n.en() else "pl",
+            "threat": {"level": th.get("level"), "label": th.get("label", "")},
+            "job": {"running": JOB["running"], "pct": JOB["pct"], "step": JOB["step"], "pull": bool(pull.get("active"))},
+            "next": ns.isoformat() if ns else None, "stamp": STATE.get("stamp"),
+            "air": {"n": len(ac), "isr": sum(1 for r in ac if r.get("cat") == "isr"), "tanker": sum(1 for r in ac if r.get("cat") == "tanker"),
+                    "bomber": sum(1 for r in ac if r.get("cat") == "bomber"), "loiter": sum(1 for r in ac if r.get("loiter")),
+                    "ev": aev[0] if aev else None},
+            "sea": {"n": sm.get("total", 0), "mil": cats.get("military", 0) + cats.get("law", 0), "sanc": len(w.get("sanc", [])), "dark": len(w.get("dark", [])),
+                    "sts": len(w.get("sts", [])), "cable": len(w.get("cable", [])), "ev": sev[0] if sev else None},
+            "ui": dict(UI, age=round(now - UI.get("at", 0)))}
+
 
 def pin_token(pin):
     import hashlib
@@ -425,6 +479,18 @@ class H(BaseHTTPRequestHandler):
             return self._html(report.build(st, HIST, CFG.get("operator", {}).get("callsign") or ""))
         if p == "/api/cables":
             return self._cables()
+        if p == "/api/deck":
+            return self._json(deck_state())
+        if p == "/api/cmd/wait":
+            if "init=1" in self.path:
+                return self._json({"cmds": [], "last": CMD_N[0]})
+            a = int((re.search(r"after=(\d+)", self.path) or [0, 0])[1])
+            if a > CMD_N[0]:
+                a = 0                                   # serwer uruchomiony ponownie
+            return self._json(wait_cmds(a))
+        if p == "/api/cmd":                          # GET też działa – wygodne dla prostych wtyczek „Web Request”
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            return self._json(push_cmd((q.get("do") or [""])[0], (q.get("arg") or [""])[0]))
         if p.startswith("/api/history/"):
             return self._history(p[13:])
         if p == "/api/state":
@@ -543,6 +609,13 @@ class H(BaseHTTPRequestHandler):
             return self._json({"ok": False}, 403)
         if p in ("/api/settings", "/api/model/pull", "/api/model/rescan", "/api/notify/test") and not self._local():
             return self._json({"error": i18n.L("Ustawienia można zmieniać tylko na komputerze z KRONOS-em.", "Settings can only be changed on the computer running KRONOS.")}, 403)
+        if p == "/api/cmd":
+            b = self._body()
+            return self._json(push_cmd(str(b.get("do") or ""), b.get("arg") or ""))
+        if p == "/api/ui":
+            b = self._body()
+            UI.update({k: b[k] for k in ("layers", "replay", "autoz", "theater", "mode", "alert", "audio", "pass", "view") if k in b}); UI["at"] = time.time()
+            return self._json({"ok": True})
         if p == "/api/notify":
             b = self._body()
             ok = NOTIFY.send(str(b.get("kind") or "pass"), str(b.get("text") or "")[:500])
@@ -584,7 +657,7 @@ class H(BaseHTTPRequestHandler):
 def main():
     port = int(os.environ.get("KRONOS_PORT", CFG.get("port", 7707)))
     st = ENGINE.status()
-    log("KRONOS-7 v3.9 · start")
+    log("KRONOS-7 v3.10 · start")
     log(f"Sprzęt: {st['hardware']['gpu_name']} · VRAM {st['hardware']['vram_gb']} GB · RAM {st['hardware']['ram_gb']} GB")
     log(f"AI: {st['backend'] or 'brak (zainstaluj Ollamę)'} · model: {st['model'] or '—'} · zalecany: {st['recommended']}")
     log(st["reason"])

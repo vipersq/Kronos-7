@@ -1,0 +1,47 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>KRONOS-7</title>
+<style>
+  body{margin:0;padding:10px 12px;background:#2d2d2d;color:#d8d8d8;font:12px -apple-system,"Segoe UI",sans-serif}
+  .row{display:grid;grid-template-columns:90px 1fr;align-items:center;gap:8px;margin:0 0 8px}
+  label{color:#969696;text-align:right}
+  select,input{width:100%;box-sizing:border-box;background:#3d3d3d;color:#d8d8d8;border:0;border-radius:3px;padding:5px 6px;font:inherit}
+  button{background:#3d3d3d;color:#d8d8d8;border:1px solid #555;border-radius:3px;padding:5px 10px;font:inherit;cursor:pointer}
+  .sec[hidden]{display:none}
+  .hint{color:#8a8a8a;margin:2px 0 10px 98px;line-height:1.35}
+  .ok{color:#7dff9a}.bad{color:#ff6b6b}
+  hr{border:0;border-top:1px solid #444;margin:12px 0}
+</style>
+</head>
+<body>
+<div class="sec" id="s-theater" hidden>
+  <div class="row"><label for="theater" data-t="Teatr">Teatr</label><select id="theater" data-k="theater"></select></div>
+</div>
+<div class="sec" id="s-layer" hidden>
+  <div class="row"><label for="layer" data-t="Warstwa">Warstwa</label><select id="layer" data-k="layer"></select></div>
+  <p class="hint" data-t="Przycisk włącza i wyłącza warstwę na mapie.">Przycisk włącza i wyłącza warstwę na mapie.</p>
+</div>
+<div class="sec" id="s-counter" hidden>
+  <div class="row"><label for="metric" data-t="Licznik">Licznik</label><select id="metric" data-k="metric"></select></div>
+  <p class="hint" data-t="Miga przy nowym kontakcie. Naciśnięcie pokazuje ostatni kontakt na mapie.">Miga przy nowym kontakcie. Naciśnięcie pokazuje ostatni kontakt na mapie.</p>
+</div>
+<div class="sec" id="s-command" hidden>
+  <div class="row"><label for="cmd" data-t="Polecenie">Polecenie</label><select id="cmd" data-k="cmd"></select></div>
+  <div class="row" id="argRow"><label for="arg" data-t="Tekst">Tekst</label><input id="arg" data-k="arg" placeholder="np. Bałtyk"></div>
+  <div class="row"><label for="label" data-t="Napis">Napis</label><input id="label" data-k="label" maxlength="12" placeholder="(domyślny)"></div>
+</div>
+<div class="sec" id="s-dial" hidden>
+  <div class="row"><label for="dial" data-t="Pokrętło">Pokrętło</label><select id="dial" data-k="dial"></select></div>
+  <div class="row" id="stepRow"><label for="step" data-t="Krok">Krok</label><select id="step" data-k="step"><option value="1">1 min</option><option value="5" selected>5 min</option><option value="15">15 min</option><option value="60">60 min</option></select></div>
+  <p class="hint" id="dialHint"></p>
+</div>
+<div class="sec" id="s-info" hidden><p class="hint" id="info" style="margin-left:0"></p></div>
+<hr>
+<div class="row"><label for="url" data-t="Serwer">Serwer</label><input id="url" placeholder="http://127.0.0.1:7707" spellcheck="false"></div>
+<div class="row"><span></span><div><button id="test" type="button" data-t="SPRAWDŹ POŁĄCZENIE">SPRAWDŹ POŁĄCZENIE</button></div></div>
+<p class="hint" id="res"></p>
+<script src="pi.js"></script>
+</body>
+</html>

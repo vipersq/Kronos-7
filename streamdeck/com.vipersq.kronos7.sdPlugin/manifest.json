@@ -1,0 +1,177 @@
+{
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
+  "Name": "KRONOS-7",
+  "Version": "1.0.0.0",
+  "Author": "vipersq",
+  "Description": "Sterowanie terminalem KRONOS-7: poziom napięcia, odliczanie analizy AI, teatry działań, warstwy mapy, liczniki samolotów i statków, przeloty satelitów, odtwarzanie 48 h. / Control the KRONOS-7 intel terminal.",
+  "URL": "https://github.com/vipersq/Kronos-7",
+  "Icon": "imgs/plugin/icon",
+  "Category": "KRONOS-7",
+  "CategoryIcon": "imgs/plugin/category",
+  "CodePath": "bin/plugin.js",
+  "Nodejs": {
+    "Version": "20",
+    "Debug": "disabled"
+  },
+  "SDKVersion": 2,
+  "UUID": "com.vipersq.kronos7",
+  "Software": {
+    "MinimumVersion": "6.4"
+  },
+  "OS": [
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
+    },
+    {
+      "Platform": "mac",
+      "MinimumVersion": "12"
+    }
+  ],
+  "Actions": [
+    {
+      "UUID": "com.vipersq.kronos7.status",
+      "Name": "Poziom napięcia / Tension level",
+      "Tooltip": "Poziom napięcia z ostatniej analizy AI; naciśnięcie otwiera terminal",
+      "Icon": "imgs/actions/status",
+      "PropertyInspectorPath": "ui/pi.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "States": [
+        {
+          "Image": "imgs/keys/status",
+          "ShowTitle": false
+        }
+      ]
+    },
+    {
+      "UUID": "com.vipersq.kronos7.analysis",
+      "Name": "Analiza AI / AI analysis",
+      "Tooltip": "Odliczanie do następnej analizy AI (GPU zajęte); naciśnięcie uruchamia analizę",
+      "Icon": "imgs/actions/analysis",
+      "PropertyInspectorPath": "ui/pi.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "States": [
+        {
+          "Image": "imgs/keys/analysis",
+          "ShowTitle": false
+        }
+      ]
+    },
+    {
+      "UUID": "com.vipersq.kronos7.theater",
+      "Name": "Teatr działań / Theatre",
+      "Tooltip": "Przybliża mapę do wybranego regionu",
+      "Icon": "imgs/actions/theater",
+      "PropertyInspectorPath": "ui/pi.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "States": [
+        {
+          "Image": "imgs/keys/theater",
+          "ShowTitle": false
+        }
+      ]
+    },
+    {
+      "UUID": "com.vipersq.kronos7.layer",
+      "Name": "Warstwa mapy / Map layer",
+      "Tooltip": "Włącza i wyłącza warstwę mapy",
+      "Icon": "imgs/actions/layer",
+      "PropertyInspectorPath": "ui/pi.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "States": [
+        {
+          "Image": "imgs/keys/layer",
+          "ShowTitle": false
+        }
+      ]
+    },
+    {
+      "UUID": "com.vipersq.kronos7.counter",
+      "Name": "Licznik kontaktów / Contact counter",
+      "Tooltip": "Samoloty, okręty, sankcje, STS, kable… miga przy nowym kontakcie",
+      "Icon": "imgs/actions/counter",
+      "PropertyInspectorPath": "ui/pi.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "States": [
+        {
+          "Image": "imgs/keys/counter",
+          "ShowTitle": false
+        }
+      ]
+    },
+    {
+      "UUID": "com.vipersq.kronos7.pass",
+      "Name": "Przelot satelity / Satellite pass",
+      "Tooltip": "Odliczanie do najbliższego przelotu nad QTH",
+      "Icon": "imgs/actions/pass",
+      "PropertyInspectorPath": "ui/pi.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "States": [
+        {
+          "Image": "imgs/keys/pass",
+          "ShowTitle": false
+        }
+      ]
+    },
+    {
+      "UUID": "com.vipersq.kronos7.command",
+      "Name": "Polecenie / Command",
+      "Tooltip": "Briefing, SITREP, pytanie do AI, alarm, globus, odtwarzanie, zoom, raport…",
+      "Icon": "imgs/actions/command",
+      "PropertyInspectorPath": "ui/pi.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "SupportedInMultiActions": true,
+      "UserTitleEnabled": false,
+      "States": [
+        {
+          "Image": "imgs/keys/command",
+          "ShowTitle": false
+        }
+      ]
+    },
+    {
+      "UUID": "com.vipersq.kronos7.dial",
+      "Name": "Pokrętło mapy / Map dial",
+      "Tooltip": "Stream Deck +: zoom, odtwarzanie 48 h albo wybór teatru",
+      "Icon": "imgs/actions/dial",
+      "PropertyInspectorPath": "ui/pi.html",
+      "Controllers": [
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "Icon": "imgs/actions/dial",
+        "TriggerDescription": {
+          "Rotate": "Zoom / czas / teatr",
+          "Push": "Świat / start-pauza / przejdź",
+          "Touch": "Globus / odtwarzanie / świat"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/keys/dial"
+        }
+      ]
+    }
+  ]
+}
