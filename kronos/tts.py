@@ -69,6 +69,7 @@ class TTS:
         self.lock = threading.Lock()
         self.ms_err = None
         self.ms_cache = {}
+        self.crashes = 0          # kolejne awarie programu Piper – po 2 przestajemy go uruchamiać do restartu
 
     # ------------------------------------------------ głosy Microsoftu (edge-tts)
     def ms_ok(self):
@@ -148,7 +149,7 @@ class TTS:
 
     def status(self):
         en = i18n.en()
-        return {"engine": bool(self.exe()), "job": dict(self.job), "default": DEFAULT, "err": self.last_err, "mode": self.mode,
+        return {"engine": bool(self.exe()) and self.crashes < 2, "broken": self.crashes >= 2, "job": dict(self.job), "default": DEFAULT, "err": self.last_err, "mode": self.mode,
                 "ms": {"installed": self.ms_ok(), "err": self.ms_err, "default": MS_DEFAULT,
                        "voices": [{"id": k, "label": v[1 if en else 0], "lang": v[2]} for k, v in MS_VOICES.items()]},
                 "voices": [{"id": k, "label": v[1 if en else 0], "lang": v[2], "mb": v[4], "installed": self.has_voice(k)} for k, v in VOICES.items()]}
@@ -312,8 +313,12 @@ class TTS:
                 self.mode = "once"
                 try: (self.dir / "mode.txt").write_text("once")
                 except Exception: pass
+        if self.crashes >= 2:
+            self.last_err = i18n.L("Piper wyłączony po powtarzających się awariach na tym komputerze – użyj głosów Microsoftu", "Piper disabled after repeated crashes on this computer – use the Microsoft voices")
+            return None
         if b is None and self.mode == "once":
             b = self._synth_once(text, voice, ls, speaker)
+            self.crashes = 0 if b else self.crashes + 1
         if b:
             self.last_err = None
         elif self.last_err:
