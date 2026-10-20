@@ -4,7 +4,7 @@ Serwer odpytuje darmowe API (adsb.fi, zapasowo adsb.lol) co kilkanaście sekund,
 ale tylko wtedy, gdy terminal jest otwarty. Bez otwartej strony – raz na 5 minut.
 Trzyma ślad trasy każdego samolotu i wykrywa zdarzenia: wejście samolotu
 rozpoznawczego, bombowca lub tankowca w obserwowany rejon oraz kody alarmowe."""
-import gzip, json, threading, time, urllib.request
+import gzip, json, math, threading, time, urllib.request
 from collections import deque
 
 from .feeds import MIL_TYPES
@@ -29,6 +29,7 @@ ZONES = [
     ("Cieśnina Tajwańska", (21.0, 27.0), (117.0, 124.0)),
     ("Morze Południowochińskie", (5.0, 21.0), (105.0, 120.0)),
     ("Półwysep Koreański", (33.0, 43.0), (124.0, 131.0)),
+    ("Morze Północne", (51.0, 61.0), (-4.0, 9.0)),
 ]
 NOTABLE = {"isr", "bomber", "tanker"}
 FAMILY = [("K35", "tanker"), ("KC1", "tanker"), ("KC4", "tanker"), ("R13", "isr"), ("RC1", "isr"), ("E3T", "isr"), ("E3C", "isr"),
@@ -39,7 +40,7 @@ CAT_EN = {"isr": "reconnaissance aircraft", "tanker": "tanker", "bomber": "bombe
 SQUAWK_EN = {"7500": "hijack (7500)", "7600": "radio failure (7600)", "7700": "emergency (7700)"}
 ZONE_EN = {"Morze Czarne": "Black Sea", "Bałtyk": "Baltic Sea", "Polska": "Poland", "Rumunia i Mołdawia": "Romania and Moldova", "Zatoka Perska i Ormuz": "Persian Gulf and Hormuz",
            "Morze Czerwone i Jemen": "Red Sea and Yemen", "Wschodnie Morze Śródziemne": "Eastern Mediterranean", "Cieśnina Tajwańska": "Taiwan Strait",
-           "Morze Południowochińskie": "South China Sea", "Półwysep Koreański": "Korean Peninsula"}
+           "Morze Południowochińskie": "South China Sea", "Półwysep Koreański": "Korean Peninsula", "Morze Północne": "North Sea"}
 def zone_name(z):
     return ZONE_EN.get(z, z) if i18n.en() else z
 
@@ -48,6 +49,28 @@ def zone_of(lat, lon):
     for name, (a, b), (c, d) in ZONES:
         if a <= lat <= b and c <= lon <= d:
             return name
+    return None
+
+
+def loiter_of(tr):
+    """Wykrywa krążenie (orbita rozpoznawcza, tankowanie, patrol) z trasy ostatnich 30 minut.
+    Zwraca (szer., dł., promień km, suma skrętów w stopniach) albo None."""
+    if len(tr) < 10 or tr[-1][2] - tr[0][2] < 15 * 60000:
+        return None
+    lat0 = sum(p[0] for p in tr) / len(tr); lon0 = sum(p[1] for p in tr) / len(tr)
+    k = math.cos(math.radians(lat0))
+    r = max(math.hypot((p[0] - lat0) * 111.2, (p[1] - lon0) * 111.2 * k) for p in tr)
+    turn, prev = 0.0, None
+    for a, b in zip(tr, tr[1:]):
+        dy, dx = b[0] - a[0], (b[1] - a[1]) * k
+        if abs(dx) + abs(dy) < 1e-4:
+            continue
+        h = math.degrees(math.atan2(dx, dy))
+        if prev is not None:
+            turn += abs((h - prev + 180) % 360 - 180)
+        prev = h
+    if turn >= 300 and r < 150:
+        return round(lat0, 3), round(lon0, 3), round(r), round(turn)
     return None
 
 
@@ -178,6 +201,14 @@ class LiveAir:
                     while tr and (tr[0][2] < cut or len(tr) > 70):
                         tr.pop(0)
                 seen.add(hx)
+                lo = loiter_of(tr) if not ground else None
+                if lo and not rec.get("loiter") and cat != "other" or (lo and not rec.get("loiter") and cat == "other" and (alt or 0) > 15000):
+                    zz = zone_of(lo[0], lo[1])
+                    where = zone_name(zz) if zz else f"{abs(lo[0]):.1f}°{'N' if lo[0] >= 0 else 'S'} {abs(lo[1]):.1f}°{'E' if lo[1] >= 0 else 'W'}"
+                    lbl = f"{rec['cs'] or hx} ({rec['desc'] or rec['model'].split(' (')[0] or t or '?'})"
+                    new_events.append({"kind": "loiter", "hex": hx, "cat": cat, "zone": zz,
+                                       "msg": i18n.L(f"{lbl} krąży nad: {zz or where} (promień ok. {lo[2]} km)", f"{lbl} is orbiting over: {where} (radius about {lo[2]} km)")})
+                rec["loiter"] = {"lat": lo[0], "lon": lo[1], "r": lo[2], "turn": lo[3]} if lo else None
                 # zdarzenia
                 cname = (REG.COUNTRY_EN.get(country, country) if i18n.en() else country)
                 label = f"{rec['cs'] or hx} ({rec['desc'] or rec['model'].split(' (')[0] or t or '?'}{', ' + cname if cname else ''})"
@@ -229,7 +260,7 @@ class LiveAir:
         if was_idle:
             self.wake.set()          # ktoś otworzył terminal – pobierz od razu
         with self.lock:
-            ac = [{k: v for k, v in r.items() if k not in ("upd", "first", "sq_ev")} for r in self.ac.values()]
+            ac = [{k: v for k, v in r.items() if k not in ("upd", "first", "sq_ev")} for r in self.ac.values()]   # zawiera „loiter”
             ev = [e for e in self.events if e["at"] > since_ev]
             st = dict(self.status)
         rank = {"isr": 0, "bomber": 1, "tanker": 2, "transport": 3, "fighter": 4, "other": 5}

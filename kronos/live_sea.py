@@ -7,7 +7,7 @@
    wpisywany w oknie OPERATOR. Strumień obejmuje cały świat albo tylko obserwowane rejony.
 Statki są pamiętane 6 godzin od ostatniego sygnału i zapisywane na dysk co 5 minut.
 Klient WebSocket jest napisany na bibliotece standardowej – nic nie trzeba doinstalowywać."""
-import base64, gzip, json, os, socket, ssl, struct, threading, time, urllib.request
+import base64, csv, gzip, io, json, math, os, re, socket, ssl, struct, threading, time, urllib.request
 from array import array
 from pathlib import Path
 from collections import deque
@@ -125,6 +125,9 @@ class LiveSea:
         self.meta_at = 0
         self.last_view = 0
         self.summary = {}
+        self.sanc, self.sanc_names, self.sanc_at = {}, {}, 0      # OFAC: IMO -> (nazwa, program), nazwa -> IMO
+        self.cables, self.cable_grid, self.cable_segs, self.cable_names, self.cable_at = None, {}, [], [], 0
+        self.watch = {"dark": {}, "sts": {}, "cable": {}}
         self.file = Path(data_dir) / "ships.json.gz" if data_dir else None
         self.saved_at = time.time()
         self.status = {"digitraffic": {"ok": None, "err": None, "at": 0, "n": 0},
@@ -187,6 +190,8 @@ class LiveSea:
                 rec[k] = v
         if kw.get("type"):
             rec["cat"], rec["kind"] = REG.ship_type(kw["type"])
+        if (kw.get("imo") or kw.get("name")) and self.sanc:
+            self._sanc_match(rec)
         rec["src"] = src
         return rec
 
@@ -202,6 +207,10 @@ class LiveSea:
                 del tr[:3]
         if rec["cat"] in ("military", "law") or nav in (6, 14):
             self._events(rec)
+        if rec.get("sanc") and not rec.get("sanc_ev"):
+            rec["sanc_ev"] = 1
+            p = rec["sanc"]["prog"]
+            self._event(rec, "sanc", i18n.L(f"Statek z listy sankcji OFAC ({p}): {self._label(rec)}", f"OFAC-sanctioned vessel ({p}): {self._label(rec)}"))
 
     def _label(self, rec):
         if i18n.en():
@@ -334,6 +343,196 @@ class LiveSea:
                 self._pos(rec, body.get("Latitude", md.get("latitude")), body.get("Longitude", md.get("longitude")), ts,
                           body.get("Sog"), body.get("Cog"), body.get("TrueHeading"), body.get("NavigationalStatus"))
 
+
+    # ------------------------------------------------ listy sankcyjne OFAC (statki)
+    def load_sanctions(self):
+        f = Path(self.file).parent / "ofac_vessels.json" if self.file else None
+        try:
+            if f and f.exists() and time.time() - f.stat().st_mtime < 86400:
+                d = json.loads(f.read_text(encoding="utf-8"))
+            else:
+                req = urllib.request.Request("https://www.treasury.gov/ofac/downloads/sdn.csv", headers={"User-Agent": "Mozilla/5.0 " + UA})
+                with urllib.request.urlopen(req, timeout=90) as r:
+                    txt = r.read().decode("latin-1")
+                d = {}
+                for row in csv.reader(io.StringIO(txt)):
+                    if len(row) < 12 or row[2].strip() != "vessel":
+                        continue
+                    m = re.search(r"IMO (\d{7})", row[11])
+                    if m:
+                        d[m.group(1)] = [row[1].strip(), row[3].strip(), row[9].strip() if row[9].strip() != "-0-" else ""]
+                if f and d:
+                    f.write_text(json.dumps(d), encoding="utf-8")
+            self.sanc = {int(k): v for k, v in d.items()}
+            self.sanc_names = {v[0].upper(): k for k, v in self.sanc.items()}
+            self.sanc_at = time.time()
+            with self.lock:
+                for r in self.ships.values():
+                    self._sanc_match(r)
+            self.log(f"Statki: lista sankcji OFAC – {len(self.sanc)} statków z numerem IMO.")
+        except Exception as e:
+            self.log(f"Statki: nie udało się pobrać listy OFAC ({e}).")
+            self.sanc_at = time.time() - 86400 + 3600     # ponów za godzinę
+
+    def _sanc_match(self, rec):
+        imo = rec.get("imo")
+        hit = self.sanc.get(int(imo)) if imo else None
+        if not hit and rec.get("name") and rec["cat"] in ("tanker", "cargo", "other"):
+            k = self.sanc_names.get(rec["name"].upper())
+            hit = self.sanc.get(k) if k and not imo else None      # sama nazwa – tylko gdy statek nie podaje IMO
+        if hit and not rec.get("sanc"):
+            rec["sanc"] = {"name": hit[0], "prog": hit[1], "flag": hit[2], "by": "IMO" if imo else "nazwa"}
+
+    def _event(self, rec, kind, msg):
+        ev = {"kind": kind, "msg": msg, "at": int(time.time() * 1000), "mmsi": rec["mmsi"], "zone": zone_of(rec["lat"], rec["lon"]) if "lat" in rec else None}
+        self.events.append(ev)
+        self.log("STATKI: " + msg)
+
+    # ------------------------------------------------ kable podmorskie
+    def load_cables(self):
+        f = Path(self.file).parent / "cables.json" if self.file else None
+        try:
+            if f and f.exists() and time.time() - f.stat().st_mtime < 30 * 86400:
+                d = json.loads(f.read_text(encoding="utf-8"))
+            else:
+                req = urllib.request.Request("https://www.submarinecablemap.com/api/v3/cable/cable-geo.json", headers={"User-Agent": UA})
+                with urllib.request.urlopen(req, timeout=60) as r:
+                    d = json.loads(r.read())
+                if f:
+                    f.write_text(json.dumps(d), encoding="utf-8")
+            grid, lines, segs, names = {}, [], [], []
+            for ft in d.get("features", []):
+                name = (ft.get("properties") or {}).get("name") or "?"
+                names.append(name)
+                g = ft.get("geometry") or {}
+                parts = g.get("coordinates") or []
+                if g.get("type") == "LineString":
+                    parts = [parts]
+                for part in parts:
+                    pts = [(p[1], p[0]) for p in part if len(p) >= 2]
+                    lines.append({"n": name, "c": [[round(p[1], 3), round(p[0], 3)] for p in pts]})
+                    # pomijamy ok. 15 km od lądowania kabla – tam statki stoją w portach
+                    cum, L = [0.0], 0.0
+                    for a, b in zip(pts, pts[1:]):
+                        L += math.hypot((b[0] - a[0]) * 111.2, (b[1] - a[1]) * 111.2 * math.cos(math.radians(a[0]))); cum.append(L)
+                    for i, (a, b) in enumerate(zip(pts, pts[1:])):
+                        if cum[i] < 15 or L - cum[i + 1] < 15:
+                            continue
+                        si = len(segs); segs.append((a[0], a[1], b[0], b[1], len(names) - 1))
+                        for cy in range(int(math.floor(min(a[0], b[0]))), int(math.floor(max(a[0], b[0]))) + 1):
+                            for cx in range(int(math.floor(min(a[1], b[1]))), int(math.floor(max(a[1], b[1]))) + 1):
+                                grid.setdefault(cy * 1000 + cx, []).append(si)
+            self.cables, self.cable_grid, self.cable_segs, self.cable_names, self.cable_at = lines, grid, segs, names, time.time()
+            self.log(f"Statki: mapa kabli podmorskich – {len(lines)} odcinków.")
+        except Exception as e:
+            self.log(f"Statki: nie udało się pobrać mapy kabli ({e}).")
+            self.cable_at = time.time() - 30 * 86400 + 3600
+
+    def _near_cable(self, lat, lon):
+        best = None
+        k = math.cos(math.radians(lat))
+        for si in self.cable_grid.get(int(math.floor(lat)) * 1000 + int(math.floor(lon)), []):
+            a0, a1, b0, b1, ni = self.cable_segs[si]; name = self.cable_names[ni]
+            ax, ay, bx, by, px, py = a1 * k, a0, b1 * k, b0, lon * k, lat
+            dx, dy = bx - ax, by - ay
+            t = max(0, min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy or 1e-12)))
+            d = math.hypot(px - (ax + t * dx), py - (ay + t * dy)) * 111.2
+            if d < 1.0 and (not best or d < best[1]):
+                best = (name, d)
+        return best
+
+    # ------------------------------------------------ wykrywanie: ciemne statki, STS, kotwiczenie nad kablem
+    def check_watch(self):
+        now = time.time()
+        W = self.watch
+        with self.lock:
+            ships = [r for r in self.ships.values() if "lat" in r]
+        pairs = {}
+        for r in ships:
+            age = now - (r.get("upd") or 0)
+            z = zone_of(r["lat"], r["lon"])
+            cat = r["cat"]
+            tr = r["trail"]
+            # „ciemny” statek: nadawał regularnie, płynął, w obserwowanym rejonie – i zamilkł
+            if z and cat in ("tanker", "cargo", "military", "law", "other") and r.get("src") == "aisstream.io":
+                regular = len(tr) >= 9 and tr[-1] - tr[-7] < 2 * 3600
+                if age > 5400 and regular and (r.get("sog") or 0) >= 2 and r["mmsi"] not in W["dark"]:
+                    W["dark"][r["mmsi"]] = {"since": r.get("upd"), "lat": r["lat"], "lon": r["lon"], "zone": z}
+                    self._event(r, "dark", i18n.L(f"Statek przestał nadawać AIS ({round(age / 3600, 1)} h ciszy): {self._label(r)} – {z}. Możliwe wyłączenie nadajnika albo brak zasięgu odbiorników.",
+                                                  f"Ship stopped transmitting AIS ({round(age / 3600, 1)} h of silence): {self._label(r)} – {zone_name(z)}. Possibly switched off, or out of receiver range."))
+                elif age < 600 and r["mmsi"] in W["dark"]:
+                    d0 = W["dark"].pop(r["mmsi"])
+                    gap = (now - (d0["since"] or now)) / 3600
+                    km = math.hypot((r["lat"] - d0["lat"]) * 111.2, (r["lon"] - d0["lon"]) * 111.2 * math.cos(math.radians(r["lat"])))
+                    if gap > 2:
+                        self._event(r, "dark_end", i18n.L(f"{self._label(r)} znów nadaje po {gap:.1f} h; przesunął się o {km:.0f} km.",
+                                                          f"{self._label(r)} is transmitting again after {gap:.1f} h; moved {km:.0f} km."))
+            if age > 1800:
+                continue
+            slow = (r.get("sog") or 0) < 1.0
+            # zbliżenie dwóch tankowców na morzu (możliwy przeładunek STS)
+            if slow and cat == "tanker" and z:
+                pairs.setdefault((round(r["lat"] * 100), round(r["lon"] * 100)), []).append(r)
+            # statek stoi nad kablem podmorskim
+            if slow and self.cable_grid and cat not in ("pleasure", "sar", "service", "fishing"):
+                nc = self._near_cable(r["lat"], r["lon"])
+                if nc:
+                    c = W["cable"].get(r["mmsi"])
+                    if not c:
+                        W["cable"][r["mmsi"]] = {"since": now, "cable": nc[0], "d": round(nc[1], 2), "lat": r["lat"], "lon": r["lon"], "zone": z, "told": False}
+                    elif not c["told"] and now - c["since"] > 1800:
+                        c["told"] = True
+                        self._event(r, "cable", i18n.L(f"{self._label(r)} stoi od ponad 30 min ok. {c['d']} km od kabla {c['cable']}" + (f" – {z}" if z else ""),
+                                                       f"{self._label(r)} has been stationary for over 30 min about {c['d']} km from the {c['cable']} cable" + (f" – {zone_name(z)}" if z else "")))
+                else:
+                    W["cable"].pop(r["mmsi"], None)
+            elif r["mmsi"] in W["cable"] and not slow:
+                W["cable"].pop(r["mmsi"], None)
+        # pary tankowców w promieniu ok. 300 m
+        seen = set()
+        for (cy, cx), lst in pairs.items():
+            cand = list(lst)
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    if dy or dx:
+                        cand += pairs.get((cy + dy, cx + dx), [])
+            for a in lst:
+                for b in cand:
+                    if a["mmsi"] >= b["mmsi"]:
+                        continue
+                    k = (a["mmsi"], b["mmsi"])
+                    if k in seen:
+                        continue
+                    d = math.hypot((a["lat"] - b["lat"]) * 111.2, (a["lon"] - b["lon"]) * 111.2 * math.cos(math.radians(a["lat"])))
+                    if d < 0.3:
+                        seen.add(k)
+                        s = W["sts"].get(k)
+                        if not s:
+                            W["sts"][k] = {"since": now, "a": a["mmsi"], "b": b["mmsi"], "lat": a["lat"], "lon": a["lon"], "zone": zone_of(a["lat"], a["lon"]), "told": False, "d": round(d * 1000)}
+                        else:
+                            s["seen"] = now
+                            if not s["told"] and now - s["since"] > 1800:
+                                s["told"] = True
+                                self._event(a, "sts", i18n.L(f"Możliwy przeładunek STS: {self._label(a)} i {self._label(b)} stoją {s['d']} m od siebie od ponad 30 min – {s['zone']}",
+                                                             f"Possible STS transfer: {self._label(a)} and {self._label(b)} have been {s['d']} m apart for over 30 min – {zone_name(s['zone'])}"))
+        for k in [k for k, v in W["sts"].items() if k not in seen and now - v.get("seen", v["since"]) > 3600]:
+            del W["sts"][k]
+        for k in [k for k, v in W["dark"].items() if now - (v["since"] or now) > 24 * 3600]:
+            del W["dark"][k]
+
+    def watch_view(self):
+        W, out = self.watch, {}
+        def nm(m):
+            r = self.ships.get(m) or {}
+            return {"mmsi": m, "name": r.get("name") or str(m), "cat": r.get("cat"), "flag": r.get("flag"), "flag_e": REG.FLAGS.get(r.get("flag"), "")}
+        with self.lock:
+            out["dark"] = [dict(nm(m), since=v["since"] and int(v["since"] * 1000), lat=v["lat"], lon=v["lon"], zone=v["zone"]) for m, v in W["dark"].items()][:40]
+            out["sts"] = [dict(a=nm(v["a"]), b=nm(v["b"]), since=int(v["since"] * 1000), lat=v["lat"], lon=v["lon"], zone=v["zone"], d=v["d"], confirmed=v["told"]) for v in W["sts"].values() if time.time() - v["since"] > 600][:40]
+            out["cable"] = [dict(nm(m), cable=v["cable"], d=v["d"], since=int(v["since"] * 1000), lat=v["lat"], lon=v["lon"], zone=v["zone"], confirmed=v["told"]) for m, v in W["cable"].items() if time.time() - v["since"] > 600][:40]
+            out["sanc"] = [dict(nm(r["mmsi"]), prog=r["sanc"]["prog"], by=r["sanc"]["by"], lat=r["lat"], lon=r["lon"], zone=zone_of(r["lat"], r["lon"]), ts=r.get("ts"))
+                           for r in self.ships.values() if r.get("sanc") and "lat" in r][:200]
+        return out
+
     # ------------------------------------------------ pętla: sprzątanie, podsumowanie, zapis
     def build_summary(self):
         zones, hot, cats = {}, [], [0] * len(CATS)
@@ -354,10 +553,18 @@ class LiveSea:
                 hot.append({"mmsi": r["mmsi"], "name": r.get("name"), "cat": r["cat"], "flag": r["flag"], "flag_e": REG.FLAGS.get(r["flag"], ""),
                             "zone": z, "lat": r["lat"], "lon": r["lon"], "ts": r.get("ts")})
         hot.sort(key=lambda h: -(h["ts"] or 0))
-        self.summary = {"zones": zones, "hot": hot[:40], "cats": dict(zip(CATS, cats)), "total": len(items)}
+        self.summary = {"zones": zones, "hot": hot[:40], "cats": dict(zip(CATS, cats)), "total": len(items), "watch": self.watch_view()}
 
     def loop(self):
         while True:
+            if time.time() - self.sanc_at > 86400:
+                threading.Thread(target=self.load_sanctions, daemon=True).start(); self.sanc_at = time.time()
+            if time.time() - self.cable_at > 30 * 86400:
+                threading.Thread(target=self.load_cables, daemon=True).start(); self.cable_at = time.time()
+            try:
+                self.check_watch()
+            except Exception as e:
+                self.log(f"Statki: błąd wykrywania ({e}).")
             if self.use_dt and time.time() - self.last_view < 120:
                 self.poll_dt()
             with self.lock:
@@ -383,7 +590,8 @@ class LiveSea:
         th = since / 1000 - 2 if since else 0
         with self.lock:
             rows = [[r["mmsi"], r["lat"], r["lon"], r.get("sog"), None if r.get("cog") is None else int(r["cog"]), CAT_I.get(r["cat"], 9),
-                     int((r.get("ts") or 0) / 1000), r.get("name") or "", None if r.get("hdg") is None else int(r["hdg"])]
+                     int((r.get("ts") or 0) / 1000), r.get("name") or "", None if r.get("hdg") is None else int(r["hdg"]),
+                     (1 if r.get("sanc") else 0) | (2 if r["mmsi"] in self.watch["cable"] else 0) | (4 if r["mmsi"] in self.watch["dark"] else 0)]
                     for r in self.ships.values() if "lat" in r and (r.get("upd") or 0) > th]
             ev = [e for e in self.events if e["at"] > since_ev]
             st = json.loads(json.dumps(self.status))
@@ -402,4 +610,5 @@ class LiveSea:
         out["foc"] = r["flag"] in REG.FLAGS_OF_CONVENIENCE
         out["u"] = LINK.format(mmsi=mmsi)
         out["zone"] = zone_of(r["lat"], r["lon"]) if "lat" in r else None
+        out["cable"] = self.watch["cable"].get(mmsi)
         return out

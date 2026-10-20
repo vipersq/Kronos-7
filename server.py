@@ -2,6 +2,7 @@
 """KRONOS-7 — lokalny serwer planetarnego systemu wywiadowczego.
 Uruchom:  python server.py   (potem przeglądarka: http://127.0.0.1:7707)"""
 import atexit, gzip, json, mimetypes, os, re, sys, threading, time, traceback, urllib.parse, webbrowser
+mimetypes.add_type("application/manifest+json", ".webmanifest"); mimetypes.add_type("image/svg+xml", ".svg"); mimetypes.add_type("text/javascript", ".js")
 from collections import deque
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -9,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-from kronos import analyst, collector, i18n, live_air, live_sea, llm, sats  # noqa: E402
+from kronos import analyst, collector, history, i18n, live_air, live_sea, llm, notify, report, satinfo, sats  # noqa: E402
 
 DATA = ROOT / "data"; ARCH = DATA / "archive"; WEB = ROOT / "web"
 ARCH.mkdir(parents=True, exist_ok=True)
@@ -74,6 +75,12 @@ ENGINE = llm.Engine(CFG, log)
 AIR = live_air.LiveAir(CFG, log)
 SEA = live_sea.LiveSea(CFG, log, DATA)
 SATS = sats.Catalog(DATA, log)
+SATINFO = satinfo.SatInfo(DATA, SATS, log)
+HIST = history.History(DATA, log)
+NOTIFY = notify.Notifier(log)
+NOTIFY.configure(SETTINGS)
+EMO = {"air": "✈", "sea": "⚓"}
+HIST.on_event = lambda src, e: NOTIFY.send(notify.kind_of(src, e), f"{EMO.get(src, '')} {e.get('msg')}")
 
 
 def progress(step, pct):
@@ -92,9 +99,16 @@ def run_refresh():
             ENGINE.refresh()
             st = analyst.Pipeline(CFG, ENGINE, log, progress).run(STATE)
             with STATE_LOCK:
+                prev = (STATE.get("threat") or {}).get("level")
                 STATE = st
                 save_state(st)
             log("Odczyt zapisany.")
+            lvl = (st.get("threat") or {}).get("level")
+            if prev is not None and lvl is not None and lvl > prev:
+                NOTIFY.send("threat", i18n.L(f"⚠ Poziom napięcia wzrósł: {prev} → {lvl} ({(st.get('threat') or {}).get('label', '')}). {(st.get('threat') or {}).get('note', '')}",
+                                             f"⚠ Tension level rose: {prev} → {lvl} ({(st.get('threat') or {}).get('label', '')}). {(st.get('threat') or {}).get('note', '')}"))
+            if st.get("briefing"):
+                NOTIFY.send("briefing", "📋 " + st["briefing"])
         except Exception as e:
             JOB["error"] = str(e)
             log("BŁĄD odświeżania: " + str(e))
@@ -193,7 +207,60 @@ def settings_view():
             "auto_pull": CFG["ai"].get("auto_pull", True), "installed": [m["name"] for m in st["installed"]],
             "recommended": st["recommended"], "configured": bool(CFG["operator"]["callsign"]),
             "ais_key": ("…" + SETTINGS["aisstream_key"][-4:]) if SETTINGS.get("aisstream_key") else "",
-            "language": CFG.get("language", "pl"), "ais_scope": SETTINGS.get("ais_scope", "world")}
+            "language": CFG.get("language", "pl"), "ais_scope": SETTINGS.get("ais_scope", "world"), "qth": SETTINGS.get("qth"),
+            "tg_token": ("…" + SETTINGS["tg_token"][-4:]) if SETTINGS.get("tg_token") else "", "tg_chat": SETTINGS.get("tg_chat", ""),
+            "discord": ("…" + SETTINGS["discord"][-6:]) if SETTINGS.get("discord") else "", "notify_kinds": sorted(NOTIFY.cfg.get("kinds", [])),
+            "notify_all": {k: v[1 if i18n.en() else 0] for k, v in notify.KINDS.items()}, "notify_err": NOTIFY.last_err,
+            "lan": bool(SETTINGS.get("lan")), "lan_pin": bool(SETTINGS.get("lan_pin")), "lan_urls": lan_urls()}
+
+
+CABLES_GZ = None
+
+
+def pin_token(pin):
+    import hashlib
+    return hashlib.sha256(("kronos7:" + pin + ":" + str(DATA.resolve())).encode()).hexdigest()[:24]
+
+
+PIN_PAGE = """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KRONOS-7</title><link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#050805">
+<style>body{background:#050805;color:#7dff9a;font:16px Consolas,monospace;display:grid;place-items:center;height:100vh;margin:0}
+form{display:grid;gap:12px;text-align:center}h1{letter-spacing:.3em;font-size:20px;margin:0}input{background:#000;border:1px solid #7dff9a;color:#7dff9a;font:24px Consolas,monospace;text-align:center;padding:8px;width:180px;letter-spacing:.3em}
+button{background:#7dff9a;color:#000;border:0;font:700 15px Consolas,monospace;padding:10px}p{color:#ff6b5b;min-height:1em;margin:0}</style></head>
+<body><form id="f"><h1>KRONOS-7</h1><div>{{T}}</div><input id="p" type="password" inputmode="numeric" autocomplete="current-password" autofocus><button>{{B}}</button><p id="e"></p></form>
+<script>f.onsubmit=async e=>{e.preventDefault();const r=await fetch('/api/pin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:p.value})});
+if(r.ok)location.href='/';else{document.getElementById('e').textContent='✕';p.value='';}};</script></body></html>"""
+
+
+def lan_urls():
+    import socket
+    port = int(os.environ.get("KRONOS_PORT", CFG.get("port", 7707)))
+    ips = set()
+    try:
+        s0 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s0.connect(("10.255.255.255", 1)); ips.add(s0.getsockname()[0]); s0.close()
+    except Exception:
+        pass
+    return [f"http://{ip}:{port}" for ip in sorted(ips) if not ip.startswith("127.")]
+
+
+def parse_qth(txt):
+    """Lokator Maidenhead (2–8 znaków) albo „szer, dł” -> {lat, lon, loc}."""
+    t = (txt or "").strip()
+    m = re.match(r"^\s*(-?\d+(?:\.\d+)?)\s*[,; ]\s*(-?\d+(?:\.\d+)?)\s*$", t)
+    if m:
+        lat, lon = float(m.group(1)), float(m.group(2))
+        if -90 <= lat <= 90 and -180 <= lon <= 180:
+            return {"lat": lat, "lon": lon, "loc": None}
+        return None
+    t = t.upper()
+    if not re.match(r"^[A-R]{2}(\d{2}([A-X]{2}(\d{2})?)?)?$", t):
+        return None
+    lon, lat = (ord(t[0]) - 65) * 20 - 180, (ord(t[1]) - 65) * 10 - 90
+    w, h = 20.0, 10.0
+    if len(t) >= 4: lon += int(t[2]) * 2; lat += int(t[3]); w, h = 2.0, 1.0
+    if len(t) >= 6: lon += (ord(t[4]) - 65) * (2 / 24); lat += (ord(t[5]) - 65) * (1 / 24); w, h = 2 / 24, 1 / 24
+    if len(t) >= 8: lon += int(t[6]) * (2 / 240); lat += int(t[7]) * (1 / 240); w, h = 2 / 240, 1 / 240
+    return {"lat": round(lat + h / 2, 4), "lon": round(lon + w / 2, 4), "loc": t}
 
 
 def save_settings(body):
@@ -204,6 +271,38 @@ def save_settings(body):
         if not CALL_RE.match(c):
             return False, i18n.L("Identyfikator: 1–20 znaków, litery, cyfry oraz / - _ .", "Operator ID: 1–20 characters, letters, digits and / - _ .")
         new["callsign"] = c
+    if str(body.get("tg_token") or "").strip():
+        new["tg_token"] = str(body["tg_token"]).strip()
+    if "tg_chat" in body:
+        new["tg_chat"] = str(body["tg_chat"]).strip()[:40]
+    if str(body.get("discord") or "").strip():
+        d = str(body["discord"]).strip()
+        if not re.match(r"^https://(discord(app)?\.com)/api/webhooks/", d):
+            return False, i18n.L("Adres webhooka Discord powinien zaczynać się od https://discord.com/api/webhooks/", "A Discord webhook URL should start with https://discord.com/api/webhooks/")
+        new["discord"] = d
+    for k in ("tg_token", "discord"):
+        if body.get("clear_" + k):
+            new.pop(k, None)
+    if isinstance(body.get("notify_kinds"), list):
+        new["notify_kinds"] = [k for k in body["notify_kinds"] if k in notify.KINDS]
+    if "lan" in body:
+        new["lan"] = bool(body["lan"])
+    if "lan_pin" in body:
+        pin = str(body["lan_pin"]).strip()
+        if pin and not re.match(r"^\d{4,8}$", pin):
+            return False, i18n.L("PIN: 4–8 cyfr.", "PIN: 4–8 digits.")
+        if pin:
+            new["lan_pin"] = pin
+        elif body.get("clear_pin"):
+            new.pop("lan_pin", None)
+    if "qth" in body:
+        if not str(body["qth"]).strip():
+            new.pop("qth", None)
+        else:
+            q = parse_qth(body["qth"])
+            if not q:
+                return False, i18n.L("QTH: wpisz lokator (np. IO91WM) albo współrzędne „51.07, -1.79”.", "QTH: enter a locator (e.g. IO91WM) or coordinates “51.07, -1.79”.")
+            new["qth"] = q
     if body.get("ais_scope") in ("world", "zones"):
         new["ais_scope"] = body["ais_scope"]
     if body.get("language") in ("pl", "en"):
@@ -233,7 +332,10 @@ def save_settings(body):
     SETTINGS_FILE.write_text(json.dumps(new, ensure_ascii=False, indent=2), encoding="utf-8")
     apply_settings(new)
     ENGINE._choose()
+    if new.get("lan") and not new.get("lan_pin"):
+        return False, i18n.L("Dostęp z sieci lokalnej wymaga PIN-u (4–8 cyfr).", "LAN access needs a PIN (4–8 digits).")
     SEA.set_key(new.get("aisstream_key", ""), new.get("ais_scope", "world"))
+    NOTIFY.configure(new)
     log(f"Ustawienia zapisane (operator: {new.get('callsign') or '—'}).")
     return True, None
 
@@ -278,8 +380,53 @@ class H(BaseHTTPRequestHandler):
             try: gen.close()
             except Exception: pass
 
+    def _local(self):
+        return self.client_address[0] in ("127.0.0.1", "::1", "::ffff:127.0.0.1")
+
+    def _authed(self):
+        if self._local():
+            return True
+        pin = SETTINGS.get("lan_pin")
+        if not SETTINGS.get("lan") or not pin:
+            return False
+        ck = self.headers.get("Cookie") or ""
+        return ("k7pin=" + pin_token(pin)) in ck
+
+    def _html(self, txt, code=200, extra=None):
+        b = txt.encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(b)))
+        self.send_header("Cache-Control", "no-store")
+        for k, v in (extra or {}).items():
+            self.send_header(k, v)
+        self.end_headers(); self.wfile.write(b)
+
+    def _gate(self, p):
+        """Dostęp z sieci lokalnej (telefon/tablet) tylko po podaniu PIN-u. Komputer, na którym działa KRONOS, wchodzi bez PIN-u."""
+        if self._authed():
+            return True
+        if p in ("/pin", "/api/pin", "/manifest.webmanifest", "/icon.svg"):
+            return True
+        if p.startswith("/api/"):
+            self._json({"error": "pin"}, 401)
+        else:
+            self.send_response(302); self.send_header("Location", "/pin"); self.end_headers()
+        return False
+
     def do_GET(self):
         p = self.path.split("?")[0]
+        if not self._gate(p):
+            return
+        if p == "/pin":
+            return self._html(PIN_PAGE.replace("{{T}}", i18n.L("PODAJ PIN", "ENTER PIN")).replace("{{B}}", i18n.L("WEJDŹ", "ENTER")))
+        if p == "/report":
+            with STATE_LOCK: st = STATE
+            return self._html(report.build(st, HIST, CFG.get("operator", {}).get("callsign") or ""))
+        if p == "/api/cables":
+            return self._cables()
+        if p.startswith("/api/history/"):
+            return self._history(p[13:])
         if p == "/api/state":
             with STATE_LOCK:
                 st = dict(STATE)
@@ -301,6 +448,9 @@ class H(BaseHTTPRequestHandler):
         m = re.match(r"^/api/sats/group/(\w+)$", p)
         if m:
             return self._json({"id": m.group(1), "sats": SATS.group(m.group(1))})
+        m = re.match(r"^/api/sats/info/(\d+)$", p)
+        if m:
+            return self._json(SATINFO.get(int(m.group(1))))
         if p == "/api/sats/search":
             q = urllib.parse.unquote_plus((re.search(r"q=([^&]*)", self.path) or [None, ""])[1])
             return self._json({"results": SATS.search(q)})
@@ -337,8 +487,72 @@ class H(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache")
         self.end_headers(); self.wfile.write(b)
 
+    def _cables(self):
+        global CABLES_GZ
+        if not SEA.cables:
+            return self._json({"lines": [], "ready": False})
+        if not CABLES_GZ or CABLES_GZ[0] != id(SEA.cables):
+            raw = json.dumps({"ready": True, "lines": SEA.cables}, ensure_ascii=False, separators=(",", ":")).encode()
+            CABLES_GZ = (id(SEA.cables), gzip.compress(raw, 6), raw)
+        gz = "gzip" in (self.headers.get("Accept-Encoding") or "")
+        b = CABLES_GZ[1] if gz else CABLES_GZ[2]
+        self.send_response(200)
+        if gz:
+            self.send_header("Content-Encoding", "gzip")
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(b)))
+        self.send_header("Cache-Control", "max-age=3600")
+        self.end_headers(); self.wfile.write(b)
+
+    def _history(self, what):
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        g = lambda k, d=0: (q.get(k) or [d])[0]
+        try:
+            if what == "range":
+                return self._json(HIST.range())
+            if what == "frame":
+                return self._json(HIST.frame(int(g("t", time.time() * 1000))))
+            if what == "track":
+                return self._json({"track": HIST.track(g("id", ""), int(g("t", time.time() * 1000)), int(g("min", 30)))})
+            if what == "metrics":
+                keys = [k for k in str(g("keys", "threat")).split(",") if k][:6]
+                days = max(1, min(400, int(g("days", 30))))
+                return self._json({"days": days, "series": {k: HIST.series(k, days) for k in keys}})
+            if what == "keys":
+                en = i18n.en()
+                return self._json({"keys": [{"key": k, "label": history.METRIC_LABELS.get(k, (k, k))[1 if en else 0]} for k in HIST.keys()]})
+            if what == "events":
+                return self._json({"events": HIST.events(int(g("hours", 24)), int(g("limit", 200)))})
+        except (ValueError, TypeError) as e:
+            return self._json({"error": str(e)}, 400)
+        return self._json({"error": "?"}, 404)
+
     def do_POST(self):
         p = self.path.split("?")[0]
+        if not self._gate(p):
+            return
+        if p == "/api/pin":
+            pin = str(self._body().get("pin") or "")
+            if SETTINGS.get("lan") and SETTINGS.get("lan_pin") and pin == SETTINGS["lan_pin"]:
+                b = b'{"ok":true}'
+                self.send_response(200)
+                self.send_header("Set-Cookie", f"k7pin={pin_token(pin)}; Path=/; Max-Age=31536000; SameSite=Strict; HttpOnly")
+                self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(b)))
+                self.end_headers(); self.wfile.write(b); return
+            time.sleep(1.5)
+            return self._json({"ok": False}, 403)
+        if p in ("/api/settings", "/api/model/pull", "/api/model/rescan", "/api/notify/test") and not self._local():
+            return self._json({"error": i18n.L("Ustawienia można zmieniać tylko na komputerze z KRONOS-em.", "Settings can only be changed on the computer running KRONOS.")}, 403)
+        if p == "/api/notify":
+            b = self._body()
+            ok = NOTIFY.send(str(b.get("kind") or "pass"), str(b.get("text") or "")[:500])
+            return self._json({"ok": ok})
+        if p == "/api/notify/test":
+            if not NOTIFY.enabled():
+                return self._json({"ok": False, "error": i18n.L("Najpierw wpisz token i czat Telegrama albo webhook Discorda i zapisz.", "Enter a Telegram token and chat, or a Discord webhook, and save first.")})
+            NOTIFY.send("test", i18n.L("✅ Test powiadomień – działa.", "✅ Notification test – working."), force=True)
+            time.sleep(3)
+            return self._json({"ok": NOTIFY.last_err is None, "error": NOTIFY.last_err})
         if p == "/api/settings":
             ok, msg = save_settings(self._body())
             return self._json({"ok": ok, "error": msg, "settings": settings_view()}, 200 if ok else 400)
@@ -355,6 +569,10 @@ class H(BaseHTTPRequestHandler):
             op = CFG["operator"].get("name") or CFG["operator"].get("callsign") or "operator"
             user = "DANE:\n" + analyst.context_for(st, q, ENGINE.ctx * 2) + f"\n\n" + i18n.L("ZAPYTANIE OPERATORA", "OPERATOR QUERY") + f" ({op}): " + q
             return self._stream(ENGINE.chat_stream(analyst.ASK_SYS, user))
+        if p == "/api/sats/explain":
+            norad = int(self._body().get("norad") or 0)
+            info = SATINFO.get(norad)
+            return self._stream(ENGINE.chat_stream(satinfo.EXPLAIN_SYS, "DANE SATELITY:\n" + SATINFO.explain_prompt(info), 0.3))
         if p == "/api/sitrep":
             region = (self._body().get("region") or "").strip()[:120]
             with STATE_LOCK: st = STATE
@@ -366,17 +584,21 @@ class H(BaseHTTPRequestHandler):
 def main():
     port = int(os.environ.get("KRONOS_PORT", CFG.get("port", 7707)))
     st = ENGINE.status()
-    log("KRONOS-7 v3.8 · start")
+    log("KRONOS-7 v3.9 · start")
     log(f"Sprzęt: {st['hardware']['gpu_name']} · VRAM {st['hardware']['vram_gb']} GB · RAM {st['hardware']['ram_gb']} GB")
     log(f"AI: {st['backend'] or 'brak (zainstaluj Ollamę)'} · model: {st['model'] or '—'} · zalecany: {st['recommended']}")
     log(st["reason"])
-    srv = ThreadingHTTPServer(("127.0.0.1", port), H)
+    host = "0.0.0.0" if SETTINGS.get("lan") and SETTINGS.get("lan_pin") else "127.0.0.1"
+    srv = ThreadingHTTPServer((host, port), H)
+    if host != "127.0.0.1":
+        log(i18n.L("Dostęp z sieci lokalnej (PIN): ", "LAN access (PIN): ") + ", ".join(lan_urls()))
     threading.Thread(target=scheduler, daemon=True).start()
     if CFG.get("live_air", {}).get("enabled", True) and os.environ.get("KRONOS_NO_LIVE") != "1":
         AIR.start(); log(f"Samoloty wojskowe na żywo: co {AIR.interval} s, gdy terminal jest otwarty.")
     if CFG.get("live_sea", {}).get("enabled", True) and os.environ.get("KRONOS_NO_LIVE") != "1":
         SEA.start(); SEA.set_key(SETTINGS.get("aisstream_key", ""), SETTINGS.get("ais_scope", "world")); atexit.register(SEA.save)
         log("Statki na żywo: Digitraffic (Bałtyk, bez klucza)" + (" + aisstream.io (świat)" if SETTINGS.get("aisstream_key") else "; świat po wpisaniu klucza aisstream.io w oknie OPERATOR"))
+    HIST.start(AIR, SEA, lambda: STATE, lambda: MARKETS["data"])
     url = f"http://127.0.0.1:{port}"
     log(f"Terminal: {url}")
     if CFG.get("open_browser", True) and os.environ.get("KRONOS_NO_BROWSER") != "1":

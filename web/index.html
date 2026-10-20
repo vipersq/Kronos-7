@@ -7,6 +7,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="style.css">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#050805">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 <body>
 
@@ -48,6 +54,9 @@
       <label for="layMap">Wysokość mapy <small id="layMapV"></small></label>
       <input id="layMap" type="range" min="25" max="100" step="5">
       <label class="chk"><input id="layAuto" type="checkbox"> Mapa: wysokość automatyczna (dopasowana do okna)</label>
+      <label>Ekran dodatkowy</label>
+      <div class="seg"><button class="btn" id="layXen" type="button" aria-pressed="false">TRYB XENEON EDGE (2560×720)</button><button class="btn" id="layXenWin" type="button">OTWÓRZ OKNO 2560×720</button></div>
+      <p class="hint">Tryb panoramiczny: mapa, szczegóły i status obok siebie, bez paneli pod spodem. „Otwórz okno” tworzy osobne okno – przeciągnij je na ekran XENEON i naciśnij F11.</p>
       <div class="set-foot" style="padding:8px 0 0;justify-content:space-between"><button class="btn" id="layReset" type="button">DOMYŚLNE</button><button class="btn" id="layFs" type="button">PEŁNY EKRAN (F11)</button></div>
     </div>
   </div>
@@ -100,8 +109,23 @@
       <label class="chk"><input id="setPull" type="checkbox"> Automatycznie pobieraj zalecany model</label>
       <label for="setAis">Klucz aisstream.io <small>statki na żywo z całego świata; darmowy klucz: aisstream.io → zaloguj przez GitHub → API Keys. Bez klucza widać tylko północny Bałtyk.</small></label>
       <div class="set-row"><input id="setAis" type="password" autocomplete="off" spellcheck="false" placeholder="wklej klucz"><button type="button" class="btn" id="setAisClr" hidden>USUŃ</button></div>
+      <label for="setQth">QTH – Twoja lokalizacja <small>lokator Maidenhead (np. IO91) albo współrzędne „51.07, -1.79”; do przelotów satelitów</small></label>
+      <input id="setQth" autocomplete="off" spellcheck="false" placeholder="IO91 / 51.07, -1.79">
       <label for="setScope">Zasięg statków (aisstream.io)</label>
       <select id="setScope"><option value="world">CAŁY ŚWIAT</option><option value="zones">TYLKO OBSERWOWANE REJONY</option></select>
+      <fieldset class="set-group"><legend>Powiadomienia na telefon</legend>
+        <p class="hint">Telegram: utwórz bota u @BotFather (dostaniesz token), napisz do niego cokolwiek, a numer czatu sprawdzisz np. u @userinfobot. Discord: ustawienia kanału → Integracje → Webhooki → Kopiuj adres URL.</p>
+        <div class="set-row"><input id="setTg" type="password" autocomplete="off" spellcheck="false" placeholder="token bota Telegram"><button type="button" class="btn" id="setTgClr" hidden>USUŃ</button></div>
+        <input id="setTgChat" autocomplete="off" spellcheck="false" placeholder="ID czatu Telegram, np. 123456789">
+        <div class="set-row"><input id="setDc" type="password" autocomplete="off" spellcheck="false" placeholder="https://discord.com/api/webhooks/…"><button type="button" class="btn" id="setDcClr" hidden>USUŃ</button></div>
+        <div class="kinds" id="setKinds"></div>
+        <div class="set-row"><button type="button" class="btn" id="setNtTest">WYŚLIJ TEST</button><span class="hint" id="setNtMsg"></span></div>
+      </fieldset>
+      <fieldset class="set-group"><legend>Telefon i tablet w sieci domowej</legend>
+        <label class="chk"><input id="setLan" type="checkbox"> Udostępnij terminal w sieci lokalnej (wymaga PIN-u i ponownego uruchomienia KRONOS-a)</label>
+        <input id="setPin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="PIN 4–8 cyfr">
+        <p class="hint" id="setLanUrl"></p>
+      </fieldset>
       <label for="setVol">Dźwięk terminala <small>włączasz przyciskiem AUDIO; te opcje zapisują się w tej przeglądarce</small></label>
       <input id="setVol" type="range" min="0" max="100" step="5">
       <label class="chk"><input id="setHum" type="checkbox"> Szum tła (buczenie maszynowni)</label>
@@ -119,6 +143,7 @@
       <div class="clocks glow">
         <div><span>UTC</span><b id="utc">--:--:--</b></div>
         <div><span>LOKALNY</span><b id="loc">--:--</b></div>
+        <div class="nextan"><span>ANALIZA AI ZA</span><b id="nextAn">--</b></div>
       </div>
     </div>
     <div class="controls">
@@ -132,6 +157,7 @@
       <button class="btn" id="fsBtn" aria-pressed="false">PEŁNY EKRAN</button>
       <button class="btn" id="satBtn">SATELITY</button>
       <button class="btn" id="setBtn">OPERATOR</button>
+      <button class="btn" id="voiceBtn" aria-pressed="false" title="Polecenia głosowe">GŁOS</button>
       <label for="day">ARCHIWUM</label><select id="day"></select>
     </div>
     <div class="jobbar" id="jobbar" hidden><i id="jobfill"></i><span id="jobtext"></span></div>
@@ -160,7 +186,7 @@
     </div>
     <div class="maptools" id="maptools">
       <div class="theaters" id="theaters"></div>
-      <div class="zoombar"><button class="btn" id="zin" aria-label="Przybliż">+</button><button class="btn" id="zout" aria-label="Oddal">−</button><button class="btn" id="zreset" aria-label="Cały świat">◎</button><span id="zoomlvl">×1</span><button class="btn" id="filtBtn">FILTRY</button></div>
+      <div class="zoombar"><button class="btn" id="zin" aria-label="Przybliż">+</button><button class="btn" id="zout" aria-label="Oddal">−</button><button class="btn" id="zreset" aria-label="Cały świat">◎</button><span id="zoomlvl">×1</span><button class="btn" id="filtBtn">FILTRY</button><button class="btn" id="azBtn" aria-pressed="true" title="Przybliżaj mapę po kliknięciu obiektu">AUTO-ZOOM</button><button class="btn" id="replayBtn" aria-pressed="false" title="Odtwarzanie ruchu samolotów i statków z ostatnich 48 h">ODTWÓRZ</button></div>
       <div class="layers" id="layers"></div>
     </div>
     <div class="mapgrid">
@@ -168,6 +194,15 @@
         <svg id="map" viewBox="0 0 960 480" role="img" aria-label="Mapa sytuacyjna świata"></svg>
         <svg id="chain" viewBox="0 0 960 560" role="img" aria-label="Graf przyczyn i skutków" hidden></svg>
         <div class="air-toast" id="airToast" aria-live="polite"></div>
+        <div class="replay" id="replay" hidden>
+          <span class="rp-tag">ODTWARZANIE</span><b id="rpTime">--</b>
+          <button class="btn" data-rpjump="-60" title="−1 h">«</button><button class="btn" id="rpPlay" aria-pressed="false" aria-label="Odtwarzaj">▶</button><button class="btn" data-rpjump="60" title="+1 h">»</button>
+          <input type="range" id="rpSlider" step="60000" aria-label="Czas odtwarzania">
+          <select id="rpSpeed" aria-label="Prędkość"><option value="60">×60</option><option value="300" selected>×300</option><option value="1200">×1200</option></select>
+          <span id="rpCount" class="dim"></span>
+          <button class="btn" id="rpLive">NA ŻYWO</button>
+          <span id="rpEv" class="rp-ev"></span>
+        </div>
         <div class="chain-empty" id="chainEmpty" hidden>Łańcuch przyczyn pojawi się po pierwszej analizie lokalnego AI.</div>
       </div>
       <div class="detail" id="detail" aria-live="polite"></div>
@@ -298,6 +333,18 @@
         <p class="sit-last" id="sitLast" hidden><button class="btn" id="sitReopen">OSTATNI RAPORT</button></p>
       </div>
     </section>
+    <section class="frame cap">
+      <div class="frame-h"><span>&gt; HISTORIA</span><em id="histEvN"></em><button class="btn" id="reportBtn" title="Strona do wydruku lub zapisu jako PDF">RAPORT DZIENNY</button></div>
+      <div class="hist-tools"><select id="histKey" aria-label="Wskaźnik"></select><div class="seg" id="histDays"><button class="btn" data-d="1">24 H</button><button class="btn" data-d="7">7 DNI</button><button class="btn" data-d="30">30 DNI</button><button class="btn" data-d="365">ROK</button></div></div>
+      <svg id="histChart" viewBox="0 0 320 120" role="img" aria-label="Wykres wskaźnika"></svg>
+      <p class="hist-note" id="histNote"></p>
+      <ul class="rows" id="histEv"></ul>
+    </section>
+    <section class="frame cap">
+      <div class="frame-h"><span>&gt; PRZELOTY NAD QTH</span><em id="passQth"></em><button class="btn" id="passCfgBtn">USTAW</button></div>
+      <div class="pass-cfg" id="passCfg" hidden></div>
+      <ul class="rows" id="passes"></ul>
+    </section>
     <section class="frame">
       <div class="frame-h"><span>&gt; ORBITY</span><em id="satTime">SGP4</em></div>
       <div class="sat-sum"><span id="satSum">Podstawowe satelity</span><button class="btn" id="satBtn2">WYBÓR SATELITÓW</button></div>
@@ -325,5 +372,6 @@
 <script src="i18n.js"></script>
 <script src="sound.js"></script>
 <script src="app.js"></script>
+<script>if ("serviceWorker" in navigator && (location.protocol === "https:" || /^(localhost|127\.)/.test(location.hostname))) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 </body>
 </html>

@@ -6,6 +6,21 @@ Lokalny terminal w stylu komputerów pokładowych z filmów science fiction. Pok
 
 ![Terminal](docs/screen-main.png)
 
+## Nowe w v3.9
+
+- **Satelity:** kliknięcie satelity pokazuje kartę: rodzaj i misję, właściciela i operatora, datę i miejsce startu, orbitę (apogeum, perygeum, okres, nachylenie), opis z Wikipedii, częstotliwości nadajników z bazy SatNOGS oraz przycisk **WYJAŚNIJ (AI)**. Na mapie widać ślad podsatelitarny (−15…+90 min) i zasięg widoczności.
+- **Przeloty nad QTH** (panel pod SITREP): AOS/LOS, maksymalna elewacja, azymuty, przesunięcie Dopplera dla częstotliwości, oznaczenie przelotów widocznych gołym okiem i alarm przed przelotem. Lokalizację (lokator Maidenhead albo współrzędne) wpisujesz w oknie OPERATOR; domyślnie IO91. Obliczenia idą w osobnym wątku przeglądarki.
+- **Lotnictwo:** wykrywanie samolotów krążących po orbicie (rozpoznanie, tankowanie, patrol) – przerywany okrąg na mapie i lista „Krążące teraz” w panelu NIEBO. **ODTWÓRZ** (przy mapie) cofa mapę do 48 h wstecz: samoloty co minutę, okręty, tankowce i statki z sankcjami co 10 minut. NOTAM-ów nie ma, bo wszystkie sensowne źródła wymagają płatnych kluczy.
+- **Morze:** statki z listy sankcji OFAC (dopasowanie po IMO), „ciemne” statki (przestały nadawać AIS w obserwowanych rejonach), możliwe przeładunki STS (dwa tankowce burta w burtę), statki stojące nad kablami podmorskimi; warstwa **KABLE** (submarinecablemap.com). Wyróżnienia na mapie i listy w panelu STATKI; w FILTRACH opcja „tylko podejrzane”.
+- **Historia i raport:** baza `data/history.db` (SQLite) – wskaźniki co godzinę (rok), zdarzenia (90 dni), pozycje (48 h). Panel **HISTORIA** z wykresami (24 h, 7 dni, 30 dni, rok) i przycisk **RAPORT DZIENNY** – strona do wydruku lub zapisu jako PDF.
+- **Powiadomienia na telefon** przez Telegram (bot) lub Discord (webhook): wzrost napięcia, briefing, krążące samoloty, kody alarmowe, sankcje, STS, kable, „ciemne” statki, przeloty satelitów. Rodzaje wybierasz w oknie OPERATOR, przycisk **WYŚLIJ TEST** sprawdza połączenie. Limit: 1 wiadomość na 5 s i 40 na godzinę.
+- **Licznik do następnej analizy AI** w nagłówku – widać, kiedy karta graficzna będzie zajęta.
+- **AUTO-ZOOM** – przełącznik przy mapie; wyłączony nie przybliża mapy po kliknięciu obiektu.
+- **XENEON EDGE (2560×720):** w oknie EKRAN tryb panoramiczny (mapa, szczegóły i status w jednym rzędzie) albo osobne okno 2560×720 do przeciągnięcia na ten ekran.
+- **Telefon i tablet:** w oknie OPERATOR możesz udostępnić terminal w sieci domowej (z PIN-em, po ponownym uruchomieniu). Na telefonie „Dodaj do ekranu głównego” tworzy ikonę jak aplikacja. Ustawienia da się zmieniać tylko na komputerze.
+- **Polecenia głosowe** (przycisk GŁOS albo Alt+V), np. „sitrep Bałtyk”, „pokaż Ormuz”, „odśwież”, „briefing”, „odtwórz”, „na żywo”, „warstwa kable”, „pełny ekran”; wszystko inne trafia jako pytanie do AI. W Chrome i Edge rozpoznawanie mowy przetwarzają serwery Google/Microsoft.
+- Wydajność: mapa rysowana na płótnie, obliczenia orbit i przelotów w osobnym wątku, zapis historii w tle.
+
 ## Szybki start
 
 ```
@@ -162,11 +177,13 @@ Dane startowe w repozytorium (`data/seed.json`) to odczyt z 18.10.2026, 14:33. P
 - `data/state.json` – Twój bieżący odczyt (lokalny, poza gitem)
 - `data/archive/` – kopie każdego odczytu, ostatnie 120 (lokalne)
 - `data/settings.json` – ustawienia operatora (lokalne)
+- `data/history.db` – historia: pozycje, wskaźniki i zdarzenia (lokalne)
+- `data/satinfo/`, `data/tle/`, `data/cables.json`, `data/ofac_vessels.json` – pamięć podręczna danych (lokalne)
 
 ## Uwagi
 
 - Wszystkie oceny (poziom napięcia, scenariusze, stan szlaków, łańcuch przyczyn) to hipotezy modelu AI, a nie oficjalne wskaźniki. Mniejsze modele częściej się mylą.
-- Serwer nasłuchuje tylko na tym komputerze (127.0.0.1).
+- Serwer nasłuchuje tylko na tym komputerze (127.0.0.1), chyba że włączysz dostęp z sieci lokalnej (wtedy wymaga PIN-u).
 - Test bez AI: ustaw zmienną `KRONOS_MOCK=1`, a program użyje atrapy modelu.
 - Biblioteki i mapy dołączone w `web/vendor/` mają własne licencje, opisane w [THIRD_PARTY.md](THIRD_PARTY.md).
 - Treści z kanałów RSS i serwisów danych należą do ich wydawców. Program tylko je pobiera i streszcza na Twoim komputerze.
