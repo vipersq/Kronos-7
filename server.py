@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """KRONOS-7 — lokalny serwer planetarnego systemu wywiadowczego.
 Uruchom:  python server.py   (potem przeglądarka: http://127.0.0.1:7707)"""
-import json, mimetypes, os, re, sys, threading, time, traceback, urllib.parse, webbrowser
+import atexit, gzip, json, mimetypes, os, re, sys, threading, time, traceback, urllib.parse, webbrowser
 from collections import deque
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -72,7 +72,7 @@ def save_state(st):
 STATE = load_state()
 ENGINE = llm.Engine(CFG, log)
 AIR = live_air.LiveAir(CFG, log)
-SEA = live_sea.LiveSea(CFG, log)
+SEA = live_sea.LiveSea(CFG, log, DATA)
 SATS = sats.Catalog(DATA, log)
 
 
@@ -193,7 +193,7 @@ def settings_view():
             "auto_pull": CFG["ai"].get("auto_pull", True), "installed": [m["name"] for m in st["installed"]],
             "recommended": st["recommended"], "configured": bool(CFG["operator"]["callsign"]),
             "ais_key": ("…" + SETTINGS["aisstream_key"][-4:]) if SETTINGS.get("aisstream_key") else "",
-            "language": CFG.get("language", "pl")}
+            "language": CFG.get("language", "pl"), "ais_scope": SETTINGS.get("ais_scope", "world")}
 
 
 def save_settings(body):
@@ -204,6 +204,8 @@ def save_settings(body):
         if not CALL_RE.match(c):
             return False, i18n.L("Identyfikator: 1–20 znaków, litery, cyfry oraz / - _ .", "Operator ID: 1–20 characters, letters, digits and / - _ .")
         new["callsign"] = c
+    if body.get("ais_scope") in ("world", "zones"):
+        new["ais_scope"] = body["ais_scope"]
     if body.get("language") in ("pl", "en"):
         new["language"] = body["language"]
     if "name" in body:
@@ -231,7 +233,7 @@ def save_settings(body):
     SETTINGS_FILE.write_text(json.dumps(new, ensure_ascii=False, indent=2), encoding="utf-8")
     apply_settings(new)
     ENGINE._choose()
-    SEA.set_key(new.get("aisstream_key", ""))
+    SEA.set_key(new.get("aisstream_key", ""), new.get("ais_scope", "world"))
     log(f"Ustawienia zapisane (operator: {new.get('callsign') or '—'}).")
     return True, None
 
@@ -243,8 +245,11 @@ class H(BaseHTTPRequestHandler):
         pass
 
     def _json(self, obj, code=200):
-        b = json.dumps(obj, ensure_ascii=False).encode()
+        b = json.dumps(obj, ensure_ascii=False, separators=(",", ":")).encode()
         self.send_response(code)
+        if len(b) > 4096 and "gzip" in (self.headers.get("Accept-Encoding") or ""):
+            b = gzip.compress(b, 4)
+            self.send_header("Content-Encoding", "gzip")
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(b)))
         self.send_header("Cache-Control", "no-store")
@@ -303,8 +308,12 @@ class H(BaseHTTPRequestHandler):
             ids = [int(x) for x in re.findall(r"\d+", (re.search(r"ids=([^&]*)", self.path) or [None, ""])[1])][:200]
             return self._json({"sats": SATS.tles(ids)})
         if p == "/api/sea":
-            m = re.search(r"since=(\d+)", self.path)
-            return self._json(SEA.snapshot(int(m.group(1)) if m else 0))
+            g = lambda k: int((re.search(k + r"=(\d+)", self.path) or [0, 0])[1])
+            return self._json(SEA.snapshot(g("since"), g("ev")))
+        m = re.match(r"^/api/sea/ship/(\d+)$", p)
+        if m:
+            r = SEA.ship(int(m.group(1)))
+            return self._json(r or {"error": "brak"}, 200 if r else 404)
         if p == "/api/markets":
             return self._json(get_markets("force" in self.path))
         m = re.match(r"^/api/archive/([\w\-]+)$", p)
@@ -357,7 +366,7 @@ class H(BaseHTTPRequestHandler):
 def main():
     port = int(os.environ.get("KRONOS_PORT", CFG.get("port", 7707)))
     st = ENGINE.status()
-    log("KRONOS-7 v3.7 · start")
+    log("KRONOS-7 v3.8 · start")
     log(f"Sprzęt: {st['hardware']['gpu_name']} · VRAM {st['hardware']['vram_gb']} GB · RAM {st['hardware']['ram_gb']} GB")
     log(f"AI: {st['backend'] or 'brak (zainstaluj Ollamę)'} · model: {st['model'] or '—'} · zalecany: {st['recommended']}")
     log(st["reason"])
@@ -366,7 +375,7 @@ def main():
     if CFG.get("live_air", {}).get("enabled", True) and os.environ.get("KRONOS_NO_LIVE") != "1":
         AIR.start(); log(f"Samoloty wojskowe na żywo: co {AIR.interval} s, gdy terminal jest otwarty.")
     if CFG.get("live_sea", {}).get("enabled", True) and os.environ.get("KRONOS_NO_LIVE") != "1":
-        SEA.start(); SEA.set_key(SETTINGS.get("aisstream_key", ""))
+        SEA.start(); SEA.set_key(SETTINGS.get("aisstream_key", ""), SETTINGS.get("ais_scope", "world")); atexit.register(SEA.save)
         log("Statki na żywo: Digitraffic (Bałtyk, bez klucza)" + (" + aisstream.io (świat)" if SETTINGS.get("aisstream_key") else "; świat po wpisaniu klucza aisstream.io w oknie OPERATOR"))
     url = f"http://127.0.0.1:{port}"
     log(f"Terminal: {url}")

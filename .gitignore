@@ -9,3 +9,4 @@ data/.no_ollama
 __pycache__/
 *.pyc
 .venv/
+data/ships.json.gz

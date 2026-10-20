@@ -72,6 +72,16 @@
     <p class="hint sat-note">Dane: CelesTrak, odświeżane co 12 h. Grupa „wojskowe” obejmuje satelity, których orbity są publiczne albo wyznaczone przez obserwatorów (m.in. USA, Kosmos, Yaogan, SAR-Lupe). Satelity całkowicie niejawne trafiają do „niezidentyfikowanych” bez nazw albo nie ma ich wcale.</p>
   </div>
 </div>
+<div class="modal" id="filtModal" hidden role="dialog" aria-modal="true" aria-labelledby="filtTitle">
+  <div class="modal-in sit-modal frame filt-modal">
+    <div class="frame-h"><span id="filtTitle">&gt; FILTRY MAPY</span><button type="button" class="btn" id="filtClose" aria-label="Zamknij">✕</button></div>
+    <div class="sat-body">
+      <div class="sat-col"><p class="sat-h">STATKI (AIS)</p><div class="seg"><button class="btn" data-fall="ship:1">WSZYSTKIE</button><button class="btn" data-fall="ship:0">ŻADNE</button></div><div id="filtShips"></div></div>
+      <div class="sat-col"><p class="sat-h">SAMOLOTY WOJSKOWE (ADS-B)</p><div class="seg"><button class="btn" data-fall="air:1">WSZYSTKIE</button><button class="btn" data-fall="air:0">ŻADNE</button></div><div id="filtAir"></div></div>
+    </div>
+    <p class="hint sat-note">Liczby obok typów pokazują, ile obiektów jest teraz w pamięci. Warstwy STATKI i LOTNICTWO włączasz pod mapą.</p>
+  </div>
+</div>
 <div class="modal" id="settings" hidden role="dialog" aria-modal="true" aria-labelledby="setTitle">
   <form class="modal-in frame" id="setForm" autocomplete="off">
     <div class="frame-h"><span id="setTitle">&gt; KONFIGURACJA OPERATORA</span><button type="button" class="btn" id="setClose" aria-label="Zamknij">✕</button></div>
@@ -90,6 +100,8 @@
       <label class="chk"><input id="setPull" type="checkbox"> Automatycznie pobieraj zalecany model</label>
       <label for="setAis">Klucz aisstream.io <small>statki na żywo z całego świata; darmowy klucz: aisstream.io → zaloguj przez GitHub → API Keys. Bez klucza widać tylko północny Bałtyk.</small></label>
       <div class="set-row"><input id="setAis" type="password" autocomplete="off" spellcheck="false" placeholder="wklej klucz"><button type="button" class="btn" id="setAisClr" hidden>USUŃ</button></div>
+      <label for="setScope">Zasięg statków (aisstream.io)</label>
+      <select id="setScope"><option value="world">CAŁY ŚWIAT</option><option value="zones">TYLKO OBSERWOWANE REJONY</option></select>
       <label for="setVol">Dźwięk terminala <small>włączasz przyciskiem AUDIO; te opcje zapisują się w tej przeglądarce</small></label>
       <input id="setVol" type="range" min="0" max="100" step="5">
       <label class="chk"><input id="setHum" type="checkbox"> Szum tła (buczenie maszynowni)</label>
@@ -148,7 +160,7 @@
     </div>
     <div class="maptools" id="maptools">
       <div class="theaters" id="theaters"></div>
-      <div class="zoombar"><button class="btn" id="zin" aria-label="Przybliż">+</button><button class="btn" id="zout" aria-label="Oddal">−</button><button class="btn" id="zreset" aria-label="Cały świat">◎</button><span id="zoomlvl">×1</span></div>
+      <div class="zoombar"><button class="btn" id="zin" aria-label="Przybliż">+</button><button class="btn" id="zout" aria-label="Oddal">−</button><button class="btn" id="zreset" aria-label="Cały świat">◎</button><span id="zoomlvl">×1</span><button class="btn" id="filtBtn">FILTRY</button></div>
       <div class="layers" id="layers"></div>
     </div>
     <div class="mapgrid">

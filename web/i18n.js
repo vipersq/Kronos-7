@@ -175,7 +175,7 @@ window.K7_EN = {
   "BRAK ZAREJESTROWANEGO OPERATORA.": "NO OPERATOR REGISTERED.", "IDENTYFIKATOR OPERATORA:": "OPERATOR ID:", "DOSTĘP PRZYZNANY · WITAJ": "ACCESS GRANTED · WELCOME",
   ", OPERATORZE": ", OPERATOR", "TEST PAMIĘCI ........ OK": "MEMORY TEST ......... OK", "PROCESOR GRAFICZNY ..": "GRAPHICS PROCESSOR ..", "RDZEŃ ANALITYCZNY ...": "ANALYTICAL CORE .....",
   "BAZA KONFLIKTÓW .....": "CONFLICT DATABASE ...", "WĘZŁÓW": "NODES", "FRONTY ..............": "FRONTS ..............", "FEEDY ...............": "FEEDS ...............",
-  "ŁĄCZE ORBITALNE .....": "ORBITAL LINK ........", "NIEAKTYWNY": "INACTIVE", "KRONOS-7 PLANETARY INTELLIGENCE · v3.7": "KRONOS-7 PLANETARY INTELLIGENCE · v3.7",
+  "ŁĄCZE ORBITALNE .....": "ORBITAL LINK ........", "NIEAKTYWNY": "INACTIVE", "KRONOS-7 PLANETARY INTELLIGENCE · v3.8": "KRONOS-7 PLANETARY INTELLIGENCE · v3.8",
   // status systemu, źródła
   "AI GOTOWE": "AI READY", "BRAK AI": "NO AI", "BRAK MODELU": "NO MODEL", "ANALIZA TRWA…": "ANALYSIS RUNNING…", "ANALIZA:": "ANALYSIS:", "SERWER NIEDOSTĘPNY": "SERVER UNAVAILABLE",
   "SILNIK": "ENGINE", "ZALECANY": "RECOMMENDED", "POBIERZ": "DOWNLOAD", "POBIERANIE": "DOWNLOADING", "DZIENNIK": "LOG", "Odczyt:": "Reading:", "GPU": "GPU", "RAM": "RAM",
@@ -194,7 +194,12 @@ window.K7_EN = {
     ". Online: RSS news, 16 automatic feeds (PortWatch, IODA, ADS-B, GDACS, CISA, FIRMS, Launch Library, NBP, GPSJam, WHO, NHC, travel advisories, OFAC, ReliefWeb, Polymarket, CelesTrak), USGS, AMSAT and live market prices. Analysis, translation, fronts, modules and scenarios: local AI model",
   ". Spróbuj później.": ". Try again later.", ". To hipoteza analityczna, nie fakt.": ". This is an analytical hypothesis, not a fact.", ". Wykres: ostatnie": ". Chart: last",
   "Language / Język": "Language / Język", "POLSKI": "POLSKI", "ENGLISH": "ENGLISH",
-  "brak (tryb CPU)": "none (CPU mode)", "ROPA BRENT": "BRENT CRUDE", "ROPA WTI": "WTI CRUDE", "GAZ TTF": "TTF GAS", "GAZ HENRY HUB": "HENRY HUB GAS", "ZŁOTO": "GOLD",
+  "brak (tryb CPU)": "none (CPU mode)", "FILTRY": "FILTERS", "> FILTRY MAPY": "> MAP FILTERS", "STATKI (AIS)": "SHIPS (AIS)", "SAMOLOTY WOJSKOWE (ADS-B)": "MILITARY AIRCRAFT (ADS-B)",
+  "WSZYSTKIE": "ALL", "ŻADNE": "NONE", "REKREACYJNY": "PLEASURE CRAFT", "Pokaż pozycje starsze niż 1 h (wyblakłe)": "Show positions older than 1 h (faded)",
+  "Nazwy statków po przybliżeniu": "Ship names when zoomed in", "Trasy rozpoznania, tankowców i bombowców": "Tracks of reconnaissance, tankers and bombers", "Znaki wywoławcze": "Call signs",
+  "Liczby obok typów pokazują, ile obiektów jest teraz w pamięci. Warstwy STATKI i LOTNICTWO włączasz pod mapą.": "The numbers show how many objects are currently in memory. Turn the SHIPS and AIRCRAFT layers on below the map.",
+  "Zasięg statków (aisstream.io)": "Ship coverage (aisstream.io)", "CAŁY ŚWIAT": "WHOLE WORLD", "TYLKO OBSERWOWANE REJONY": "WATCHED REGIONS ONLY",
+  "aisstream.io · cały świat": "aisstream.io · whole world", "komunikatów/s": "messages/s", "ROPA BRENT": "BRENT CRUDE", "ROPA WTI": "WTI CRUDE", "GAZ TTF": "TTF GAS", "GAZ HENRY HUB": "HENRY HUB GAS", "ZŁOTO": "GOLD",
   "VIX STRACH": "VIX FEAR", "PSZENICA": "WHEAT", "BITCOIN": "BITCOIN", "zł": "PLN", "pkt": "pts", "wpływa na": "affects", "Cieśnina": "Strait", "OBSERWACJA ·": "WATCH ·", "OK ·": "OK ·", "ŻEGLUGA ·": "SHIPPING ·", "Konflikt": "Conflict",
 };
 

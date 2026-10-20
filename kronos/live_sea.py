@@ -4,9 +4,12 @@
  * Digitraffic (Fińska Agencja Transportu) – bez klucza, północny Bałtyk
    (Zatoka Fińska, Botnicka, wody Estonii i Szwecji);
  * aisstream.io – cały świat, darmowy klucz API (rejestracja przez GitHub),
-   wpisywany w oknie OPERATOR. Strumień WebSocket ograniczony do obserwowanych rejonów.
+   wpisywany w oknie OPERATOR. Strumień obejmuje cały świat albo tylko obserwowane rejony.
+Statki są pamiętane 6 godzin od ostatniego sygnału i zapisywane na dysk co 5 minut.
 Klient WebSocket jest napisany na bibliotece standardowej – nic nie trzeba doinstalowywać."""
 import base64, gzip, json, os, socket, ssl, struct, threading, time, urllib.request
+from array import array
+from pathlib import Path
 from collections import deque
 from datetime import datetime, timezone
 
@@ -27,6 +30,10 @@ AIS_BOXES = [
     [[0.0, 98.0], [22.0, 121.0]],     # Morze Południowochińskie, Malakka
     [[48.0, -6.0], [53.5, 4.0]],      # kanał La Manche
 ]
+WORLD = [[[-90.0, -180.0], [90.0, 180.0]]]
+CATS = ["military", "law", "tanker", "cargo", "passenger", "sar", "service", "fishing", "pleasure", "other"]
+CAT_I = {c: i for i, c in enumerate(CATS)}
+KEEP_S = 6 * 3600          # jak długo pamiętamy statek bez sygnału
 LINK = "https://www.marinetraffic.com/en/ais/details/ships/mmsi:{mmsi}"
 
 
@@ -46,15 +53,18 @@ class WS:
             head += c
         if b" 101 " not in head.split(b"\r\n", 1)[0]:
             raise ConnectionError(head.split(b"\r\n", 1)[0].decode(errors="replace"))
-        self.buf = b""
+        self.buf = bytearray(); self.pos = 0
 
     def _read(self, n):
-        while len(self.buf) < n:
-            c = self.s.recv(65536)
+        # bufor z przesunięciem – bez kopiowania reszty danych przy każdym odczycie
+        while len(self.buf) - self.pos < n:
+            c = self.s.recv(262144)
             if not c:
                 raise ConnectionError("połączenie przerwane")
+            if self.pos > 1 << 20:
+                del self.buf[:self.pos]; self.pos = 0
             self.buf += c
-        out, self.buf = self.buf[:n], self.buf[n:]
+        out = bytes(self.buf[self.pos:self.pos + n]); self.pos += n
         return out
 
     def send(self, data, op=1):
@@ -101,24 +111,57 @@ class WS:
 
 # ---------------------------------------------------------------- statki
 class LiveSea:
-    def __init__(self, cfg, log=print):
+    def __init__(self, cfg, log=print, data_dir=None):
         c = cfg.get("live_sea", {})
         self.interval = max(15, int(c.get("interval_s", 30)))
-        self.max_ships = int(c.get("max_ships", 4000))
+        self.max_ships = int(c.get("max_ships", 150000))
         self.use_dt = bool(c.get("digitraffic", True))
+        self.scope = c.get("scope", "world")
         self.key = ""
         self.log = log
-        self.ships = {}
+        self.ships = {}            # mmsi -> rekord (dict); trasa w array('i'): lat*1e4, lon*1e4, czas s
         self.events = deque(maxlen=60)
         self.seen_zone = {}
         self.meta_at = 0
         self.last_view = 0
+        self.summary = {}
+        self.file = Path(data_dir) / "ships.json.gz" if data_dir else None
+        self.saved_at = time.time()
         self.status = {"digitraffic": {"ok": None, "err": None, "at": 0, "n": 0},
-                       "aisstream": {"ok": None, "err": None, "at": 0, "n": 0, "msgs": 0}}
+                       "aisstream": {"ok": None, "err": None, "at": 0, "n": 0, "msgs": 0, "rate": 0}}
         self.lock = threading.Lock()
         self.ws = None
         self.ws_gen = 0
         self.wake = threading.Event()
+        self.load()
+
+    # ------------------------------------------------ zapis i odczyt z dysku
+    def load(self):
+        if not self.file or not self.file.exists():
+            return
+        try:
+            rows = json.loads(gzip.decompress(self.file.read_bytes()))
+            now = time.time()
+            for r in rows:
+                if now - r.get("upd", 0) < KEEP_S:
+                    r["trail"] = array("i", r.get("trail") or [])
+                    self.ships[r["mmsi"]] = r
+            self.log(f"Statki: wczytano {len(self.ships)} ostatnich pozycji z dysku.")
+        except Exception as e:
+            self.log(f"Statki: nie udało się wczytać zapisu ({e}).")
+
+    def save(self):
+        if not self.file:
+            return
+        with self.lock:
+            rows = [dict(r, trail=list(r["trail"])) for r in self.ships.values() if "lat" in r]
+        try:
+            tmp = self.file.with_suffix(".tmp")
+            tmp.write_bytes(gzip.compress(json.dumps(rows, separators=(",", ":")).encode(), 5))
+            os.replace(tmp, self.file)
+        except Exception as e:
+            self.log(f"Statki: zapis nieudany ({e}).")
+        self.saved_at = time.time()
 
     # ------------------------------------------------ wspólne
     def _get(self, url):
@@ -134,48 +177,50 @@ class LiveSea:
             return None
         rec = self.ships.get(mmsi)
         if rec is None:
-            if len(self.ships) >= self.max_ships * 2:
+            if len(self.ships) >= self.max_ships:
                 return None
             flag = REG.mmsi_flag(mmsi)
-            rec = self.ships[mmsi] = {"mmsi": mmsi, "flag": flag, "flag_e": REG.FLAGS.get(flag, ""), "foc": flag in REG.FLAGS_OF_CONVENIENCE,
-                                      "name": "", "type": 0, "cat": "other", "kind": "nieznany", "trail": [], "src": src,
-                                      "u": LINK.format(mmsi=mmsi)}
+            rec = self.ships[mmsi] = {"mmsi": mmsi, "flag": flag, "name": "", "type": 0, "cat": "other", "kind": "nieznany",
+                                      "trail": array("i"), "src": src, "upd": 0}
         for k, v in kw.items():
             if v not in (None, ""):
                 rec[k] = v
-        if "type" in kw and kw["type"]:
+        if kw.get("type"):
             rec["cat"], rec["kind"] = REG.ship_type(kw["type"])
         rec["src"] = src
         return rec
 
     def _pos(self, rec, lat, lon, ts, sog, cog, hdg, nav):
-        if rec is None or lat is None or lon is None or abs(lat) > 90 or abs(lon) > 180:
+        if rec is None or lat is None or lon is None or abs(lat) > 90 or abs(lon) > 180 or (lat == 0 and lon == 0):
             return
         rec.update(lat=round(lat, 4), lon=round(lon, 4), ts=int(ts), sog=sog if sog is not None and sog < 102.3 else None,
                    cog=cog if cog is not None and cog < 360 else None, hdg=hdg if hdg is not None and hdg < 360 else None, nav=nav, upd=time.time())
-        tr = rec["trail"]
-        if not tr or ts - tr[-1][2] > 120000 or abs(tr[-1][0] - lat) + abs(tr[-1][1] - lon) > .05:
-            tr.append([round(lat, 3), round(lon, 3), int(ts)])
-            while len(tr) > 30 or (tr and tr[0][2] < ts - 3 * 3600000):
-                tr.pop(0)
-        self._events(rec)
+        tr, t = rec["trail"], int(ts / 1000)
+        if not tr or t - tr[-1] > 300 or abs(tr[-3] - lat * 1e4) + abs(tr[-2] - lon * 1e4) > 400:
+            tr.extend((int(lat * 1e4), int(lon * 1e4), t))
+            if len(tr) > 60:                     # najwyżej 20 punktów
+                del tr[:3]
+        if rec["cat"] in ("military", "law") or nav in (6, 14):
+            self._events(rec)
+
+    def _label(self, rec):
+        if i18n.en():
+            return f"{rec.get('name') or rec['mmsi']} ({REG.SHIP_KIND_EN.get(rec['kind'], rec['kind'])}, flag: {REG.COUNTRY_EN.get(rec['flag'], rec['flag']) or '?'})"
+        return f"{rec.get('name') or rec['mmsi']} ({rec['kind']}, bandera: {rec['flag'] or '?'})"
 
     def _events(self, rec):
         now = time.time()
         z = zone_of(rec["lat"], rec["lon"])
-        if i18n.en():
-            name = f"{rec.get('name') or rec['mmsi']} ({REG.SHIP_KIND_EN.get(rec['kind'], rec['kind'])}, flag: {REG.COUNTRY_EN.get(rec['flag'], rec['flag']) or '?'})"
-        else:
-            name = f"{rec.get('name') or rec['mmsi']} ({rec['kind']}, bandera: {rec['flag'] or '?'})"
         ev = None
         if rec["cat"] in ("military", "law") and z:
             k = (rec["mmsi"], z)
             if now - self.seen_zone.get(k, 0) > 6 * 3600:
+                name = self._label(rec)
                 ev = {"kind": "zone", "msg": i18n.L(f"Jednostka {name} w rejonie: {z}", f"Vessel {name} in the {zone_name(z)} area")}
             self.seen_zone[k] = now
         nav = rec.get("nav")
         if nav in (6, 14) and rec.get("nav_ev") != nav:
-            ev = {"kind": "alarm", "msg": f"{name}: {(REG.NAV_STATUS_EN if i18n.en() else REG.NAV_STATUS).get(nav)}" + (f" – {zone_name(z)}" if z else "")}
+            ev = {"kind": "alarm", "msg": f"{self._label(rec)}: {(REG.NAV_STATUS_EN if i18n.en() else REG.NAV_STATUS).get(nav)}" + (f" – {zone_name(z)}" if z else "")}
         rec["nav_ev"] = nav if nav in (6, 14) else None
         if ev:
             ev.update(at=int(now * 1000), mmsi=rec["mmsi"], zone=z)
@@ -209,11 +254,12 @@ class LiveSea:
             st.update(ok=False, err=str(e)[:200])
 
     # ------------------------------------------------ aisstream.io (klucz)
-    def set_key(self, key):
+    def set_key(self, key, scope=None):
         key = (key or "").strip()
-        if key == self.key:
+        scope = scope or self.scope
+        if key == self.key and scope == self.scope:
             return
-        self.key = key
+        self.key, self.scope = key, scope
         self.ws_gen += 1
         if self.ws:
             self.ws.close()
@@ -228,10 +274,11 @@ class LiveSea:
             got = 0
             try:
                 ws = self.ws = WS("stream.aisstream.io", "/v0/stream")
-                ws.send(json.dumps({"APIKey": self.key, "BoundingBoxes": AIS_BOXES,
-                                    "FilterMessageTypes": ["PositionReport", "StandardClassBPositionReport", "ShipStaticData"]}))
-                self.log("Statki: połączono z aisstream.io.")
+                ws.send(json.dumps({"APIKey": self.key, "BoundingBoxes": WORLD if self.scope == "world" else AIS_BOXES,
+                                    "FilterMessageTypes": ["PositionReport", "StandardClassBPositionReport", "ExtendedClassBPositionReport", "ShipStaticData"]}))
+                self.log(f"Statki: połączono z aisstream.io ({'cały świat' if self.scope == 'world' else 'obserwowane rejony'}).")
                 st.update(err=None)
+                t0, c0 = time.time(), 0
                 while gen == self.ws_gen:
                     m = ws.recv()
                     try:
@@ -241,9 +288,10 @@ class LiveSea:
                     if "error" in msg:
                         raise ConnectionError(msg["error"])
                     self.ingest_ais(msg)
-                    st["msgs"] += 1; got += 1
-                    if st["msgs"] % 200 == 1:
-                        st.update(ok=True, at=int(time.time() * 1000))
+                    st["msgs"] += 1; got += 1; c0 += 1
+                    if time.time() - t0 > 10:
+                        st.update(ok=True, at=int(time.time() * 1000), rate=round(c0 / (time.time() - t0)))
+                        t0, c0 = time.time(), 0
                     delay = 5
             except Exception as e:
                 if gen != self.ws_gen:
@@ -279,38 +327,79 @@ class LiveSea:
                           imo=body.get("ImoNumber") or None, dest=(body.get("Destination") or "").strip(), draught=body.get("MaximumStaticDraught") or None,
                           length=(dim.get("A", 0) + dim.get("B", 0)) or None, width=(dim.get("C", 0) + dim.get("D", 0)) or None)
             else:
-                rec = self._upd(mmsi, "aisstream.io", name=name)
+                kw = {"name": name}
+                if t == "ExtendedClassBPositionReport" and body.get("Type"):
+                    kw["type"] = body.get("Type")
+                rec = self._upd(mmsi, "aisstream.io", **kw)
                 self._pos(rec, body.get("Latitude", md.get("latitude")), body.get("Longitude", md.get("longitude")), ts,
                           body.get("Sog"), body.get("Cog"), body.get("TrueHeading"), body.get("NavigationalStatus"))
 
-    # ------------------------------------------------ pętla i API
+    # ------------------------------------------------ pętla: sprzątanie, podsumowanie, zapis
+    def build_summary(self):
+        zones, hot, cats = {}, [], [0] * len(CATS)
+        now = time.time()
+        with self.lock:
+            items = [r for r in self.ships.values() if "lat" in r]
+        for r in items:
+            ci = CAT_I.get(r["cat"], 9); cats[ci] += 1
+            z = zone_of(r["lat"], r["lon"])
+            if z:
+                zz = zones.setdefault(z, {"all": 0, "tanker": 0, "cargo": 0, "military": 0, "ru": 0, "foc": 0})
+                zz["all"] += 1
+                if r["cat"] in ("tanker", "cargo"): zz[r["cat"]] += 1
+                if r["cat"] in ("military", "law"): zz["military"] += 1
+                if r["cat"] == "tanker" and r["flag"] == "Rosja": zz["ru"] += 1
+                if r["cat"] == "tanker" and r["flag"] in REG.FLAGS_OF_CONVENIENCE: zz["foc"] += 1
+            if r["cat"] in ("military", "law") and now - r.get("upd", 0) < 3 * 3600:
+                hot.append({"mmsi": r["mmsi"], "name": r.get("name"), "cat": r["cat"], "flag": r["flag"], "flag_e": REG.FLAGS.get(r["flag"], ""),
+                            "zone": z, "lat": r["lat"], "lon": r["lon"], "ts": r.get("ts")})
+        hot.sort(key=lambda h: -(h["ts"] or 0))
+        self.summary = {"zones": zones, "hot": hot[:40], "cats": dict(zip(CATS, cats)), "total": len(items)}
+
     def loop(self):
         while True:
             if self.use_dt and time.time() - self.last_view < 120:
                 self.poll_dt()
-            with self.lock:                       # sprzątanie: statki niewidziane od 60 minut
+            with self.lock:
                 now = time.time()
-                for k in [k for k, r in self.ships.items() if now - r.get("upd", now) > 3600 or ("lat" not in r and now - self.meta_at > 3600 * 6)]:
+                for k in [k for k, r in self.ships.items() if now - (r.get("upd") or 0) > KEEP_S and not ("lat" not in r and now - self.meta_at < 3600)]:
                     del self.ships[k]
                 self.status["aisstream"]["n"] = sum(1 for r in self.ships.values() if r["src"] == "aisstream.io" and "lat" in r)
+            self.build_summary()
+            if time.time() - self.saved_at > 300:
+                self.save()
             self.wake.wait(self.interval); self.wake.clear()
 
     def start(self):
         threading.Thread(target=self.loop, daemon=True, name="live-sea").start()
 
-    def snapshot(self, since_ev=0):
+    # ------------------------------------------------ API
+    def snapshot(self, since=0, since_ev=0):
+        """Zwięzła lista zmian od `since` (ms czasu serwera): [mmsi, lat, lon, sog, cog, kat, czas_s, nazwa, hdg]."""
         if time.time() - self.last_view > 120:
             self.wake.set()               # terminal właśnie otwarty – pobierz od razu
         self.last_view = time.time()
-        rank = {"military": 0, "law": 1, "tanker": 2, "cargo": 3, "passenger": 4, "sar": 5, "service": 6, "fishing": 7, "other": 8, "pleasure": 9}
+        now = time.time()
+        th = since / 1000 - 2 if since else 0
         with self.lock:
-            out = [{k: v for k, v in r.items() if k not in ("upd", "nav_ev")} for r in self.ships.values()
-                   if "lat" in r and r["cat"] != "pleasure" and time.time() - r.get("upd", 0) < 3600]
+            rows = [[r["mmsi"], r["lat"], r["lon"], r.get("sog"), None if r.get("cog") is None else int(r["cog"]), CAT_I.get(r["cat"], 9),
+                     int((r.get("ts") or 0) / 1000), r.get("name") or "", None if r.get("hdg") is None else int(r["hdg"])]
+                    for r in self.ships.values() if "lat" in r and (r.get("upd") or 0) > th]
             ev = [e for e in self.events if e["at"] > since_ev]
             st = json.loads(json.dumps(self.status))
-        out.sort(key=lambda r: rank.get(r["cat"], 9))
-        out = out[:self.max_ships]
-        for r in out:
-            r["trail"] = r["trail"][-12:]
-            r["zone"] = zone_of(r["lat"], r["lon"])
-        return {"now": int(time.time() * 1000), "interval": self.interval, "status": st, "key": bool(self.key), "ships": out, "events": ev}
+        return {"now": int(now * 1000), "interval": self.interval, "keep_s": KEEP_S, "full": not since, "status": st, "key": bool(self.key),
+                "scope": self.scope, "cats": CATS, "rows": rows, "summary": self.summary, "events": ev}
+
+    def ship(self, mmsi):
+        with self.lock:
+            r = self.ships.get(mmsi)
+            if not r:
+                return None
+            out = {k: v for k, v in r.items() if k not in ("nav_ev", "trail")}
+            tr = list(r["trail"])
+        out["trail"] = [[tr[i] / 1e4, tr[i + 1] / 1e4, tr[i + 2] * 1000] for i in range(0, len(tr), 3)]
+        out["flag_e"] = REG.FLAGS.get(r["flag"], "")
+        out["foc"] = r["flag"] in REG.FLAGS_OF_CONVENIENCE
+        out["u"] = LINK.format(mmsi=mmsi)
+        out["zone"] = zone_of(r["lat"], r["lon"]) if "lat" in r else None
+        return out

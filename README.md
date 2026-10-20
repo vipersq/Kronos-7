@@ -81,7 +81,7 @@ Rozpoznanie, tankowce i bombowce są wyróżnione kolorem. Gdy taki samolot wlec
 **Statki** (warstwa STATKI, panel STATKI) pochodzą z dwóch źródeł:
 
 - **Digitraffic** (Finlandia): bez klucza, ale obejmuje tylko północny Bałtyk.
-- **aisstream.io**: cały świat w obserwowanych rejonach (Bałtyk, Morze Czarne, Zatoka Perska, Morze Czerwone, wschodnie Morze Śródziemne, Tajwan, Morze Południowochińskie, La Manche). Potrzebny jest darmowy klucz. Zaloguj się na https://aisstream.io przez GitHub, wejdź w **API Keys**, utwórz klucz i wklej go w oknie **OPERATOR**.
+- **aisstream.io**: cały świat (albo tylko obserwowane rejony, do wyboru w oknie OPERATOR). Potrzebny jest darmowy klucz. Zaloguj się na https://aisstream.io przez GitHub, wejdź w **API Keys**, utwórz klucz i wklej go w oknie **OPERATOR**.
 
 Przy statku widać:
 
@@ -92,7 +92,14 @@ Przy statku widać:
 
 Panel liczy tankowce w każdym rejonie, osobno te pod rosyjską banderą i pod banderami wygody. Okręty zwykle wyłączają AIS.
 
-Serwer pobiera dane na żywo tylko wtedy, gdy terminal jest otwarty w przeglądarce. Wyłączysz je w `config.json` (`live_air`, `live_sea`).
+Statki są pamiętane przez 6 godzin od ostatniego sygnału. Program zapisuje je na dysk (`data/ships.json.gz`), więc po restarcie mapa nie jest pusta. Starsze niż godzina pozycje są wyblakłe.
+
+Statki, samoloty i chmury satelitów są rysowane na jednej warstwie graficznej, więc mapa płynnie pokazuje nawet kilkadziesiąt tysięcy obiektów. Najechanie myszą pokazuje nazwę, a kliknięcie otwiera szczegóły. Przycisk **FILTRY** przy mapie wybiera:
+- typy statków: wojskowe, straż, tankowce, towarowe, pasażerskie, rybackie, jachty i inne;
+- rodzaje samolotów: rozpoznanie, tankowce, bombowce, transport, myśliwce;
+- trasy i podpisy na mapie.
+
+Serwer pobiera samoloty i Digitraffic tylko wtedy, gdy terminal jest otwarty w przeglądarce. Wyłączysz je w `config.json` (`live_air`, `live_sea`).
 
 ## Co jest online, a co robi AI
 
