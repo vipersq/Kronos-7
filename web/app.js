@@ -2080,7 +2080,7 @@ let ttsPoll = null;
 function renderTTS() {
   if (!TTSC) return; const c = TTSC.cfg, j = TTSC.job || {};
   $("#ttsEngine").value = c.engine; $("#ttsRate").value = c.rate; $("#ttsRateV").textContent = "×" + (+c.rate).toFixed(2); $("#ttsFx").checked = !!c.fx;
-  const row = v => { const cur = c[v.lang === "en" ? "voice_en" : "voice_pl"] === v.id;
+  const row = v => { const cur = c[v.lang === "en" ? "voice_en" : "voice_pl"] === v.id && v.installed;
     return `<div class="tts-row${cur ? " cur" : ""}"><span class="nm">${v.lang === "pl" ? "PL" : "EN"} · ${esc0(v.label)}</span><span class="st">${v.installed ? (cur ? TX("WYBRANY") : TX("pobrany")) : v.mb + " MB"}</span><span class="bt">`
       + (v.installed ? `${cur ? "" : `<button class="btn" type="button" data-tuse="${v.id}" data-tlang="${v.lang}">${TX("UŻYJ")}</button>`}<button class="btn" type="button" data-ttry="${v.id}" title="${TX("Odsłuchaj")}">▶</button><button class="btn" type="button" data-trm="${v.id}" title="${TX("Usuń głos")}">✕</button>`
         : `<button class="btn" type="button" data-tget="${v.id}" data-tlang="${v.lang}"${j.active ? " disabled" : ""}>${TX("POBIERZ")}</button>`) + `</span></div>`; };
