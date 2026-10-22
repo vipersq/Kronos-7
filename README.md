@@ -21,6 +21,44 @@ Lokalny terminal w stylu komputerów pokładowych z filmów science fiction. Pok
 - **Polecenia głosowe** (przycisk GŁOS albo Alt+V), np. „sitrep Bałtyk”, „pokaż Ormuz”, „odśwież”, „briefing”, „odtwórz”, „na żywo”, „warstwa kable”, „pełny ekran”; wszystko inne trafia jako pytanie do AI. W Chrome i Edge rozpoznawanie mowy przetwarzają serwery Google/Microsoft.
 - Wydajność: mapa rysowana na płótnie, obliczenia orbit i przelotów w osobnym wątku, zapis historii w tle.
 
+## AI w chmurze, zdarzenia złożone, graf powiązań, promieniowanie, ACLED (v3.17)
+
+**AI w chmurze** (OPERATOR → AI W CHMURZE…)
+- Dostawcy: Google Gemini, GitHub Models, Groq, OpenRouter, OpenAI, Anthropic Claude albo dowolny serwer zgodny z OpenAI. Wybierasz dostawcę, wklejasz klucz, pobierasz listę modeli i klikasz TEST.
+- Osobno decydujesz, co idzie do chmury:
+  - główna analiza i briefing (domyślnie tak),
+  - pytania, SITREP i archiwum (domyślnie tak),
+  - AI w tle: Telegram, alerty morskie i korelacje (domyślnie nie, bo zjada darmowe limity).
+- Jeśli chmura nie odpowiada, KRONOS sam przechodzi na lokalny model i robi przerwę: 10 minut przy przekroczonym limicie (429), godzinę przy odrzuconym kluczu, 3 minuty przy braku sieci.
+- Okno pokazuje dzisiejszą liczbę zapytań, tokenów, błędów i przejść na lokalny model.
+- Do chmury idą tylko publiczne depesze, posty i dane z mapy.
+
+**Zdarzenia złożone, bez dublowania alarmów** (warstwa KORELACJE i panel ZDARZENIA ZŁOŻONE)
+- KRONOS zbiera sygnały ze wszystkich warstw: samoloty (krążenie, kody alarmowe), statki („ciemne”, STS, kable, sankcje), alarmy UA, incydenty morskie, Telegram OSINT, NOTAM-y, zakłócenia GPS, pożary z satelity, trzęsienia ziemi, promieniowanie i ACLED.
+- Sygnały z tego samego rejonu i czasu łączy w jedno zdarzenie. Potrzebne są co najmniej dwie różne warstwy i jedna z nich musi być „ostra”, więc stałe tło (np. zakłócanie GPS nad Kaliningradem razem z NOTAM-em) samo zdarzenia nie tworzy.
+- AI ocenia każde nowe lub zmienione zdarzenie:
+  - czy sygnały są naprawdę powiązane, czy to przypadek,
+  - czy to rutyna,
+  - co się prawdopodobnie dzieje,
+  - wagę w skali 1–5,
+  - czy to to samo co już znane zdarzenie (wtedy je scala).
+- **Jedno powiadomienie na zdarzenie** (przy wadze od 3 w górę, ponownie tylko gdy waga wzrośnie). Pojedyncze alarmy z rejonu zgłoszonego zdarzenia są wyciszane, a ten sam alarm o tym samym statku czy samolocie idzie najwyżej raz na 6 godzin. Kodów alarmowych samolotów (7500/7600/7700) nic nie wycisza.
+- Zdarzenia złożone trafiają też do głównej analizy i briefingu.
+
+**Graf powiązań statku** (w karcie statku, sekcja POWIĄZANIA)
+- Pokazuje statek, właściciela, zarządcę handlowego i zarządcę bezpieczeństwa (ISM), ubezpieczyciela P&I, spółki-matki, banderę i dawne bandery, listy sankcyjne oraz inne statki tych samych firm („flota”). Biała obwódka oznacza statek, który jest teraz na mapie; kliknięcie go otwiera.
+- Do tego dawne nazwy, typ, rok budowy, nośność, status (sankcje, flota cieni, zatrzymania w portach) i opis z bazy wywiadu Ukrainy.
+- Dane: OpenSanctions (lista morska) i baza „War & Sanctions” wywiadu Ukrainy (GUR). Pobierane raz w tygodniu, około 40 MB, na dysku zajmują około 1 MB. Licencja CC BY-NC 4.0, czyli tylko do użytku niekomercyjnego.
+- **Więcej sankcji na mapie:** oprócz OFAC statki są teraz sprawdzane na listach UE, Wielkiej Brytanii, Szwajcarii, Kanady, ONZ i Ukrainy. Dopasowanie idzie po IMO, a gdy statek go nie nadaje, po MMSI.
+
+**Promieniowanie** (warstwa PROMIENIOWANIE)
+- Sieć Safecast na żywo, bez klucza: około 150 aktywnych stacji, w tym kilkadziesiąt w Ukrainie.
+- Każda stacja ma własne tło liczone z kilku dni. Alarm włącza się, gdy odczyt wyraźnie je przekracza (ponad 2,5 raza i ponad 0,3 µSv/h), a nie tylko gdy jest „wysoki”. Powiadomienie najwyżej raz na 12 godzin na stację.
+
+**ACLED** (warstwa ACLED, klucz w ŹRÓDŁA I INTEGRACJE)
+- Bitwy, ostrzały, naloty i przemoc wobec cywilów z dokładnym miejscem, stronami i liczbą ofiar, z ostatnich 14 dni (do zmiany).
+- Logowanie e-mailem i hasłem konta myACLED. **Uwaga:** konta „Open” z prywatnym adresem e-mail mogą nie mieć dostępu do API. Wtedy stan źródła pokaże to wprost.
+
 ## Statki tylko dla widoku (v3.16)
 
 - Serwer wysyła do przeglądarki tylko statki z widocznego obszaru mapy, z zapasem na przesuwanie. Gdy przesuniesz mapę dalej, sam dociąga nowy obszar. Przykład: widok Ormuzu to kilkaset statków i kilka kilobajtów, a nie ~45 tys. statków i ok. 1 MB co odświeżenie.

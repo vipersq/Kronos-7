@@ -24,3 +24,5 @@ data/osint_tg.json
 data/osint_tg.tmp
 data/mail_seen.json
 data/tiles/
+data/vgraph.json.gz
+data/rad_base.json

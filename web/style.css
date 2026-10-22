@@ -545,3 +545,14 @@ body.bgp *:not(.ticker-in){animation-play-state:paused!important}
 .tgcat .chk{font-size:calc(12*var(--u))!important;align-items:flex-start!important}.tgcat .chk small{color:var(--phos-dim)}
 .intg input[type=checkbox]{width:auto;flex:none;margin-top:3px}
 .intg .chk{justify-content:flex-start}.intg .chk>span{flex:1;min-width:0}
+.cloud-modal{width:min(680px,100%)}
+
+/* graf powiązań statku */
+.vgraph{margin-top:10px;border-top:1px dashed var(--phos-faint);padding-top:6px}
+.vgsvg{width:100%;height:auto;display:block;background:color-mix(in srgb,var(--void) 70%,transparent);border:1px solid var(--phos-faint)}
+.vgsvg line{stroke:var(--phos-dim);stroke-opacity:.6;stroke-width:1}
+.vgsvg text{fill:var(--text);font-size:9px;font-family:var(--f-body);paint-order:stroke;stroke:var(--void);stroke-width:3px}
+.vgsvg text.vgf{font-size:10px;stroke:none}
+.vgsvg .vgn.go{cursor:pointer}.vgsvg .vgn.go:hover circle{stroke:var(--amber);stroke-width:2}
+.vgleg{font-size:calc(11*var(--u));color:var(--phos-dim);margin:4px 0}.vgleg i{display:inline-block;width:9px;height:9px;margin:0 3px 0 8px;vertical-align:-1px}.vgleg i.o{border:2px solid;width:7px;height:7px;border-radius:50%;background:none!important}
+.vgdesc summary{cursor:pointer;color:var(--phos-dim)}.vgdesc p{font-size:calc(12*var(--u))}

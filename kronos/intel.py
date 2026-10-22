@@ -6,7 +6,7 @@
   • publiczne kanały Telegram (OSINT) – tłumaczenie, streszczenie, ocena i łączenie powtórzeń przez lokalne AI,
   • zdjęcia satelitarne NASA (Worldview Snapshots, bez klucza).
 Każde źródło ma własny wątek i stan widoczny w terminalu; brak klucza = źródło wyłączone."""
-import hashlib, html, json, math, re, threading, time, urllib.parse, urllib.request
+import hashlib, html, json, math, re, threading, time, urllib.error, urllib.parse, urllib.request
 from collections import OrderedDict, deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -559,6 +559,151 @@ class TgOsint(Source):
     def brief(self, hours=24, limit=15):
         return [{"when": datetime.fromtimestamp(x["t"] / 1000, timezone.utc).strftime("%Y-%m-%d %H:%M"), "who": "@" + x["ch"] + " (" + x["type"] + ")",
                  "what": x.get("summary") or x.get("title")} for x in self.view(hours) if x.get("ai")][:limit]
+
+
+# ------------------------------------------------ promieniowanie: czujniki Safecast na żywo (v3.17)
+CPM_USV = {"lnd_7318u": 334.0, "lnd_7318c": 334.0, "lnd_7128ec": 108.0, "lnd_712u": 108.0, "lnd_78017w": 1.0 / 0.00293}
+
+
+class Radiation(Source):
+    """Sieć Safecast (tt.safecast.org): kilkaset stacji, dużo w Ukrainie (m.in. okolice Zaporoskiej i Czarnobylskiej EJ) i Japonii.
+    Każda stacja ma własny poziom tła (średnia z ostatnich dni) – alarm, gdy odczyt wyraźnie go przekracza, a nie tylko gdy jest „wysoki”."""
+    name = "radiation"
+    interval = 900
+
+    def __init__(self, log, settings, data_dir):
+        super().__init__(log, settings)
+        self.file = Path(data_dir) / "rad_base.json"
+        self.events = deque(maxlen=40)
+        try:
+            self.base = json.loads(self.file.read_text(encoding="utf-8"))
+        except Exception:
+            self.base = {}
+
+    def run_once(self):
+        d = json.loads(_get("https://tt.safecast.org/devices", 90))
+        now = time.time(); pts = []; new_ev = 0
+        for x in d:
+            try:
+                t = datetime.fromisoformat(str(x.get("when_captured", "")).replace("Z", "+00:00")).timestamp()
+            except ValueError:
+                continue
+            if now - t > 36 * 3600:
+                continue
+            k = next((k for k in CPM_USV if x.get(k) not in (None, "")), None)
+            la, lo = x.get("loc_lat"), x.get("loc_lon")
+            if not k or la is None or lo is None:
+                continue
+            usv = round(float(x[k]) / CPM_USV[k], 3)
+            if not 0 < usv < 500:
+                continue
+            dev = str(x.get("device_urn") or x.get("device"))
+            b = self.base.get(dev) or {"m": usv, "n": 0, "t": 0}
+            anom = b["n"] >= 6 and usv > max(0.30, b["m"] * 2.5) and now - t < 6 * 3600
+            if not anom and t > b["t"]:                     # tło liczone tylko z „normalnych” odczytów
+                a = 0.15 if b["n"] >= 6 else 1.0 / (b["n"] + 1)
+                b = {"m": round(b["m"] * (1 - a) + usv * a, 4), "n": b["n"] + 1, "t": t}
+            self.base[dev] = b
+            name = x.get("loc_name") or dev[-8:]
+            pts.append({"id": dev, "lat": round(la, 4), "lon": round(lo, 4), "usv": usv, "base": b["m"], "t": int(t * 1000), "name": name,
+                        "cc": x.get("loc_country"), "anom": anom})
+            if anom and now - (b.get("ev") or 0) > 12 * 3600:
+                b["ev"] = now; new_ev += 1
+                self.events.append({"kind": "rad", "at": _now_ms(), "id": dev, "lat": la, "lon": lo,
+                                    "msg": i18n.L(f"Promieniowanie: {name} ({x.get('loc_country') or '?'}) {usv:.2f} µSv/h – {usv / max(b['m'], .01):.1f}× powyżej tła tej stacji",
+                                                  f"Radiation: {name} ({x.get('loc_country') or '?'}) {usv:.2f} µSv/h – {usv / max(b['m'], .01):.1f}× above this station's background")})
+        self.data = {"at": _now_ms(), "pts": pts, "src": "Safecast"}
+        try:
+            self.file.write_text(json.dumps(self.base), encoding="utf-8")
+        except OSError:
+            pass
+        return len(pts)
+
+    def brief(self):
+        p = (self.data or {}).get("pts") or []
+        hi = [x for x in p if x["anom"]]
+        return {"stations": len(p), "anomalies": [f"{x['name']} ({x['cc']}): {x['usv']} µSv/h, tło {x['base']}" for x in hi][:8],
+                "ukraine_max": max([x["usv"] for x in p if x["cc"] == "UA"] or [0])}
+
+
+# ------------------------------------------------ ACLED: zdarzenia konfliktowe (v3.17)
+ACLED_TYPES = {"Battles": "battle", "Explosions/Remote violence": "explosion", "Violence against civilians": "civilians",
+               "Strategic developments": "strategic", "Riots": "riot", "Protests": "protest"}
+
+
+class Acled(Source):
+    """ACLED (acleddata.com): bitwy, ostrzały i ataki z dokładnym miejscem. Wymaga konta myACLED z dostępem do API
+    (logowanie e-mailem i hasłem – OAuth). Konto „Open” z prywatnym adresem e-mail może nie mieć dostępu do API."""
+    name = "acled"
+    interval = 6 * 3600
+
+    def __init__(self, log, settings):
+        super().__init__(log, settings)
+        self.tok, self.tok_exp = None, 0
+
+    def enabled(self):
+        c = self.cfg()
+        return bool(c.get("acled_user") and c.get("acled_pass"))
+
+    def token(self):
+        if self.tok and time.time() < self.tok_exp - 300:
+            return self.tok
+        c = self.cfg()
+        body = urllib.parse.urlencode({"username": c["acled_user"].strip(), "password": c["acled_pass"], "grant_type": "password", "client_id": "acled"}).encode()
+        try:
+            r = json.loads(_get("https://acleddata.com/oauth/token", 40, {"Content-Type": "application/x-www-form-urlencoded"}, body, "POST"))
+        except urllib.error.HTTPError as e:
+            try:
+                why = json.loads(e.read().decode("utf-8", "replace")).get("error_description") or ""
+            except Exception:
+                why = ""
+            raise RuntimeError(i18n.L("ACLED: logowanie odrzucone – sprawdź e-mail i hasło konta myACLED", "ACLED: login rejected – check your myACLED e-mail and password")
+                               + f" (HTTP {e.code}{': ' + why[:120] if why else ''})")
+        self.tok, self.tok_exp = r["access_token"], time.time() + int(r.get("expires_in") or 86400)
+        return self.tok
+
+    def run_once(self):
+        days = max(3, min(60, int(self.cfg().get("acled_days") or 14)))
+        d0 = time.strftime("%Y-%m-%d", time.gmtime(time.time() - days * 86400)); d1 = time.strftime("%Y-%m-%d", time.gmtime())
+        rows = []
+        for et in ("Battles", "Explosions/Remote violence", "Violence against civilians", "Strategic developments"):
+            q = urllib.parse.urlencode({"_format": "json", "event_date": f"{d0}|{d1}", "event_date_where": "BETWEEN", "limit": 3000, "event_type": et,
+                                        "fields": "event_id_cnty|event_date|event_type|sub_event_type|actor1|actor2|country|admin1|location|latitude|longitude|fatalities|notes|source"})
+            try:
+                raw = _get("https://acleddata.com/api/acled/read?" + q, 120, {"Authorization": "Bearer " + self.token()})
+            except urllib.error.HTTPError as e:
+                if e.code in (401, 403):
+                    self.tok = None
+                    raise RuntimeError(i18n.L("ACLED odmówił dostępu do API – konto może nie mieć uprawnień do API (poziom „Open”); sprawdź na acleddata.com → myACLED",
+                                              "ACLED refused API access – the account may lack API rights (Open level); check acleddata.com → myACLED") + f" (HTTP {e.code})")
+                raise
+            d = json.loads(raw)
+            rows += (d.get("data") if isinstance(d, dict) else d) or []
+            time.sleep(1)
+        ev, seen = [], set()
+        for r in rows:
+            if r.get("event_id_cnty") in seen:
+                continue
+            seen.add(r.get("event_id_cnty"))
+            try:
+                la, lo = float(r["latitude"]), float(r["longitude"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            ev.append({"id": r.get("event_id_cnty"), "d": r.get("event_date"), "type": ACLED_TYPES.get(r.get("event_type"), "other"), "sub": r.get("sub_event_type"),
+                       "a1": r.get("actor1"), "a2": r.get("actor2"), "cc": r.get("country"), "adm": r.get("admin1"), "loc": r.get("location"),
+                       "lat": la, "lon": lo, "fat": int(r.get("fatalities") or 0), "notes": (r.get("notes") or "")[:500], "src": r.get("source")})
+        ev.sort(key=lambda x: x["d"] or "", reverse=True)
+        self.data = {"at": _now_ms(), "ev": ev, "days": days}
+        return len(ev)
+
+    def brief(self, limit=25):
+        ev = (self.data or {}).get("ev") or []
+        top = sorted(ev, key=lambda x: (-x["fat"], x["d"] or ""), reverse=False)[:limit]
+        by = {}
+        for x in ev:
+            by[x["cc"]] = by.get(x["cc"], 0) + 1
+        return {"days": (self.data or {}).get("days"), "by_country": dict(sorted(by.items(), key=lambda kv: -kv[1])[:15]),
+                "deadliest": [f"{x['d']} {x['cc']}/{x['loc']}: {x['sub']} ({x['a1']} vs {x['a2'] or '-'}), ofiary {x['fat']}" for x in top]}
 
 
 # ------------------------------------------------ zdjęcia satelitarne NASA (Worldview Snapshots)

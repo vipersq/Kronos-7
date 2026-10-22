@@ -126,6 +126,7 @@ class LiveSea:
         self.last_view = 0
         self.summary = {}
         self.sanc, self.sanc_names, self.sanc_at = {}, {}, 0      # OFAC: IMO -> (nazwa, program), nazwa -> IMO
+        self.sanc_x, self.sanc_mmsi = {}, {}                      # v3.17: inne listy (UE, UK, Szwajcaria, Kanada, ONZ, Ukraina…) z OpenSanctions
         self.cables, self.cable_grid, self.cable_segs, self.cable_names, self.cable_at = None, {}, [], [], 0
         self.watch = {"dark": {}, "sts": {}, "cable": {}}
         self.file = Path(data_dir) / "ships.json.gz" if data_dir else None
@@ -190,7 +191,7 @@ class LiveSea:
                 rec[k] = v
         if kw.get("type"):
             rec["cat"], rec["kind"] = REG.ship_type(kw["type"])
-        if (kw.get("imo") or kw.get("name")) and self.sanc:
+        if ((kw.get("imo") or kw.get("name")) and (self.sanc or self.sanc_x)) or (self.sanc_mmsi and mmsi in self.sanc_mmsi and not rec.get("sanc")):
             self._sanc_match(rec)
         rec["src"] = src
         return rec
@@ -210,7 +211,7 @@ class LiveSea:
         if rec.get("sanc") and not rec.get("sanc_ev"):
             rec["sanc_ev"] = 1
             p = rec["sanc"]["prog"]
-            self._event(rec, "sanc", i18n.L(f"Statek z listy sankcji OFAC ({p}): {self._label(rec)}", f"OFAC-sanctioned vessel ({p}): {self._label(rec)}"))
+            self._event(rec, "sanc", i18n.L(f"Statek z listy sankcyjnej ({p}): {self._label(rec)}", f"Sanctioned vessel ({p}): {self._label(rec)}"))
 
     def _label(self, rec):
         if i18n.en():
@@ -374,14 +375,30 @@ class LiveSea:
             self.log(f"Statki: nie udało się pobrać listy OFAC ({e}).")
             self.sanc_at = time.time() - 86400 + 3600     # ponów za godzinę
 
+    def merge_sanctions(self, by_imo, by_mmsi):
+        """Dodatkowe listy sankcyjne (graf powiązań, OpenSanctions) – obok OFAC; dopasowanie po IMO, a gdy statek go nie podaje – po MMSI."""
+        self.sanc_x, self.sanc_mmsi = by_imo, by_mmsi
+        n = 0
+        with self.lock:
+            for r in self.ships.values():
+                had = bool(r.get("sanc")); self._sanc_match(r); n += (not had and bool(r.get("sanc")))
+        self.log(i18n.L(f"Statki: listy sankcyjne UE, UK, Szwajcarii, Kanady, ONZ i Ukrainy – {len(by_imo)} statków; nowych dopasowań na mapie: {n}.",
+                        f"Ships: EU, UK, Swiss, Canadian, UN and Ukrainian sanctions lists – {len(by_imo)} vessels; new matches on the map: {n}."))
+
     def _sanc_match(self, rec):
         imo = rec.get("imo")
         hit = self.sanc.get(int(imo)) if imo else None
+        if not hit and imo and self.sanc_x:
+            hit = self.sanc_x.get(int(imo))
+        by = "IMO" if imo else "nazwa"
+        if not hit and not imo and self.sanc_mmsi:
+            hit = self.sanc_mmsi.get(rec["mmsi"]); by = "MMSI"
         if not hit and rec.get("name") and rec["cat"] in ("tanker", "cargo", "other"):
             k = self.sanc_names.get(rec["name"].upper())
             hit = self.sanc.get(k) if k and not imo else None      # sama nazwa – tylko gdy statek nie podaje IMO
+            by = "nazwa"
         if hit and not rec.get("sanc"):
-            rec["sanc"] = {"name": hit[0], "prog": hit[1], "flag": hit[2], "by": "IMO" if imo else "nazwa"}
+            rec["sanc"] = {"name": hit[0], "prog": hit[1], "flag": hit[2], "by": by}
 
     def _event(self, rec, kind, msg):
         ev = {"kind": kind, "msg": msg, "at": int(time.time() * 1000), "mmsi": rec["mmsi"], "zone": zone_of(rec["lat"], rec["lon"]) if "lat" in rec else None}

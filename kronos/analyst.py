@@ -440,6 +440,12 @@ Jeśli nie ma takich wydarzeń, zwróć pustą listę.
         chg = st["changes"]
         tgo = "\n".join("- {} {}: {}".format(x.get("when"), x.get("who"), x.get("what")) for x in st.get("osint_tg", [])[:12])
         msec = "\n".join("- {} [{}, waga {}] {}: {}".format(x.get("when"), x.get("kind"), x.get("sev"), x.get("where") or "", x.get("what") or "") for x in st.get("marsec", [])[:15])
+        acl = st.get("acled") or {}
+        acls = ("kraje (liczba zdarzeń, {} dni): {}\n".format(acl.get("days"), ", ".join("{} {}".format(k, v) for k, v in (acl.get("by_country") or {}).items()))
+                + "\n".join("- " + x for x in (acl.get("deadliest") or [])[:12])) if acl.get("by_country") else ""
+        rad = st.get("radiation") or {}
+        rads = ("stacji: {}; anomalie: {}".format(rad.get("stations"), "; ".join(rad.get("anomalies") or []) or "brak")) if rad.get("stations") else ""
+        corr = "\n".join("- [{}] {} (warstwy: {}; waga {}): {}".format(x.get("when"), x.get("title"), x.get("layers"), x.get("sev"), x.get("assess") or "") for x in st.get("correlations", [])[:10])
         prompt = f"""Oceń globalny poziom napięcia i przygotuj briefing.
 level: 1 (spokój) do 5 (kryzys globalny). label: jedno słowo (NISKI, UMIARKOWANY, PODWYŻSZONY, WYSOKI, KRYTYCZNY). note: główne ogniska, do 60 znaków.
 briefing: 120–170 słów po polsku do odczytania na głos przez komputer pokładowy; zacznij od "{i18n.L("Raport KRONOS-7" + (" dla operatora " + op if op else ""), "KRONOS-7 report" + (" for operator " + op if op else ""))}."; najważniejsze sprawy: co, gdzie, dlaczego. Bez list i skrótów trudnych do przeczytania.
@@ -468,6 +474,15 @@ BEZPIECZEŃSTWO MORSKIE – incydenty z 7 dni (IMB, ReCAAP, NGA, UKHO, EUNAVFOR,
 
 KANAŁY OSINT (Telegram, 24 h; strony wojny są stronnicze – traktuj jako twierdzenia):
 {tgo or "brak"}
+
+ACLED – zdarzenia konfliktowe z lokalizacją (bitwy, ostrzały, przemoc wobec cywilów):
+{acls or "brak danych"}
+
+PROMIENIOWANIE (sieć Safecast; anomalia = odczyt wyraźnie ponad tłem danej stacji):
+{rads or "brak danych"}
+
+ZDARZENIA ZŁOŻONE (ten sam rejon i czas w kilku warstwach danych, ocenione przez AI):
+{corr or "brak"}
 
 ZMIANY: nowe depesze {len(chg['new_items'])}, zmiany statusu konfliktów {chg['trend_changes']}, nowe konflikty {chg['new_conflicts']}"""
         try:
@@ -516,7 +531,8 @@ def context_for(st, focus=None, limit=14000):
            "forecasts": [{"t": e["t"], "m": e["m"][:3]} for e in ((st.get("feeds") or {}).get("polymarket") or [])],
            "marketsNote": st.get("marketsNote"),
            "maritime_security": st.get("marsec", [])[:15],
-           "telegram_osint": st.get("osint_tg", [])[:12]}
+           "telegram_osint": st.get("osint_tg", [])[:12],
+           "acled": st.get("acled"), "radiation": st.get("radiation"), "correlated_incidents": st.get("correlations", [])[:10]}
     s = json.dumps(ctx, ensure_ascii=False)
     while len(s) > limit and len(ctx["items"]) > 10:
         ctx["items"] = ctx["items"][:-3]; s = json.dumps(ctx, ensure_ascii=False)

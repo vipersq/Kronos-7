@@ -110,6 +110,12 @@
         <p class="sat-h">„CIEMNE” STATKI · GLOBAL FISHING WATCH</p>
         <p class="hint">Darmowy token do użytku niekomercyjnego: globalfishingwatch.org/our-apis → API Portal → Create token. Wykrycia radarowe (SAR) statków bez AIS, z kilkudniowym opóźnieniem.</p>
         <input id="ig_gfw_token" type="password" autocomplete="off" data-ph="token GFW" placeholder="token GFW">
+        <p class="sat-h">ACLED · ZDARZENIA KONFLIKTOWE</p>
+        <p class="hint">Konto myACLED (acleddata.com → Register). Logowanie e-mailem i hasłem konta. Uwaga: konta „Open” z prywatnym adresem (np. Gmail) mogą nie mieć dostępu do API – wtedy KRONOS pokaże to w stanie źródeł.</p>
+        <input id="ig_acled_user" autocomplete="off" spellcheck="false" placeholder="e-mail konta myACLED">
+        <input id="ig_acled_pass" type="password" autocomplete="new-password" data-ph="hasło myACLED" placeholder="hasło myACLED">
+        <input id="ig_acled_days" inputmode="numeric" autocomplete="off" placeholder="ile dni wstecz (14)">
+        <p class="hint">Promieniowanie (Safecast) i graf powiązań statków (OpenSanctions) działają bez klucza.</p>
         <p class="sat-h">TELEGRAM OSINT</p>
         <p class="hint">Zaznacz kanały do śledzenia (sprawdzone, aktywne). Więcej kanałów = więcej pracy dla AI przy analizie – najpierw przetwarzane są najnowsze wpisy ze źródeł oficjalnych i OSINT. <span id="tgCount"></span></p>
         <div class="seg"><button type="button" class="btn" id="tgDef">DOMYŚLNE</button><button type="button" class="btn" id="tgAll">WSZYSTKIE</button><button type="button" class="btn" id="tgNone">ŻADNE</button></div>
@@ -172,6 +178,33 @@
       <p class="hint" id="offMsg" aria-live="polite"></p>
       <div class="set-row"><button type="button" class="btn" id="offGo">POBIERZ</button><button type="button" class="btn" id="offStop" hidden>PRZERWIJ</button><button type="button" class="btn" id="offClear">WYCZYŚĆ TEN PODKŁAD</button></div>
       <p class="hint">Pobieranie idzie w tle, ok. 8 kafelków na sekundę, żeby nie obciążać serwerów dostawców – możesz zamknąć to okno.</p>
+    </div>
+  </div>
+</div>
+<div class="modal" id="cloudModal" hidden role="dialog" aria-modal="true" aria-labelledby="cloudTitle">
+  <div class="modal-in frame off-modal cloud-modal">
+    <div class="frame-h"><span id="cloudTitle">&gt; AI W CHMURZE</span><button type="button" class="btn" id="cloudClose" aria-label="Zamknij">✕</button></div>
+    <div class="intg off-body">
+      <p class="hint">Mocniejszy model u zewnętrznego dostawcy. Do chmury idą tylko publiczne depesze, posty i dane z mapy. Gdy skończy się limit albo zniknie internet, KRONOS sam wraca na lokalny model.</p>
+      <label for="clProv">Dostawca</label>
+      <select id="clProv"></select>
+      <p class="hint" id="clHelp"></p>
+      <label for="clBase" id="clBaseL">Adres bazowy <small>np. https://moj-serwer/v1</small></label>
+      <input id="clBase" autocomplete="off" spellcheck="false">
+      <label for="clKey">Klucz API</label>
+      <input id="clKey" type="password" autocomplete="off" spellcheck="false">
+      <label for="clModel">Model <small>wpisz nazwę albo pobierz listę od dostawcy</small></label>
+      <div class="set-row"><input id="clModel" autocomplete="off" spellcheck="false" list="clModels"><button type="button" class="btn" id="clList">LISTA MODELI</button></div>
+      <datalist id="clModels"></datalist>
+      <p class="sat-h">CO IDZIE DO CHMURY</p>
+      <label class="chk"><input type="checkbox" id="clUseMain"> <span>Główna analiza i briefing <small>najwięcej zyskuje na lepszym modelu; 1 analiza to kilkanaście zapytań</small></span></label>
+      <label class="chk"><input type="checkbox" id="clUseAsk"> <span>Pytania do systemu, SITREP, archiwum, wyjaśnienia satelitów</span></label>
+      <label class="chk"><input type="checkbox" id="clUseBg"> <span>AI w tle: Telegram, alerty morskie, korelacje zdarzeń <small>dużo małych zapytań – szybko zjada darmowe limity</small></span></label>
+      <label class="chk"><input type="checkbox" id="clFallback"> <span>Gdy chmura nie odpowiada – użyj lokalnego modelu</span></label>
+      <div class="set-row"><button type="button" class="btn" id="clSave">ZAPISZ</button><button type="button" class="btn" id="clTest">TEST</button><button type="button" class="btn" id="clClear">USUŃ KLUCZ</button></div>
+      <p class="hint" id="clMsg" aria-live="polite"></p>
+      <p class="sat-h">STAN</p>
+      <div class="tts-voices" id="clStat"></div>
     </div>
   </div>
 </div>
@@ -253,6 +286,7 @@
       <label class="chk"><input id="setHum" type="checkbox"> Szum tła (buczenie maszynowni)</label>
       <label class="chk"><input id="setChat" type="checkbox"> Terkot drukowanego tekstu i „liczenie” rdzenia</label>
       <button type="button" class="btn" id="sndOpen">DŹWIĘKI I GŁOS LEKTORA…</button>
+      <button type="button" class="btn" id="cloudOpen">AI W CHMURZE… (Gemini, GitHub Models, Groq, OpenRouter, Claude, GPT)</button>
       <button type="button" class="btn" id="intgOpen">ŹRÓDŁA I INTEGRACJE… (klucze, SDR, poczta, Home Assistant)</button>
       <p class="set-msg" id="setMsg" aria-live="polite"></p>
     </div>
@@ -422,6 +456,10 @@
     <section class="frame cap" data-slide="war2">
       <div class="frame-h"><span>&gt; OSINT · TELEGRAM</span><em id="tgT"></em></div>
       <ul class="rows" id="osint"></ul>
+    </section>
+    <section class="frame cap" data-slide="war2">
+      <div class="frame-h"><span>&gt; ZDARZENIA ZŁOŻONE</span><em id="crT"></em></div>
+      <ul class="rows" id="corr"></ul>
     </section>
     <section class="frame cap" data-slide="war2">
       <div class="frame-h"><span>&gt; MOJE ODBIORNIKI</span><em id="sdrT"></em></div>

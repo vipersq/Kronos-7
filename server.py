@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-from kronos import analyst, collector, history, i18n, live_air, live_sea, llm, marsec, notify, report, satinfo, sats, tts, intel, sdr, mailin, tiles  # noqa: E402
+from kronos import analyst, collector, history, i18n, live_air, live_sea, llm, marsec, notify, report, satinfo, sats, tts, intel, sdr, mailin, tiles, vgraph, correlate  # noqa: E402
 
 DATA = ROOT / "data"; ARCH = DATA / "archive"; WEB = ROOT / "web"
 ARCH.mkdir(parents=True, exist_ok=True)
@@ -72,6 +72,8 @@ def save_state(st):
 
 STATE = load_state()
 ENGINE = llm.Engine(CFG, log)
+CLOUD = llm.Cloud(lambda: SETTINGS.get("cloud") or {}, log)          # v3.17: AI w chmurze z powrotem na lokalny model
+AI_MAIN, AI_ASK, AI_BG = (llm.Router(ENGINE, CLOUD, r) for r in ("main", "ask", "bg"))
 AIR = live_air.LiveAir(CFG, log)
 SEA = live_sea.LiveSea(CFG, log, DATA)
 SATS = sats.Catalog(DATA, log)
@@ -96,16 +98,21 @@ DARKSAR = intel.DarkSAR(log, intg_cfg)
 TGOSINT = intel.TgOsint(log, intg_cfg, DATA)
 SATIMG = intel.SatImg()
 TILES = tiles.TileCache(DATA, log, intg_cfg)
+RADIATION = intel.Radiation(log, intg_cfg, DATA)      # v3.17: promieniowanie (Safecast)
+ACLED = intel.Acled(log, intg_cfg)                     # v3.17: zdarzenia konfliktowe ACLED
+VGRAPH = vgraph.VGraph(DATA, log)                     # v3.17: statek – właściciel – zarządca – bandera – sankcje
+VGRAPH.on_load = lambda g: SEA.merge_sanctions(*g.sanctioned())
 LADSB = sdr.LocalADSB(log, intg_cfg, lambda: set(AIR.ac.keys()))
 LAIS = sdr.LocalAIS(log, intg_cfg, SEA)
 APRSIS = sdr.APRS(log, intg_cfg)
 AISTCP = sdr.AISTcp(log, intg_cfg, SEA)
 AISHUB = sdr.AISHub(log, intg_cfg, SEA)
 MAILIN = mailin.MailIn(DATA, log, intg_cfg, MARSEC)
-INTG_SECRET = ("alerts_token", "gfw_token", "faa_secret", "imap_pass")
+INTG_SECRET = ("alerts_token", "gfw_token", "faa_secret", "imap_pass", "acled_pass")
 INTG_KEYS = {"alerts_token": 200, "gfw_token": 2000, "faa_id": 200, "faa_secret": 200, "notam_locs": 400, "tg_channels": 4000, "adsb_url": 300, "ais_port": 6,
              "aprs_on": 0, "aprs_km": 4, "ha_webhook": 400, "imap_host": 120, "imap_port": 5, "imap_user": 200, "imap_pass": 200, "imap_folder": 120,
-             "imap_senders": 400, "imap_days": 3, "ua_watch": 400, "kystverket": 0, "ais_tcp": 300, "aishub_user": 80, "stadia_key": 80}
+             "imap_senders": 400, "imap_days": 3, "ua_watch": 400, "kystverket": 0, "ais_tcp": 300, "aishub_user": 80, "stadia_key": 80,
+             "acled_user": 200, "acled_pass": 200, "acled_days": 3}
 
 
 def intg_view():
@@ -129,7 +136,8 @@ def intg_view():
 def intg_status():
     return {"ua_alerts": UAALERT.status, "deepstate": DEEPST.status, "notam": NOTAMS.status, "gfw": DARKSAR.status, "telegram": TGOSINT.status,
             "adsb": LADSB.status, "ais": LAIS.status, "aprs": APRSIS.status, "aishub": AISHUB.status,
-            **{"tcp:" + k: v for k, v in AISTCP.status.items()}, "mail": MAILIN.status, "ha": {"ok": None if not NOTIFY.cfg.get("ha") else NOTIFY.ha_err is None, "err": NOTIFY.ha_err}}
+            **{"tcp:" + k: v for k, v in AISTCP.status.items()}, "mail": MAILIN.status, "radiation": RADIATION.status, "acled": ACLED.status, "corr": CORR.status,
+            "vgraph": {"ok": bool(VGRAPH.meta.get("n_v")) if VGRAPH.meta.get("n_v") or VGRAPH.meta.get("err") else None, "err": VGRAPH.meta.get("err"), "n": VGRAPH.meta.get("n_v")}, "ha": {"ok": None if not NOTIFY.cfg.get("ha") else NOTIFY.ha_err is None, "err": NOTIFY.ha_err}}
 
 
 def save_intg(body):
@@ -156,7 +164,7 @@ def save_intg(body):
     SETTINGS = new
     SETTINGS_FILE.write_text(json.dumps(new, ensure_ascii=False, indent=2), encoding="utf-8")
     NOTIFY.configure(new)
-    for src in (UAALERT, DEEPST, NOTAMS, DARKSAR, TGOSINT):
+    for src in (UAALERT, DEEPST, NOTAMS, DARKSAR, TGOSINT, ACLED):
         src.wake.set()
     MAILIN.wake.set()
 
@@ -255,13 +263,130 @@ TTS = tts.TTS(DATA, log)
 atexit.register(TTS.stop_all)
 NOTIFY = notify.Notifier(log)
 NOTIFY.configure(SETTINGS)
-EMO = {"air": "✈", "sea": "⚓", "marsec": "🏴‍☠️"}
+EMO = {"air": "✈", "sea": "⚓", "marsec": "🏴‍☠️", "corr": "🔗", "rad": "☢"}
+NOTE_SEEN = {}
+
+
+def ev_pos(src, e):
+    """Pozycja zdarzenia (do wyciszania alarmów należących do już zgłoszonego zdarzenia złożonego)."""
+    try:
+        if e.get("lat") is not None:
+            return e["lat"], e["lon"]
+        if src == "air" and e.get("hex") in AIR.ac:
+            r = AIR.ac[e["hex"]]; return r.get("lat"), r.get("lon")
+        if src == "sea" and e.get("mmsi") in SEA.ships:
+            r = SEA.ships[e["mmsi"]]; return r.get("lat"), r.get("lon")
+        if src == "ua" and e.get("obl") in intel.OBLASTS:
+            o = intel.OBLASTS[e["obl"]]; return o[2], o[3]
+        if src == "osint":
+            p = TGOSINT.posts.get(e.get("id")) or {}
+            pos = (p.get("ai") or {}).get("pos"); return (pos[0], pos[1]) if pos else (None, None)
+        if src == "marsec":
+            r = MARSEC.items.get(e.get("id")) or {}
+            return tuple(r["pos"][:2]) if r.get("pos") else (None, None)
+    except Exception:
+        pass
+    return None, None
+
+
 def _on_event(src, e):
     if src == "ua":          # alarmy UA – tylko obwody wybrane przez operatora (pusta lista = żaden)
         watch = [x.strip().lower() for x in str((SETTINGS.get("intg") or {}).get("ua_watch") or "").split(",") if x.strip()]
         if not any(w and (w in e.get("msg", "").lower() or w in str(e.get("obl", ""))) for w in watch):
             return
+    now = time.time()
+    if src not in ("ua", "corr"):            # v3.17: ten sam alarm o tym samym obiekcie najwyżej raz na 6 h
+        key = f"{src}|{e.get('kind')}|{e.get('hex') or e.get('mmsi') or e.get('id') or re.sub(r'[0-9]+', '#', str(e.get('msg', '')))[:90]}"
+        if now - NOTE_SEEN.get(key, 0) < 6 * 3600:
+            return
+        NOTE_SEEN[key] = now
+        if len(NOTE_SEEN) > 5000:
+            for k in [k for k, v in NOTE_SEEN.items() if now - v > 6 * 3600]:
+                NOTE_SEEN.pop(k, None)
+    if src != "corr" and e.get("kind") != "squawk":
+        inc = CORR.covered(*ev_pos(src, e))
+        if inc:                              # należy do zgłoszonego już zdarzenia złożonego – jedno powiadomienie zamiast kilku
+            log(i18n.L(f"Powiadomienie wyciszone (część zdarzenia „{(inc.get('ai') or {}).get('title', '')}”): {e.get('msg')}",
+                       f"Notification muted (part of incident “{(inc.get('ai') or {}).get('title', '')}”): {e.get('msg')}"))
+            return
     NOTIFY.send(notify.kind_of(src, e), f"{EMO.get(src, '')} {e.get('msg')}")
+
+
+def corr_signals():
+    """Sygnały do korelacji ze wszystkich warstw: id, warstwa, czas (ms), pozycja, opis, odnośnik do karty."""
+    out, now = [], int(time.time() * 1000)
+    def add(sid, layer, t, lat, lon, text, go=None):
+        if lat is None or lon is None:
+            return
+        out.append({"id": sid, "layer": layer, "t": int(t or now), "lat": float(lat), "lon": float(lon), "text": str(text or "")[:300], "go": go})
+    try:
+        for e in list(AIR.events):
+            r = AIR.ac.get(e.get("hex"))
+            if r and e.get("kind") in ("loiter", "squawk", "zone"):
+                add(f"air-{e['kind']}-{e['hex']}-{e['at'] // 3600000}", "air", e["at"], r.get("lat"), r.get("lon"), e.get("msg"), "ah:" + e["hex"])
+        for hx, r in list(AIR.ac.items()):
+            if r.get("loiter"):
+                add(f"air-loit-{hx}", "air", now, r["loiter"]["lat"], r["loiter"]["lon"],
+                    i18n.L(f"{r.get('cs') or hx} krąży (promień {r['loiter']['r']} km)", f"{r.get('cs') or hx} orbiting (radius {r['loiter']['r']} km)"), "ah:" + hx)
+        for e in list(SEA.events):
+            r = SEA.ships.get(e.get("mmsi"))
+            if r and "lat" in r:
+                add(f"sea-{e['kind']}-{e['mmsi']}-{e['at'] // 3600000}", "sea", e["at"], r["lat"], r["lon"], e.get("msg"), f"vs:{e['mmsi']}")
+        for o in ((UAALERT.data or {}).get("oblasts") or []):
+            if o.get("on"):
+                add(f"ua-{o['id']}-{o.get('since')}", "ua", o.get("since") or now, o["lat"], o["lon"],
+                    i18n.L("Alarm przeciwlotniczy: ", "Air raid alert: ") + o["name"] + (" (" + ", ".join(o.get("kinds") or []) + ")" if o.get("kinds") else ""), "ua:" + o["id"])
+        for r in (MARSEC.view(3).get("items") or []):
+            if r.get("pos") and not r.get("warn") and r.get("t"):
+                add("ms-" + r["id"], "marsec", r["t"], r["pos"][0], r["pos"][1], r.get("title"), "mi:" + r["id"])
+        for p in TGOSINT.view(36):
+            if p.get("pos") and p.get("ai"):
+                add("tg-" + p["id"], "osint", p["t"], p["pos"][0], p["pos"][1], f"@{p['ch']}: {p.get('title') or ''} – {p.get('summary') or ''}", "tg:" + p["id"])
+        for n in ((NOTAMS.data or {}).get("items") or []):
+            if n.get("pos") and n.get("kind") in ("gnss", "missile", "uas", "military", "closed"):
+                add("nt-" + str(n["id"]), "notam", now - 3600e3, n["pos"][0], n["pos"][1], f"NOTAM {n.get('loc')} {n.get('kind')}: {(n.get('text') or '')[:160]}", "nt:" + str(n["id"]))
+        with STATE_LOCK:
+            st = STATE
+        fd = (st.get("feeds") or {})
+        gj = fd.get("gpsjam") or {}
+        day = gj.get("day")
+        try:
+            tday = int(datetime.fromisoformat(day + "T12:00:00+00:00").timestamp() * 1000) if day else now
+        except ValueError:
+            tday = now
+        for la, lo, pct in (gj.get("pts") or [])[:1800]:
+            if pct >= 0.35:
+                add(f"gps-{la}-{lo}-{day}", "gps", tday, la, lo, i18n.L(f"Zakłócenia GPS: {round(pct * 100)}% samolotów ze słabą nawigacją", f"GPS jamming: {round(pct * 100)}% of aircraft with degraded navigation"))
+        for c in (fd.get("firms") or [])[:120]:
+            try:
+                t = int(datetime.fromisoformat(str(c.get("t")) + "T12:00:00+00:00").timestamp() * 1000)
+            except ValueError:
+                t = now
+            add(f"fire-{c['lat']}-{c['lon']}-{c.get('t')}", "fire", t, c["lat"], c["lon"],
+                i18n.L(f"Pożary z satelity: {c['n']} ognisk, moc {c['frp']} MW ({c.get('reg')})", f"Satellite fires: {c['n']} hotspots, {c['frp']} MW ({c.get('reg')})"))
+        for h in (st.get("hazards") or []):
+            if h.get("kind") == "quake" and h.get("lat") is not None:
+                try:
+                    t = int(datetime.fromisoformat(h["date"]).timestamp() * 1000)
+                except Exception:
+                    t = now
+                add("q-" + str(h.get("name"))[:40], "quake", t, h["lat"], h["lon"], h.get("name"))
+        for x in ((RADIATION.data or {}).get("pts") or []):
+            if x.get("anom"):
+                add("rad-" + x["id"], "rad", x["t"], x["lat"], x["lon"], f"{x['name']}: {x['usv']} µSv/h ({i18n.L('tło', 'background')} {x['base']})", "rd:" + x["id"])
+        for x in ((ACLED.data or {}).get("ev") or [])[:4000]:
+            try:
+                t = int(datetime.fromisoformat(x["d"] + "T12:00:00+00:00").timestamp() * 1000)
+            except Exception:
+                continue
+            if now - t < 40 * 3600e3:
+                add("ac-" + str(x["id"]), "acled", t, x["lat"], x["lon"], f"ACLED {x['sub']}: {x['loc']} ({x['cc']}) – {x['a1']}{' vs ' + x['a2'] if x.get('a2') else ''}; {x['fat']} ofiar", "ac:" + str(x["id"]))
+    except Exception as e:
+        log(f"Korelacje – zbieranie: {e}")
+    return out
+
+
+CORR = correlate.Correlator(log, corr_signals, AI_BG, lambda: JOB["running"])
 
 
 HIST.on_event = _on_event
@@ -281,7 +406,7 @@ def run_refresh():
         JOB.update(running=True, started=datetime.now().isoformat(), error=None, pct=0, step="start")
         try:
             ENGINE.refresh()
-            if ENGINE.status().get("ready"):          # AI w tle (Telegram, alerty morskie) liczy się tu, razem z analizą – karta nie pracuje co 10 minut
+            if AI_BG.status().get("ready"):          # AI w tle (Telegram, alerty morskie) liczy się tu, razem z analizą – karta nie pracuje co 10 minut
                 JOB.update(step=i18n.L("AI: Telegram OSINT i alerty morskie", "AI: Telegram OSINT and maritime alerts"), pct=1)
                 try:
                     n1 = TGOSINT.enrich(120, in_job=True); n2 = MARSEC.enrich(60, in_job=True)
@@ -290,7 +415,8 @@ def run_refresh():
                 except Exception as e:
                     log(f"AI w tle: {e}")
             base = dict(STATE); base["marsec"] = MARSEC.brief(); base["osint_tg"] = TGOSINT.brief()
-            st = analyst.Pipeline(CFG, ENGINE, log, progress).run(base)
+            base["acled"] = ACLED.brief() if ACLED.data else None; base["radiation"] = RADIATION.brief() if RADIATION.data else None; base["correlations"] = CORR.brief()
+            st = analyst.Pipeline(CFG, AI_MAIN, log, progress).run(base)
             with STATE_LOCK:
                 prev = (STATE.get("threat") or {}).get("level")
                 STATE = st
@@ -621,7 +747,7 @@ def save_settings(body):
         if body.get("clear_" + k):
             new.pop(k, None)
     if isinstance(body.get("notify_kinds"), list):
-        new["notify_kinds"] = [k for k in body["notify_kinds"] if k in notify.KINDS]
+        new["notify_kinds"] = [k for k in body["notify_kinds"] if k in notify.KINDS]; new["notify_v317"] = True
     if "lan" in body:
         new["lan"] = bool(body["lan"])
     if "lan_pin" in body:
@@ -797,6 +923,18 @@ class H(BaseHTTPRequestHandler):
             return
         if p == "/api/tiles":
             return self._json(TILES.view())
+        if p == "/api/graph/vessel":
+            q = urllib.parse.parse_qs(self.path.partition("?")[2]); g1 = lambda k: (q.get(k) or [""])[0]
+            mm = int(g1("mmsi")) if g1("mmsi").isdigit() else None
+            im = int(g1("imo")) if g1("imo").isdigit() else None
+            rec = SEA.ships.get(mm) if mm else None
+            if rec and not im and rec.get("imo"):
+                try: im = int(rec["imo"])
+                except (TypeError, ValueError): pass
+            live = lambda m: m in SEA.ships and "lat" in SEA.ships[m]
+            return self._json(VGRAPH.graph(mm, im, g1("name") or (rec or {}).get("name"), live, (rec or {}).get("flag")))
+        if p == "/api/cloud":
+            return self._json(CLOUD.view())
         if p == "/api/deck":
             return self._json(deck_state())
         if p == "/api/intg":
@@ -809,7 +947,18 @@ class H(BaseHTTPRequestHandler):
             return self._json({"tile_key": (SETTINGS.get("intg") or {}).get("stadia_key") or "", "status": intg_status(), "ua": UAALERT.data, "notam": NOTAMS.data, "gfw": DARKSAR.data,
                                "deepstate": {"at": DEEPST.data["at"], "n": len(DEEPST.data["polys"])} if DEEPST.data else None,
                                "tg": TGOSINT.view(48), "tg_names": {k: v[0] for k, v in intel.TG_DEFAULT.items()},
-                               "ua_watch": [x.strip() for x in str((SETTINGS.get("intg") or {}).get("ua_watch") or "").split(",") if x.strip()]})
+                               "ua_watch": [x.strip() for x in str((SETTINGS.get("intg") or {}).get("ua_watch") or "").split(",") if x.strip()],
+                               "rad": RADIATION.data, "corr": CORR.view(), "acled_n": len((ACLED.data or {}).get("ev") or []), "acled_at": (ACLED.data or {}).get("at")})
+        if p == "/api/intel/acled":
+            ev = (ACLED.data or {}).get("ev") or []
+            T_I = {t: i for i, t in enumerate(("battle", "explosion", "civilians", "strategic", "riot", "protest", "other"))}
+            return self._json({"at": (ACLED.data or {}).get("at"), "days": (ACLED.data or {}).get("days"),
+                               "rows": [[x["id"], round(x["lat"], 3), round(x["lon"], 3), T_I.get(x["type"], 6), x["fat"], x["d"]] for x in ev]})
+        m = re.match(r"^/api/intel/acled/(.+)$", p)
+        if m:
+            k = urllib.parse.unquote(m.group(1))
+            x = next((x for x in ((ACLED.data or {}).get("ev") or []) if str(x["id"]) == k), None)
+            return self._json(x or {"error": "brak"}, 200 if x else 404)
         if p == "/api/intel/deepstate":
             if not DEEPST.data:
                 return self._json({"polys": [], "points": []})
@@ -853,7 +1002,8 @@ class H(BaseHTTPRequestHandler):
             return self._json(st)
         if p == "/api/status":
             ns = next_slot()
-            return self._json({"engine": ENGINE.status(), "job": JOB, "log": list(LOG)[-60:], "operator": CFG.get("operator"),
+            return self._json({"engine": dict(ENGINE.status(), cloud=CLOUD.label() if CLOUD.configured() else None, cloud_ok=CLOUD.available(),
+                                         cloud_use=(SETTINGS.get("cloud") or {}).get("use") or {"main": True, "ask": True, "bg": False}), "job": JOB, "log": list(LOG)[-60:], "operator": CFG.get("operator"),
                                "stamp": STATE.get("stamp"), "next": ns.isoformat() if ns else None,
                                "sources": STATE.get("sources_report", [])})
         if p == "/api/settings":
@@ -958,6 +1108,39 @@ class H(BaseHTTPRequestHandler):
         p = self.path.split("?")[0]
         if not self._gate(p):
             return
+        if p.startswith("/api/cloud"):
+            if not self._local():
+                return self._json({"error": "local"}, 403)
+            b = self._body()
+            if p == "/api/cloud":
+                c = dict(SETTINGS.get("cloud") or {})
+                if "provider" in b:
+                    c["provider"] = b["provider"] if b["provider"] in llm.PROVIDERS else ""
+                for k in ("model", "base"):
+                    if k in b:
+                        c[k] = str(b[k] or "").strip()[:300]
+                if str(b.get("key") or "").strip():
+                    c["key"] = str(b["key"]).strip()[:400]
+                if b.get("clear_key"):
+                    c.pop("key", None)
+                if isinstance(b.get("use"), dict):
+                    c["use"] = {r: bool(b["use"].get(r)) for r in ("main", "ask", "bg")}
+                if "fallback" in b:
+                    c["fallback"] = bool(b["fallback"])
+                SETTINGS["cloud"] = c; CLOUD.cool_until = 0
+                SETTINGS_FILE.write_text(json.dumps(SETTINGS, ensure_ascii=False, indent=2), encoding="utf-8")
+                return self._json(CLOUD.view())
+            if p == "/api/cloud/test":
+                try:
+                    return self._json(dict(CLOUD.test(), view=CLOUD.view()))
+                except Exception as e:
+                    return self._json({"ok": False, "error": str(e)[:300], "view": CLOUD.view()})
+            if p == "/api/cloud/models":
+                try:
+                    return self._json({"models": CLOUD.models()[:400]})
+                except Exception as e:
+                    return self._json({"models": [], "error": str(e)[:200]})
+            return self._json({"error": "?"}, 404)
         if p == "/api/tiles":
             if not self._local():
                 return self._json({"error": "local"}, 403)
@@ -1075,12 +1258,12 @@ class H(BaseHTTPRequestHandler):
             q = (self._body().get("q") or "").strip()[:500]
             with STATE_LOCK: st = STATE
             op = CFG["operator"].get("name") or CFG["operator"].get("callsign") or "operator"
-            user = "DANE:\n" + analyst.context_for(st, q, ENGINE.ctx * 2) + f"\n\n" + i18n.L("ZAPYTANIE OPERATORA", "OPERATOR QUERY") + f" ({op}): " + q
-            return self._stream(ENGINE.chat_stream(analyst.ASK_SYS, user))
+            user = "DANE:\n" + analyst.context_for(st, q, AI_ASK.ctx * 2) + f"\n\n" + i18n.L("ZAPYTANIE OPERATORA", "OPERATOR QUERY") + f" ({op}): " + q
+            return self._stream(AI_ASK.chat_stream(analyst.ASK_SYS, user))
         if p == "/api/ask/history":
             q = (self._body().get("q") or "").strip()[:500]
-            user = "DANE Z ARCHIWUM:\n" + history_context(q, ENGINE.ctx * 2) + "\n\n" + i18n.L("PYTANIE", "QUESTION") + ": " + q
-            return self._stream(ENGINE.chat_stream(HIST_SYS, user, 0.3))
+            user = "DANE Z ARCHIWUM:\n" + history_context(q, AI_ASK.ctx * 2) + "\n\n" + i18n.L("PYTANIE", "QUESTION") + ": " + q
+            return self._stream(AI_ASK.chat_stream(HIST_SYS, user, 0.3))
         if p == "/api/intg":
             if not self._local():
                 return self._json({"error": "local only"}, 403)
@@ -1101,19 +1284,19 @@ class H(BaseHTTPRequestHandler):
         if p == "/api/sats/explain":
             norad = int(self._body().get("norad") or 0)
             info = SATINFO.get(norad)
-            return self._stream(ENGINE.chat_stream(satinfo.EXPLAIN_SYS, "DANE SATELITY:\n" + SATINFO.explain_prompt(info), 0.3))
+            return self._stream(AI_ASK.chat_stream(satinfo.EXPLAIN_SYS, "DANE SATELITY:\n" + SATINFO.explain_prompt(info), 0.3))
         if p == "/api/sitrep":
             region = (self._body().get("region") or "").strip()[:120]
             with STATE_LOCK: st = STATE
-            user = f"REGION LUB TEMAT: {region}\n\nDANE:\n" + analyst.context_for(st, region, ENGINE.ctx * 2)
-            return self._stream(ENGINE.chat_stream(analyst.SITREP_SYS, user, 0.3))
+            user = f"REGION LUB TEMAT: {region}\n\nDANE:\n" + analyst.context_for(st, region, AI_ASK.ctx * 2)
+            return self._stream(AI_ASK.chat_stream(analyst.SITREP_SYS, user, 0.3))
         self.send_error(404)
 
 
 def main():
     port = int(os.environ.get("KRONOS_PORT", CFG.get("port", 7707)))
     st = ENGINE.status()
-    log("KRONOS-7 v3.16 · start")
+    log("KRONOS-7 v3.17 · start")
     log(f"Sprzęt: {st['hardware']['gpu_name']} · VRAM {st['hardware']['vram_gb']} GB · RAM {st['hardware']['ram_gb']} GB")
     log(f"AI: {st['backend'] or 'brak (zainstaluj Ollamę)'} · model: {st['model'] or '—'} · zalecany: {st['recommended']}")
     log(st["reason"])
@@ -1129,11 +1312,11 @@ def main():
         log("Statki na żywo: Digitraffic (Bałtyk, bez klucza)" + (" + aisstream.io (świat)" if SETTINGS.get("aisstream_key") else "; świat po wpisaniu klucza aisstream.io w oknie OPERATOR"))
     HIST.start(AIR, SEA, lambda: STATE, lambda: MARKETS["data"], MARSEC)
     if os.environ.get("KRONOS_NO_LIVE") != "1" or os.environ.get("KRONOS_MARSEC") == "1":
-        MARSEC.start(ENGINE, lambda: JOB["running"], lambda: SETTINGS.get("ai_bg", "after"))
-        TGOSINT.ai = ENGINE; TGOSINT.busy = lambda: JOB["running"]; TGOSINT.bg = lambda: SETTINGS.get("ai_bg", "after")
-        for src in (UAALERT, DEEPST, NOTAMS, DARKSAR, TGOSINT, LADSB, LAIS, APRSIS, MAILIN, AISTCP, AISHUB):
+        MARSEC.start(AI_BG, lambda: JOB["running"], lambda: SETTINGS.get("ai_bg", "after"))
+        TGOSINT.ai = AI_BG; TGOSINT.busy = lambda: JOB["running"]; TGOSINT.bg = lambda: SETTINGS.get("ai_bg", "after")
+        for src in (UAALERT, DEEPST, NOTAMS, DARKSAR, TGOSINT, LADSB, LAIS, APRSIS, MAILIN, AISTCP, AISHUB, VGRAPH, RADIATION, ACLED, CORR):
             src.start()
-        HIST.extra = [("ua", UAALERT), ("osint", TGOSINT)]
+        HIST.extra = [("ua", UAALERT), ("osint", TGOSINT), ("rad", RADIATION), ("corr", CORR)]
     url = f"http://127.0.0.1:{port}"
     log(f"Terminal: {url}")
     if CFG.get("open_browser", True) and os.environ.get("KRONOS_NO_BROWSER") != "1":

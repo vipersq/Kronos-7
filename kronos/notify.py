@@ -12,7 +12,7 @@ KINDS = {  # rodzaj zdarzenia: (opis PL, opis EN)
     "loiter": ("Samolot krąży (orbita rozpoznawcza / tankowanie)", "Aircraft orbiting (reconnaissance / refuelling)"),
     "squawk": ("Kod alarmowy samolotu (7500/7600/7700)", "Aircraft emergency code (7500/7600/7700)"),
     "sea_zone": ("Okręt lub straż w obserwowanym rejonie", "Warship or coast guard in a watched region"),
-    "sanc": ("Statek z listy sankcji OFAC", "OFAC-sanctioned ship"),
+    "sanc": ("Statek z listy sankcyjnej (OFAC, UE, UK i inne)", "Sanctioned ship (OFAC, EU, UK and others)"),
     "dark": ("Statek przestał nadawać AIS", "Ship stopped transmitting AIS"),
     "sts": ("Możliwy przeładunek STS", "Possible STS transfer"),
     "cable": ("Statek stoi nad kablem podmorskim", "Ship stationary over an undersea cable"),
@@ -20,8 +20,10 @@ KINDS = {  # rodzaj zdarzenia: (opis PL, opis EN)
     "marsec": ("Incydent bezpieczeństwa morskiego (piractwo, atak, porwanie)", "Maritime security incident (piracy, attack, hijacking)"),
     "ua_alert": ("Alarm przeciwlotniczy w wybranych obwodach Ukrainy", "Air raid alert in selected Ukrainian oblasts"),
     "osint": ("Ważny post z kanałów OSINT (Telegram)", "Important OSINT post (Telegram)"),
+    "corr": ("Zdarzenie złożone – kilka warstw danych w jednym miejscu, ocenione przez AI", "Correlated incident – several data layers in one place, assessed by AI"),
+    "rad": ("Promieniowanie wyraźnie powyżej tła stacji (Safecast)", "Radiation clearly above a station's background (Safecast)"),
 }
-DEFAULT_ON = {"threat", "loiter", "squawk", "sanc", "sts", "cable", "pass", "marsec"}
+DEFAULT_ON = {"threat", "loiter", "squawk", "sanc", "sts", "cable", "pass", "marsec", "corr", "rad"}
 
 
 def kind_of(src, ev):
@@ -45,7 +47,8 @@ class Notifier:
 
     def configure(self, st):
         self.cfg = {"tg_token": st.get("tg_token") or "", "tg_chat": str(st.get("tg_chat") or ""), "discord": st.get("discord") or "",
-                    "kinds": set(st.get("notify_kinds") if st.get("notify_kinds") is not None else DEFAULT_ON),
+                    "kinds": set(st.get("notify_kinds") if st.get("notify_kinds") is not None else DEFAULT_ON)
+                             | ({"corr", "rad"} if not st.get("notify_v317") else set()),     # nowe rodzaje z v3.17 włączone, dopóki operator ich nie zmieni
                     "ha": ((st.get("intg") or {}).get("ha_webhook") or "").strip()}
 
     def enabled(self):

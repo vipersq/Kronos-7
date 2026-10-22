@@ -1,4 +1,4 @@
-/* KRONOS-7 v3.16 — interfejs terminala. Dane: lokalny serwer (/api/*). */
+/* KRONOS-7 v3.17 — interfejs terminala. Dane: lokalny serwer (/api/*). */
 (function () {
 "use strict";
 const $ = s => document.querySelector(s);
@@ -203,15 +203,15 @@ const gSphere = root.append("path").attr("class", "sphere");
 const gGrat = root.append("path").attr("class", "grat");
 const gLand = root.append("path").attr("class", "land");
 const LAYERS = [["conf", TX("KONFLIKTY"), 1], ["front", TX("FRONTY"), 1], ["move", TX("NATARCIA"), 1], ["strike", TX("UDERZENIA"), 1], ["force", TX("SIŁY"), 1], ["ship", TX("ŻEGLUGA"), 1],
-  ["haz", TX("NATURA"), 1], ["sat", TX("ORBITY"), 1], ["air", TX("LOTNICTWO"), 1], ["vessel", TX("STATKI"), 1], ["cable", TX("KABLE"), 0], ["marsec", TX("INCYDENTY MORSKIE"), 1], ["uaal", TX("ALARMY UA"), 1], ["dstate", TX("DEEPSTATE"), 0], ["notam", TX("NOTAM"), 0], ["sar", TX("SAR"), 0], ["osint", TX("OSINT TG"), 0], ["myadsb", TX("MOJE ADS-B"), 0], ["aprs", TX("APRS"), 0], ["flank", TX("FLANKA"), 1], ["nuke", TX("ATOM"), 1], ["asp", TX("PRZESTRZEŃ"), 0], ["gps", TX("GNSS"), 0],
+  ["haz", TX("NATURA"), 1], ["sat", TX("ORBITY"), 1], ["air", TX("LOTNICTWO"), 1], ["vessel", TX("STATKI"), 1], ["cable", TX("KABLE"), 0], ["marsec", TX("INCYDENTY MORSKIE"), 1], ["uaal", TX("ALARMY UA"), 1], ["dstate", TX("DEEPSTATE"), 0], ["notam", TX("NOTAM"), 0], ["sar", TX("SAR"), 0], ["osint", TX("OSINT TG"), 0], ["corr", TX("KORELACJE"), 1], ["acled", TX("ACLED"), 0], ["rad", TX("PROMIENIOWANIE"), 0], ["myadsb", TX("MOJE ADS-B"), 0], ["aprs", TX("APRS"), 0], ["flank", TX("FLANKA"), 1], ["nuke", TX("ATOM"), 1], ["asp", TX("PRZESTRZEŃ"), 0], ["gps", TX("GNSS"), 0],
   ["fire", TX("POŻARY"), 0], ["net", TX("SIEĆ"), 0], ["hum", TX("HUMANITARNE"), 0], ["cyber", TX("CYBER"), 0], ["news", TX("DEPESZE"), 0], ["night", TX("NOC"), 1]];
-const DRAW_ORDER = ["uaal", "dstate", "notam", "sar", "osint", "myadsb", "aprs", "marsec", "cable", "night", "gps", "fire", "asp", "vessel", "ship", "sat", "haz", "front", "move", "strike", "force", "net", "hum", "nuke", "flank", "air", "airlive", "cyber", "news", "conf"];
+const DRAW_ORDER = ["uaal", "dstate", "notam", "sar", "osint", "corr", "acled", "rad", "myadsb", "aprs", "marsec", "cable", "night", "gps", "fire", "asp", "vessel", "ship", "sat", "haz", "front", "move", "strike", "force", "net", "hum", "nuke", "flank", "air", "airlive", "cyber", "news", "conf"];
 const G = {}; DRAW_ORDER.forEach(k => G[k] = root.append("g").attr("data-l", k));
 const pNight = G.night.append("path").attr("class", "night"), pTwi = G.night.append("path").attr("class", "twi");
 let layerOn = Object.assign(Object.fromEntries(LAYERS.map(l => [l[0], !!l[2]])), store.get("layers3", {}));
 $("#layers").innerHTML = LAYERS.map(([k, n]) => `<button class="btn" data-layer="${k}" aria-pressed="${!!layerOn[k]}">${n}</button>`).join("");
 function applyLayers() { LAYERS.forEach(([k]) => G[k].style("display", layerOn[k] ? null : "none"));
-  G.air.style("display", layerOn.air && !AIR.ok ? null : "none"); if (layerOn.cable) loadCables(); if (layerOn.dstate) loadDS(); if (layerOn.myadsb || layerOn.aprs) pollSdr(); markStatic(); }
+  G.air.style("display", layerOn.air && !AIR.ok ? null : "none"); if (layerOn.cable) loadCables(); if (layerOn.dstate) loadDS(); if (layerOn.myadsb || layerOn.aprs) pollSdr(); if (layerOn.acled && typeof loadAcled === "function") loadAcled(); markStatic(); }
 $$("[data-layer]").forEach(b => b.addEventListener("click", () => { const k = b.dataset.layer; layerOn[k] = !layerOn[k]; b.setAttribute("aria-pressed", layerOn[k]); store.set("layers3", layerOn); beep(600); applyLayers(); }));
 function ensureLayer(k) { if (k && !layerOn[k]) { const b = $(`[data-layer="${k}"]`); if (b) b.click(); } }
 
@@ -714,7 +714,7 @@ function frame(t) {
   if (needDraw || staticDirty || msPulse || (live && t - lastDraw > (slow && !REPLAY.on ? 2000 : 250)) || (satSel && t - lastDraw > 2000)) { needDraw = false; lastDraw = t; drawCanvas(); }
 }
 requestAnimationFrame(frame);
-window.K7DBG = { sea: () => ({ ships: SHIPS.size, cells: CELLS.length, cell: SEAQ && SEAQ.cell, bbox: SEAQ && SEAQ.bbox, view: SHIPSTAT.view, hit: (() => { for (let i = 0; i < SHIT.n; i++) if (SHIT.k[i] === 5) return [SHIT.x[i], SHIT.y[i]]; return null; })() }), draw: () => { const a = performance.now(); staticDirty = true; drawCanvas(); return performance.now() - a; }, air: () => { const a = performance.now(); drawCanvas(); return performance.now() - a; } };
+window.K7DBG = { go: id => go(id), ships: () => [...SHIPS.keys()].slice(0, 20), intel: () => IN, vg: () => VG, sea: () => ({ ships: SHIPS.size, cells: CELLS.length, cell: SEAQ && SEAQ.cell, bbox: SEAQ && SEAQ.bbox, view: SHIPSTAT.view, hit: (() => { for (let i = 0; i < SHIT.n; i++) if (SHIT.k[i] === 5) return [SHIT.x[i], SHIT.y[i]]; return null; })() }), draw: () => { const a = performance.now(); staticDirty = true; drawCanvas(); return performance.now() - a; }, air: () => { const a = performance.now(); drawCanvas(); return performance.now() - a; } };
 function hitAt(x, y, lim = 8) {
   let best = null, bd = lim * lim;
   for (const h of AHIT) { const d = (h[0] - x) ** 2 + (h[1] - y) ** 2; if (d < bd) { bd = d; best = h[2]; } }
@@ -732,7 +732,7 @@ svg.on("mousemove.canvas", ev => { const now = performance.now(); if (now - tipT
   TIP.style.left = Math.min(cvW - 10, x + 12) + "px"; TIP.style.top = (y + 12) + "px"; });
 svg.on("mouseleave.canvas", () => { TIP.hidden = true; });
 function tipText(id) {
-  const t = id.slice(0, 2), key = id.slice(3);
+  const t = id.startsWith("acl:") ? "acl" : id.slice(0, 2), key = id.slice(3);
   if (t === "cl") { const c = CELLS[+key]; if (!c) return ""; const parts = SCATS.map((c2, j) => [c2, c[2 + j] || 0]).filter(x => x[1] && FLT.ship[x[0]]).sort((a, b) => b[1] - a[1]);
     return `${parts.reduce((a, x) => a + x[1], 0)} ${TX("statków")} · ` + parts.slice(0, 3).map(x => (SCN[x[0]] || x[0]) + " " + x[1]).join(", ") + " · " + TX("kliknij, aby przybliżyć"); }
   if (t === "vs") { const r = seaRec(key), fl = r ? r.flags : 0; return r ? `${r.name || "MMSI " + r.mmsi} · ${SCN[r.cat] || ""}${r.sog != null ? " · " + r.sog + " kn" : ""}${fl & 1 ? " · " + TX("SANKCJE") : ""}${fl & 4 ? " · " + TX("MILCZY") : ""}${fl & 2 ? " · " + TX("NAD KABLEM") : ""}` : ""; }
@@ -741,6 +741,9 @@ function tipText(id) {
   if (t === "ua") { const o = A(IN.d && IN.d.ua && IN.d.ua.oblasts).find(x => x.id === key); return o ? `${TX("ALARM")} · ${o.name}${o.since ? " · " + cd(Date.now() - o.since) : ""}` : ""; }
   if (t === "nt") { const n = A(IN.d && IN.d.notam && IN.d.notam.items).find(x => x.id === key); return n ? `NOTAM ${n.loc} · ${NT_N[n.kind] || n.kind}` : ""; }
   if (t === "tg") { const p = A(IN.d && IN.d.tg).find(x => x.id === key); return p ? `@${p.ch} · ${p.title || ""}` : ""; }
+  if (t === "cr") { const c = A(IN.d && IN.d.corr).find(x => x.id === id.slice(3)); return c ? `⛓ ${(c.ai && c.ai.title) || c.lnames.join(" + ")}` : ""; }
+  if (t === "rd") { const r = A(IN.d && IN.d.rad && IN.d.rad.pts).find(x => x.id === id.slice(3)); return r ? `☢ ${r.name} · ${r.usv} µSv/h${r.anom ? " · " + TX("ANOMALIA") : ""}` : ""; }
+  if (id.startsWith("acl:")) { const a = A(IN.acl).find(x => String(x[0]) === id.slice(4)); return a ? `ACLED · ${ACL_N[ACL_T[a[3]]]} · ${a[5]}${a[4] ? " · " + a[4] + " " + TX("ofiar") : ""}` : ""; }
   if (t === "la") { const a = A(IN.sdr && IN.sdr.adsb).find(x => x.hex === key); return a ? `${a.cs || a.hex} · ${a.t || ""} · ${a.alt ?? ""} ft · ${TX("Twój odbiornik")}` : ""; }
   if (t === "ap") { const s2 = A(IN.sdr && IN.sdr.aprs).find(x => x.call === key); return s2 ? `APRS ${s2.call} · ${s2.cmt || s2.kind || ""}` : ""; }
   if (t === "mi") { const x = A(MS.d && MS.d.items).find(y => y.id === key); return x ? `${x.title || ""} · ${((MS.d.kinds || {})[x.kind] || x.kind)} · ${x.t ? new Date(x.t).toLocaleDateString(LOC) : ""}` : ""; }
@@ -955,6 +958,49 @@ $$("#histDays [data-d]").forEach(b => b.addEventListener("click", () => { HST.da
 $("#reportBtn").addEventListener("click", () => { sfx("click"); window.open("/report", "_blank"); });
 setInterval(() => { if (!document.hidden) loadHist(); }, 600e3);
 
+/* --- graf powiązań statku (v3.17): właściciel, zarządcy, bandera, sankcje, flota tych samych firm */
+const VG = {}, VGC = { vessel: "var(--cyan)", org: "var(--amber)", person: "var(--violet)", flag: "var(--white)", sanc: "var(--red)" };
+const flagEmoji = c => /^[a-z]{2}$/i.test(c || "") ? String.fromCodePoint(...c.toUpperCase().split("").map(x => 0x1F1A5 + x.charCodeAt(0))) : "";
+function vgBox(mmsi) { return `<div class="vgraph" data-vg="${mmsi}"><p class="sat-h">${TX("POWIĄZANIA")}</p><div class="vgbody">${VG[mmsi] ? "" : `<p class="hint">${TX("Szukam właściciela, zarządców i sankcji…")}</p>`}</div></div>`; }
+async function vgFill() {
+  const box = $("#detail .vgraph"); if (!box) return; const mmsi = box.dataset.vg;
+  if (!VG[mmsi]) { VG[mmsi] = { loading: true }; try { VG[mmsi] = await api("/api/graph/vessel?mmsi=" + mmsi); } catch (e) { VG[mmsi] = { error: 1 }; } }
+  if (VG[mmsi].loading) return;
+  const b2 = $(`#detail .vgraph[data-vg="${mmsi}"] .vgbody`); if (b2) vgRender(b2, VG[mmsi]);
+}
+function vgRender(el, g) {
+  if (g.error) { el.innerHTML = `<p class="hint">${TX("Graf niedostępny.")}</p>`; return; }
+  const f = g.facts || {}, meta = g.meta || {};
+  if (!meta.n_v) { el.innerHTML = `<p class="hint">${TX("Baza powiązań jeszcze się pobiera (OpenSanctions, ok. 40 MB, raz w tygodniu) – spróbuj za chwilę.")}</p>`; delete VG[el.closest(".vgraph").dataset.vg]; return; }
+  const W2 = 360, H2 = g.found ? 300 : 110, nodes = g.nodes.map(n => Object.assign({}, n)), byId = Object.fromEntries(nodes.map(n => [n.id, n]));
+  const links = g.edges.filter(e => byId[e[0]] && byId[e[1]]).map(e => ({ source: e[0], target: e[1], l: e[2] }));
+  const sim = d3.forceSimulation(nodes).force("link", d3.forceLink(links).id(d => d.id).distance(d => d.target.t === "flag" || d.target.t === "sanc" ? 62 : 78))
+    .force("charge", d3.forceManyBody().strength(-260)).force("center", d3.forceCenter(W2 / 2, H2 / 2)).force("col", d3.forceCollide(24)).stop();
+  for (let i = 0; i < 220; i++) sim.tick();
+  nodes.forEach(n => { n.x = Math.max(16, Math.min(W2 - 16, n.x)); n.y = Math.max(14, Math.min(H2 - 14, n.y)); });
+  const cut = (t, m) => (t || "").length > m ? t.slice(0, m - 1) + "…" : t || "";
+  const shape = n => { const c = n.t === "vessel" && (n.risk || []).includes("sanction") ? "var(--red)" : VGC[n.t] || "var(--phos)", r = n.center ? 9 : 6;
+    if (n.t === "vessel") return `<circle r="${r}" fill="${c}" fill-opacity="${n.center ? 1 : .75}" stroke="${n.live ? "var(--white)" : "none"}" stroke-width="2"/>`;
+    if (n.t === "flag") return `<rect x="-11" y="-7" width="22" height="14" fill="none" stroke="${c}" stroke-opacity="${n.old ? .45 : 1}"/><text text-anchor="middle" y="4" class="vgf">${esc(flagEmoji(n.n) || n.n.slice(0, 3))}</text>`;
+    if (n.t === "sanc") return `<path d="M0,-8L8,0L0,8L-8,0Z" fill="${n.kind === "sanc" ? c : "none"}" stroke="${c}"/>`;
+    if (n.t === "person") return `<circle r="6" fill="none" stroke="${c}" stroke-width="2"/>`;
+    return `<rect x="-6" y="-6" width="12" height="12" fill="${(n.risk || []).includes("sanction") ? "var(--red)" : c}" fill-opacity=".85"/>`; };
+  const tip = n => [n.n, n.c ? n.c.toUpperCase() : "", n.t === "vessel" ? (n.imo ? "IMO " + n.imo : "") + (n.live ? " · " + TX("teraz na mapie") : "") : "", (n.risk || []).includes("sanction") ? TX("SANKCJE") : (n.risk || []).includes("mare.shadow") ? TX("flota cieni") : ""].filter(Boolean).join(" · ");
+  const svgS = `<svg viewBox="0 0 ${W2} ${H2}" class="vgsvg" role="img" aria-label="${TX("Graf powiązań statku")}">` +
+    links.map(l => `<line x1="${l.source.x.toFixed(1)}" y1="${l.source.y.toFixed(1)}" x2="${l.target.x.toFixed(1)}" y2="${l.target.y.toFixed(1)}"><title>${esc(l.l)}</title></line>`).join("") +
+    nodes.map(n => `<g transform="translate(${n.x.toFixed(1)},${n.y.toFixed(1)})" class="vgn${n.t === "vessel" && !n.center && (n.mmsi || n.imo) ? " go" : ""}" data-mmsi="${n.mmsi || ""}" data-imo="${n.imo || ""}" data-n="${esc(n.n)}"><title>${esc(tip(n))}</title>${shape(n)}<text y="${n.center ? 20 : 17}" text-anchor="middle">${esc(cut(n.t === "flag" ? "" : n.n, n.center ? 24 : 18))}</text></g>`).join("") + `</svg>`;
+  const leg = `<p class="vgleg"><i style="background:var(--cyan)"></i>${TX("statek")} <i style="background:var(--red)"></i>${TX("sankcje")} <i style="background:var(--amber)"></i>${TX("firma")} <i class="o" style="border-color:var(--violet)"></i>${TX("osoba")} <i class="o" style="border-color:var(--white)"></i>${TX("bandera")} · ${TX("biała obwódka = teraz na mapie")}</p>`;
+  let facts = "";
+  if (g.found) facts = dd([[TX("NA LISTACH"), A(f.auth).map(a => a.name).join(", ") || "—"], [TX("STATUS"), [f.sanctioned ? TX("objęty sankcjami") : "", f.shadow ? TX("flota cieni") : "", f.detained ? TX("zatrzymany w porcie (kontrola PSC)") : ""].filter(Boolean).join(" · ") || null],
+      [TX("TYP"), f.type], [TX("ROK BUDOWY"), f.built], [TX("NOŚNOŚĆ"), f.dwt ? f.dwt + " t" : null], [TX("DAWNE NAZWY"), A(f.prev).join(", ") || null],
+      [TX("DAWNE BANDERY"), A(f.pf).map(c => flagEmoji(c) + " " + c.toUpperCase()).join(", ") || null], [TX("FLOTA TYCH FIRM"), f.fleet_n ? f.fleet_n + " " + TX("statków") : null],
+      [TX("PROFIL"), f.url ? L(f.url, "OpenSanctions") : null, 1], [TX("WYWIAD UA"), f.gur ? L(f.gur, "war-sanctions.gur.gov.ua") : null, 1]])
+    + (f.desc ? `<details class="vgdesc"><summary>${TX("OPIS (wywiad Ukrainy, GUR)")}</summary><p>${esc(f.desc)}</p></details>` : "");
+  else facts = `<p class="hint">${TX("Statku nie ma na listach sankcyjnych ani w bazie właścicieli (OpenSanctions, wywiad Ukrainy). Brak wpisu nie oznacza, że statek jest „czysty” – właściciele zwykle są ukryci za spółkami-wydmuszkami.")}</p>`;
+  el.innerHTML = svgS + leg + facts + `<p class="hint">${TX("Dane: OpenSanctions (CC BY-NC 4.0) i baza „War & Sanctions” wywiadu Ukrainy; aktualizacja raz w tygodniu. Powiązania dotyczą właścicieli rejestrowych i zarządców – rzeczywisty właściciel bywa inny.")}</p>`;
+  el.querySelectorAll(".vgn.go").forEach(gn => gn.addEventListener("click", () => { const m = +gn.dataset.mmsi;
+    if (m && SHIPS.has(m)) go("vs:" + m); else if (m) { $("#findQ").value = String(m); $("#findQ").dispatchEvent(new Event("input")); } else if (gn.dataset.n) { $("#findQ").value = gn.dataset.n; $("#findQ").dispatchEvent(new Event("input")); } }));
+}
 function shipWatch(r) {
   const W = (SEA.d && SEA.d.summary && SEA.d.summary.watch) || {}, out = [], m = +r.mmsi;
   if (r.sanc) out.push(`<b class="red">${TX("SANKCJE")} OFAC</b> · ${esc(r.sanc.prog || "")}${r.sanc.name ? " · " + esc(r.sanc.name) : ""} · ${TX("dopasowanie:")} ${esc(r.sanc.by === "IMO" ? "IMO" : TX("nazwa"))}`);
@@ -1415,7 +1461,7 @@ const frontOf = cid => A(S.fronts).filter(f => f.conflict === cid);
 function go(id) { go.busy = true; try { go2(id); } finally { go.busy = false; } }
 function go2(id) {
   if (!go.remote && BC && mapHidden()) BC.postMessage({ t: "go", id });   // mapa jest w innym oknie – tam też pokaż
-  const parts = id.split(":"), t = parts[0], key = t === "mi" ? id.slice(3) : parts[1];
+  const parts = id.split(":"), t = parts[0], key = t === "mi" || t === "rd" || t === "acl" || t === "cr" ? id.slice(t.length + 1) : parts[1];
   const fly = (lat, lon, s, layer) => { ensureLayer(layer); setView("map"); flyTo(lat, lon, s); };
   if (t === "f") { const f = A(S.fronts).find(x => x.id === key); if (f) { ensureLayer("front"); setView("map"); const th = THEATERS.find(x => x[0] === f.theater); if (th) setTheater(th[0], true); else flyPts([].concat(...A(f.line))); } }
   else if (t === "m") { const f = A(S.fronts).find(x => x.id === key), m = f && A(f.moves)[+parts[2]]; if (m) { ensureLayer("move"); setView("map"); flyPts([m.from, m.to]); } }
@@ -1437,7 +1483,7 @@ function locExtra(t, key) {
   if (t === "ah") { const a = A(AIR.d && AIR.d.ac).find(x => x.hex === key); if (!a) return null; const p = airPos(a, Date.now() + AIR.skew); return [p[0], p[1], 4, "air"]; }
   if (t === "gd") { const g = A(f.gdacs)[+key]; return g && [g.lat, g.lon, 12, "haz"]; }
   if (t === "mi") { const x = A(MS.d && MS.d.items).find(y => y.id === key); return x && x.pos && [x.pos[0], x.pos[1], 4, "marsec"]; }
-  if (/^(ua|nt|tg|la|ap)$/.test(t)) return intelLL(t, key);
+  if (/^(ua|nt|tg|la|ap|cr|rd|acl)$/.test(t)) return intelLL(t, key);
   if (t === "nhc") { const n = A(f.nhc)[+key]; return n && [n.lat, n.lon, 12, "haz"]; }
   if (t === "asp") { const a = A(S.airspace).find(x => x.id === key); return a && [a.lat, a.lon, 14, "asp"]; }
   if (t === "net") { const n = A(f.ioda)[+key]; return n && [n.lat, n.lon, 14, "net"]; }
@@ -1532,10 +1578,10 @@ function pick(id, silent) {
         [TX("CEL PODRÓŻY"), r.dest], [TX("WYMIARY"), r.length ? `${r.length} × ${r.width || "?"} m` : null], [TX("ZANURZENIE"), r.draught ? r.draught + " m" : null],
         [TX("PRĘDKOŚĆ"), r.sog != null ? `${r.sog} w. (${Math.round(r.sog * 1.852)} km/h)` : null], [TX("KURS"), r.cog != null ? Math.round(r.cog) + "°" : null],
         [TX("STATUS"), r.nav === 14 ? TX("ALARM AIS-SART") : NAV[r.nav]], [TX("POZYCJA"), fmtLL(p[0], p[1]) + (r.zone ? " · " + esc(r.zone) : "")], [TX("OSTATNI ODCZYT"), agoTxt(age)],
-        [TX("MMSI"), r.mmsi], [TX("IMO"), r.imo], [TX("ZNAK WYWOŁAWCZY"), r.cs], [TX("ŹRÓDŁO"), r.src], [TX("PODGLĄD"), L(r.u, TX("MarineTraffic")), 1]]) + shipWatch(r) +
+        [TX("MMSI"), r.mmsi], [TX("IMO"), r.imo], [TX("ZNAK WYWOŁAWCZY"), r.cs], [TX("ŹRÓDŁO"), r.src], [TX("PODGLĄD"), L(r.u, TX("MarineTraffic")), 1]]) + shipWatch(r) + vgBox(r.mmsi) +
         `<p class="hint">${TX("Dane AIS nadaje sam statek, więc nazwa, typ i cel podróży mogą być nieaktualne lub fałszywe. Okręty zwykle wyłączają AIS. Linia przerywana to trasa z ostatnich godzin.")}</p>`; }
   } else if (t === "mi") { h = msCard(id.slice(3), silent);
-  } else if (/^(ua|nt|tg|la|ap)$/.test(t)) { h = intelCard(t, id.slice(3)); if (!h) return;
+  } else if (/^(ua|nt|tg|la|ap|cr|rd|acl)$/.test(t)) { h = intelCard(t, id.slice(t.length + 1)); if (!h) return;
   } else if (t === "ah") { const a = A(AIR.d && AIR.d.ac).find(x => x.hex === key);
     if (!a) h = chip(TX("ADS-B NA ŻYWO"), "var(--cyan)") + `<h2 class="glow">${esc(key)}</h2><p class="hint">${TX("Samolot przestał nadawać albo zniknął z zasięgu odbiorników.")}</p>`;
     else { const now = Date.now() + AIR.skew, p = airPos(a, now), age = airAge(a, now);
@@ -1591,7 +1637,7 @@ function pick(id, silent) {
     h = chip(TX("ŹRÓDŁO") + (s.rel ? " " + TX("· WIARYGODNOŚĆ") + " " + s.rel : ""), "var(--phos)") + `<h2 class="glow">${esc(s.name)}</h2>` + dd([[TX("STAN"), s.state], [TX("UWAGI"), s.note], s.url ? [TX("ADRES"), L(s.url, s.url), 1] : null]);
   } else return;
   if (t === "c") { const c0 = A(S.conflicts).find(x => x.id === key); if (c0 && c0.lat != null) h += satBtn(c0.lat, c0.lon, 3); }
-  $("#detail").innerHTML = h; bindDetail(); bindSatImg();
+  $("#detail").innerHTML = h; bindDetail(); bindSatImg(); vgFill();
 }
 function idleDetail() {
   const hot = A(S.conflicts).filter(c => c.trend === "esc" || c.trend === "new");
@@ -1837,12 +1883,13 @@ let seenFinished;
 function renderSys() {
   if (!STATUS) return;
   const e = STATUS.engine, hw = e.hardware, j = STATUS.job, pull = e.pull || {};
-  $("#sysState").textContent = e.ready ? TX("AI GOTOWE") : e.backend ? TX("BRAK MODELU") : TX("BRAK AI");
+  $("#sysState").textContent = e.ready || (e.cloud && e.cloud_ok) ? TX("AI GOTOWE") : e.backend ? TX("BRAK MODELU") : TX("BRAK AI");
   $("#sys").innerHTML = `<dl>
     <dt>${TX("GPU")}</dt><dd>${esc(hw.gpu_name)}${hw.vram_gb ? ` · ${hw.vram_gb} ${TX("GB VRAM")}` : ""}</dd>
     <dt>${TX("RAM")}</dt><dd>${hw.ram_gb} ${TX("GB ·")} ${hw.cores} ${TX("wątków")}</dd>
     <dt>${TX("SILNIK")}</dt><dd>${e.backend ? esc(e.backend === "ollama" ? TX("Ollama") : e.backend === "lmstudio" ? TX("LM Studio") : e.backend) : ("<span class=\"red\">" + TX("nie wykryto: zainstaluj Ollamę (ollama.com) i uruchom ponownie") + "</span>")}</dd>
     <dt>${TX("MODEL")}</dt><dd>${e.model ? esc(e.model) : '<span class="red">brak</span>'}</dd>
+    ${e.cloud ? `<dt>${TX("CHMURA")}</dt><dd>${esc(e.cloud)} · <span class="${e.cloud_ok ? "" : "red"}">${e.cloud_ok ? TX("gotowa") : TX("przerwa – lokalny model")}</span><br><span class="dim">${[["main", TX("analiza")], ["ask", TX("pytania")], ["bg", TX("AI w tle")]].filter(x => (e.cloud_use || {})[x[0]]).map(x => x[1]).join(", ") || TX("nic nie wysyła")}</span></dd>` : ""}
     <dt>${TX("ZALECANY")}</dt><dd>${esc(e.recommended)}${e.recommended_size_gb ? ` (${e.recommended_size_gb} ${TX("GB)")}` : ""}<br><span class="dim">${esc(e.reason)}</span></dd>
     <dt>${TX("NASTĘPNY")}</dt><dd>${STATUS.next ? new Date(STATUS.next).toLocaleString(LOC, { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "—"}</dd></dl>
     ${e.suggest_pull ? `<div class="dbtns"><button class="btn" id="pullBtn" ${pull.active ? "disabled" : ""}>${pull.active ? `${TX("POBIERANIE")} ${pull.pct}%` : `${TX("POBIERZ")} ${esc(e.recommended)}`}</button></div>` : ""}
@@ -2361,6 +2408,17 @@ function drawIntel() {
     const age = (now - t.t) / 3600e3; CX.globalAlpha = age < 3 ? 1 : age < 12 ? .75 : .45;
     CX.beginPath(); CX.arc(p[0], p[1], 4.5, 0, 6.2832); CX.fillStyle = cssv(CRED[t.cred] || "var(--phos-dim)"); CX.fill(); CX.strokeStyle = "#050805"; CX.lineWidth = 1; CX.stroke(); CX.globalAlpha = 1;
     AHIT.push([p[0], p[1], "tg:" + t.id]); }
+  if (layerOn.acled && IN.acl) { for (const a of IN.acl) { const p = scr(a[2], a[1]); if (!p || !inView(p[0], p[1], 6)) continue; const sz = a[4] >= 10 ? 4.5 : a[4] ? 3.4 : 2.6;
+      CX.fillStyle = ACL_C[ACL_T[a[3]]] || "#9fdcb0"; CX.globalAlpha = .8; CX.beginPath(); CX.moveTo(p[0], p[1] - sz); CX.lineTo(p[0] + sz, p[1]); CX.lineTo(p[0], p[1] + sz); CX.lineTo(p[0] - sz, p[1]); CX.closePath(); CX.fill(); CX.globalAlpha = 1;
+      AHIT.push([p[0], p[1], "acl:" + a[0]]); } }
+  if (d && layerOn.rad && d.rad) for (const r of A(d.rad.pts)) { const p = scr(r.lon, r.lat); if (!p || !inView(p[0], p[1], 8)) continue;
+    CX.beginPath(); CX.arc(p[0], p[1], r.anom ? 5.5 : 3.6, 0, 6.2832); CX.fillStyle = radCol(r.usv); CX.globalAlpha = .85; CX.fill(); CX.globalAlpha = 1; CX.strokeStyle = "#050805"; CX.lineWidth = 1; CX.stroke();
+    if (r.anom) ring(p, 9 + ((now / 700) % 1) * 6, "#ff4b4b", 1.2);
+    AHIT.push([p[0], p[1], "rd:" + r.id]); }
+  if (d && layerOn.corr) for (const c of A(d.corr)) { if (c.hidden || (c.ai && c.ai.routine && !(selected === "cr:" + c.id))) continue; const p = scr(c.lon, c.lat); if (!p || !inView(p[0], p[1], 60)) continue;
+    const e = scr(c.lon, c.lat + Math.max(30, c.ext) / 111.2), rp = e ? Math.max(12, Math.min(160, Math.abs(e[1] - p[1]))) : 14, col = CORR_SEV[(c.ai && c.ai.sev) || 2];
+    CX.globalAlpha = .9; ring(p, rp, col, 1.6, [6, 4]); CX.globalAlpha = 1; CX.font = FONT(); CX.fillStyle = col; CX.fillText("⛓ " + c.layers.length + (c.ai && c.ai.sev ? " · " + c.ai.sev : ""), p[0] + rp * .72, p[1] - rp * .72);
+    AHIT.push([p[0], p[1], "cr:" + c.id]); }
   const S2 = IN.sdr;
   if (S2 && layerOn.myadsb) for (const a of A(S2.adsb)) { const p = scr(a.lon, a.lat); if (!p || !inView(p[0], p[1], 8)) continue;
     CX.beginPath(); tri(CX, p[0], p[1], ((a.trk || 0) - 90) * Math.PI / 180, 3); CX.fillStyle = a.emerg ? "#ff4b4b" : a.mil ? "#6fe4ff" : "#e8ffe8"; CX.globalAlpha = .85; CX.fill(); CX.globalAlpha = 1;
@@ -2379,6 +2437,10 @@ function renderIntel() {
   $("#tgT").textContent = `${tg.length} ${TX("postów")} · 48 h`;
   rowsInto("#osint", tg.slice(0, 40).map(t => `<li><button data-go="tg:${esc0(t.id)}"><span class="t">${esc(t.title || "")}</span><span class="chip" style="color:${CRED[t.cred] || "var(--phos-dim)"}">${esc(t.cred || "?")}</span><span class="sub">@${esc(t.ch)} · ${esc(t.place || "")} · ${hm(t.t)}${A(t.also).length ? " · " + TX("też") + " " + t.also.map(x => "@" + x).join(", ") : ""}</span></button></li>`).join("")
     || `<li class="empty">${TX("Lokalne AI jeszcze nie przeczytało postów – pojawią się po pierwszej porcji.")}</li>`);
+  if ($("#corr")) { const cs = A(d.corr).filter(c => !c.hidden);
+    $("#crT").textContent = `${cs.filter(c => !(c.ai && c.ai.routine)).length} ${TX("aktywnych")}`;
+    rowsInto("#corr", cs.slice(0, 30).map(c => { const a = c.ai || {}; return `<li><button data-go="cr:${esc0(c.id)}"><span class="t">${esc(a.title || c.lnames.join(" + "))}</span><span class="chip" style="color:${CORR_SEV[a.sev || 2]}">${a.sev ? a.sev + "/5" : "…"}</span><span class="sub">${esc(c.lnames.join(" · "))} · ${hm(c.last)}${a.routine ? " · " + TX("rutyna") : ""}</span></button></li>`; }).join("")
+      || `<li class="empty">${TX("Brak – zdarzenie złożone powstaje, gdy w jednym miejscu i czasie pojawią się sygnały z co najmniej dwóch warstw.")}</li>`); }
   const ua = d.ua, on = ua ? A(ua.oblasts).filter(o => o.on).sort((a, b) => (a.since || 0) - (b.since || 0)) : [];
   let h = `<li class="hd">${TX("Alarmy w Ukrainie")} · ${on.length}${ua ? " · " + esc(ua.src) : ""}</li>` + (on.map(o => `<li><button data-go="ua:${esc0(o.id)}"><span class="t">${esc(o.name)}</span><span class="red">${o.since ? cd(Date.now() - o.since) : TX("TERAZ")}</span><span class="sub">${esc(A(o.kinds).join(", "))}${o.parts ? " · " + o.parts + " " + TX("części obwodu") : ""}</span></button></li>`).join("") || `<li class="empty">${TX("Brak alarmów.")}</li>`);
   const nt = d.notam ? A(d.notam.items) : [];
@@ -2401,8 +2463,32 @@ function renderSdr() {
   $("#sdrT").textContent = [a.length ? "✈ " + a.length : "", st.ais && st.ais.n ? "⚓ " + st.ais.n : "", ap.length ? "APRS " + ap.length : ""].filter(Boolean).join(" · ");
 }
 /* karty szczegółów */
+const CORR_SEV = ["", "var(--phos-dim)", "var(--phos)", "var(--amber)", "#ff7a2a", "var(--red)"];
+const ACL_T = ["battle", "explosion", "civilians", "strategic", "riot", "protest", "other"], ACL_N = { battle: TX("bitwa / starcie"), explosion: TX("ostrzał, nalot, wybuch"), civilians: TX("przemoc wobec cywilów"), strategic: TX("rozwój strategiczny"), riot: TX("zamieszki"), protest: TX("protest"), other: TX("inne") };
+const ACL_C = { battle: "#ff4b4b", explosion: "#ff9d3a", civilians: "#c48cff", strategic: "#6fe4ff", riot: "#f0e68c", protest: "#9fdcb0", other: "#9fdcb0" };
+const radCol = u => u >= 1 ? "#ff4b4b" : u >= 0.3 ? "#ffb347" : u >= 0.15 ? "#f0e68c" : "#7dffa8";
+const ACLD = {};
+async function loadAcled(force) { if (!force && IN.aclAt && Date.now() - IN.aclAt < 30 * 60e3) return; IN.aclAt = Date.now(); try { const r = await api("/api/intel/acled"); IN.acl = A(r.rows); IN.aclDays = r.days; markStatic(); needDraw = true; } catch (e) {} }
+async function acledDetail(id) { if (ACLD[id]) return; ACLD[id] = { loading: 1 }; try { ACLD[id] = await api("/api/intel/acled/" + encodeURIComponent(id)); } catch (e) { ACLD[id] = { error: 1 }; } if (selected === "acl:" + id) pick(selected, true); }
 function intelCard(t, key) {
   const d = IN.d || {}, sdr = IN.sdr || {};
+  if (t === "cr") { const c = A(d.corr).find(x => x.id === key); if (!c) return ""; const a = c.ai || {};
+    return chip(TX("ZDARZENIE ZŁOŻONE") + (a.sev ? " · " + TX("WAGA") + " " + a.sev + "/5" : ""), CORR_SEV[a.sev || 2]) + `<h2 class="glow">${esc(a.title || c.lnames.join(" + "))}</h2>`
+      + (a.assess ? `<p>${esc(a.assess)}</p>` : `<p class="hint">${TX("AI jeszcze nie oceniło tego zdarzenia (ocena co kilka minut; podczas głównej analizy czeka).")}</p>`)
+      + (a.routine ? `<p class="hint">${TX("AI uznało to za rutynowe tło – bez powiadomienia.")}</p>` : "") + (c.hidden ? `<p class="hint">${TX("AI uznało, że sygnały nie są powiązane (przypadkowa zbieżność).")}</p>` : "")
+      + dd([[TX("WARSTWY"), c.lnames.join(", ")], [TX("SYGNAŁÓW"), c.n], [TX("ZASIĘG"), "≈ " + c.ext + " km"], [TX("OD"), new Date(c.first).toLocaleString(LOC)], [TX("OSTATNI"), new Date(c.last).toLocaleString(LOC)]])
+      + `<p class="sat-h">${TX("SYGNAŁY")}</p><ul class="rows">` + A(c.sig).map(x => `<li><button ${x.go ? `data-go="${esc0(x.go)}"` : 'tabindex="-1" style="cursor:default"'}><span class="t">${esc(x.text)}</span><span class="dim">${hm(x.t)}</span><span class="sub">${esc(x.ln)}</span></button></li>`).join("") + `</ul>`
+      + `<p class="hint">${TX("Zdarzenie złożone = kilka różnych warstw danych w tym samym rejonie i czasie. Ocena i scalanie powtórzeń: AI. To hipoteza do sprawdzenia, nie potwierdzony fakt.")}</p>`; }
+  if (t === "rd") { const r = A(d.rad && d.rad.pts).find(x => x.id === key); if (!r) return "";
+    return chip(TX("PROMIENIOWANIE · SAFECAST"), radCol(r.usv)) + `<h2 class="glow">${esc(r.name)} · ${r.usv} µSv/h</h2>` + dd([[TX("TŁO TEJ STACJI"), r.base + " µSv/h"], [TX("STOSUNEK DO TŁA"), (r.usv / Math.max(r.base, .01)).toFixed(1) + "×"],
+      [TX("ANOMALIA"), r.anom ? TX("TAK – wyraźnie ponad tłem") : TX("nie")], [TX("KRAJ"), r.cc], [TX("ODCZYT"), new Date(r.t).toLocaleString(LOC)], [TX("POZYCJA"), fmtLL(r.lat, r.lon)]])
+      + `<p class="hint">${TX("Typowe tło naturalne to 0,05–0,3 µSv/h. Pojedynczy skok bywa błędem czujnika lub deszczem (radon); liczy się wzrost na kilku stacjach naraz.")}</p>` + satBtn(r.lat, r.lon, 1.5); }
+  if (t === "acl") { const row = A(IN.acl).find(x => String(x[0]) === key); const x = ACLD[key]; if (!x) acledDetail(key);
+    const tt = row ? ACL_T[row[3]] : (x && x.type) || "other";
+    return chip("ACLED · " + ACL_N[tt], ACL_C[tt]) + `<h2 class="glow">${esc(x && x.loc ? x.loc + " · " + x.cc : key)}</h2>` + (x && x.notes ? `<p>${esc(x.notes)}</p>` : x && x.loading ? `<p class="hint">…</p>` : "")
+      + dd([[TX("DATA"), (x && x.d) || (row && row[5])], [TX("RODZAJ"), x && x.sub], [TX("STRONY"), x ? [x.a1, x.a2].filter(Boolean).join(" ↔ ") : null], [TX("OFIARY"), row ? row[4] : x && x.fat],
+        [TX("REGION"), x && x.adm], [TX("ŹRÓDŁO"), x && x.src]])
+      + `<p class="hint">${TX("ACLED – zdarzenia zweryfikowane przez analityków, publikowane z opóźnieniem (zwykle kilka dni). Liczby ofiar to szacunki z raportów.")}</p>`; }
   if (t === "ua") { const o = A(d.ua && d.ua.oblasts).find(x => x.id === key); if (!o) return "";
     return chip(TX("ALARM PRZECIWLOTNICZY"), "var(--red)") + `<h2 class="glow">${esc(o.name)}</h2>` + dd([[TX("STAN"), o.on ? TX("ALARM TRWA") : TX("brak alarmu")], [TX("OD"), o.since ? hm(o.since) + " (" + cd(Date.now() - o.since) + ")" : null],
       [TX("RODZAJ"), A(o.kinds).join(", ")], [TX("ŹRÓDŁO"), d.ua.src]]) + `<p class="hint">${TX("Dokładniejsze dane (rodzaj zagrożenia, rejony i gminy) daje darmowy token alerts.in.ua.")}</p>` + satBtn(o.lat, o.lon, 2.5); }
@@ -2426,6 +2512,9 @@ function intelCard(t, key) {
 const dist = (a, b) => { const r = Math.PI / 180, x = Math.sin((b.lat - a.lat) * r / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin((b.lon - a.lon) * r / 2) ** 2; return 12742 * Math.asin(Math.min(1, Math.sqrt(x))); };
 function intelLL(t, key) {
   const d = IN.d || {}, s = IN.sdr || {};
+  if (t === "cr") { const c = A(d.corr).find(x => x.id === key); return c && [c.lat, c.lon, Math.max(1.5, Math.min(8, (c.ext || 80) / 40)), "corr"]; }
+  if (t === "rd") { const r = A(d.rad && d.rad.pts).find(x => x.id === key); return r && [r.lat, r.lon, 2, "rad"]; }
+  if (t === "acl") { const a = A(IN.acl).find(x => String(x[0]) === key); return a && [a[1], a[2], 1.5, "acled"]; }
   if (t === "ua") { const o = A(d.ua && d.ua.oblasts).find(x => x.id === key); return o && [o.lat, o.lon, 8, "uaal"]; }
   if (t === "nt") { const n = A(d.notam && d.notam.items).find(x => x.id === key); return n && n.pos && [n.pos[0], n.pos[1], 6, "notam"]; }
   if (t === "tg") { const p = A(d.tg).find(x => x.id === key); return p && p.pos && [p.pos[0], p.pos[1], 4, "osint"]; }
@@ -2446,6 +2535,45 @@ function bindSatImg() {
 setInterval(() => { if (!document.hidden) pollIntel(); }, 30000);
 let sdrTick = 0;
 setInterval(() => { sdrTick++; if (!document.hidden && ((layerOn.myadsb || layerOn.aprs) || sdrTick % 10 === 0)) pollSdr(); }, 3000);
+
+/* ------------------------------------------------------------ AI W CHMURZE (v3.17) */
+let CLV = null;
+function cloudFill() {
+  const v = CLV; if (!v) return;
+  $("#clProv").innerHTML = `<option value="">${TX("WYŁĄCZONE – tylko lokalny model")}</option>` + Object.entries(v.providers).map(([k, p]) => `<option value="${k}">${esc(TX(p.name))}</option>`).join("");
+  $("#clProv").value = v.provider || ""; $("#clModel").value = v.provider ? v.model : ""; $("#clBase").value = v.base || "";
+  $("#clKey").value = ""; $("#clKey").placeholder = v.key ? TX("klucz ustawiony") + " (" + v.key + ") – " + TX("wpisz nowy, aby zmienić") : TX("wklej klucz");
+  const u = v.use || {}; $("#clUseMain").checked = u.main !== false; $("#clUseAsk").checked = u.ask !== false; $("#clUseBg").checked = !!u.bg; $("#clFallback").checked = v.fallback !== false;
+  cloudProv(); cloudStat();
+}
+function cloudProv() {
+  const k = $("#clProv").value, p = CLV && CLV.providers[k];
+  $("#clHelp").textContent = p ? TX("Klucz:") + " " + p.help + (p.model ? " · " + TX("domyślny model:") + " " + p.model : "") : TX("AI działa tylko na Twoim komputerze.");
+  $("#clBase").hidden = $("#clBaseL").hidden = k !== "custom";
+  if (p && !$("#clModel").value) $("#clModel").placeholder = p.model || "";
+}
+function cloudStat() {
+  const v = CLV; if (!v) return; const s = v.stats || {}, e = v.err;
+  $("#clStat").innerHTML = !v.provider ? `<p class="hint">${TX("Chmura wyłączona.")}</p>` :
+    `<div class="tts-row"><span class="nm">${esc(v.label || "—")}</span><span class="st ${v.available ? "" : "red"}">${!v.configured ? TX("brak klucza") : v.available ? TX("GOTOWE") : TX("PRZERWA")}</span><span class="bt"></span></div>`
+    + `<p class="hint">${TX("Dziś:")} ${s.calls || 0} ${TX("zapytań")} · ${TX("błędów")} ${s.fails || 0} · ${TX("na lokalnym zamiast chmury")} ${s.fallbacks || 0} · ${TX("tokeny")} ${(s.tok_in || 0).toLocaleString(LOC)} / ${(s.tok_out || 0).toLocaleString(LOC)}${s.last_ok ? " · " + TX("ostatnio OK") + " " + hm(s.last_ok) : ""}</p>`
+    + (e ? `<p class="hint red">${esc(e.msg)}${e.until > Date.now() ? " · " + TX("chmura wraca o") + " " + hm(e.until) : ""}</p>` : "");
+}
+async function cloudSave() {
+  const body = { provider: $("#clProv").value, model: $("#clModel").value.trim(), base: $("#clBase").value.trim(), key: $("#clKey").value.trim(),
+    use: { main: $("#clUseMain").checked, ask: $("#clUseAsk").checked, bg: $("#clUseBg").checked }, fallback: $("#clFallback").checked };
+  try { CLV = await api("/api/cloud", body); cloudFill(); $("#clMsg").textContent = TX("Zapisano."); beep(1400, .08); pollStatus(); } catch (e) { $("#clMsg").textContent = TX("Nie udało się zapisać."); }
+}
+$("#cloudOpen").addEventListener("click", async () => { $("#settings").hidden = true; try { CLV = await api("/api/cloud"); } catch (e) { return; } $("#clMsg").textContent = ""; cloudFill(); $("#cloudModal").hidden = false; $("#cloudClose").focus(); });
+$("#cloudClose").addEventListener("click", () => { $("#cloudModal").hidden = true; });
+$("#cloudModal").addEventListener("click", e => { if (e.target.id === "cloudModal") $("#cloudModal").hidden = true; });
+$("#clProv").addEventListener("change", () => { const p = CLV.providers[$("#clProv").value]; $("#clModel").value = p ? p.model : ""; $("#clModels").innerHTML = ""; cloudProv(); });
+$("#clSave").addEventListener("click", cloudSave);
+$("#clTest").addEventListener("click", async () => { await cloudSave(); $("#clMsg").textContent = TX("Łączę…");
+  try { const r = await api("/api/cloud/test", {}); CLV = r.view || CLV; cloudStat(); $("#clMsg").textContent = r.ok ? TX("Działa") + " · " + r.ms + " ms" + (r.answer && r.answer.model ? " · " + r.answer.model : "") : TX("Błąd:") + " " + (r.error || "?"); } catch (e) { $("#clMsg").textContent = TX("błąd"); } });
+$("#clList").addEventListener("click", async () => { await cloudSave(); $("#clMsg").textContent = TX("Pobieram listę…");
+  try { const r = await api("/api/cloud/models", {}); $("#clModels").innerHTML = A(r.models).map(m => `<option value="${esc(m)}">`).join(""); $("#clMsg").textContent = r.error ? TX("Błąd:") + " " + r.error : A(r.models).length + " " + TX("modeli – kliknij pole Model, aby wybrać"); } catch (e) { $("#clMsg").textContent = TX("błąd"); } });
+$("#clClear").addEventListener("click", async () => { CLV = await api("/api/cloud", { clear_key: true }); cloudFill(); $("#clMsg").textContent = TX("Klucz usunięty."); });
 
 /* ------------------------------------------------------------ MAPY OFFLINE */
 const OFF_KB = { dark: 22, darkesri: 30, sat: 45, osm: 18 };
@@ -2487,8 +2615,8 @@ $("#offClear").addEventListener("click", async () => { await api("/api/tiles", {
 
 /* ------------------------------------------------------------ okno ŹRÓDŁA I INTEGRACJE */
 const INTG_FIELDS = ["stadia_key", "kystverket", "ais_tcp", "aishub_user", "alerts_token", "ua_watch", "faa_id", "faa_secret", "notam_locs", "gfw_token", "adsb_url", "ais_port", "aprs_on", "aprs_km", "ha_webhook",
-  "imap_host", "imap_port", "imap_user", "imap_pass", "imap_folder", "imap_senders", "imap_days"];
-const INTG_SECRET = new Set(["alerts_token", "gfw_token", "faa_secret", "imap_pass"]);
+  "imap_host", "imap_port", "imap_user", "imap_pass", "imap_folder", "imap_senders", "imap_days", "acled_user", "acled_pass", "acled_days"];
+const INTG_SECRET = new Set(["alerts_token", "gfw_token", "faa_secret", "imap_pass", "acled_pass"]);
 let INTG = null;
 async function openIntg() {
   $("#settings").hidden = true; try { INTG = await api("/api/intg"); } catch (e) { return; }
@@ -2516,7 +2644,8 @@ $("#tgAll").addEventListener("click", () => { $("#tgCat").querySelectorAll("[dat
 $("#tgNone").addEventListener("click", () => { $("#tgCat").querySelectorAll("[data-tg]").forEach(b => b.checked = false); tgCount(); });
 function renderIntgStatus() {
   const st = (INTG && INTG.status) || {}, N = { ua_alerts: TX("Alarmy UA"), deepstate: "DeepStateMap", notam: "NOTAM (FAA)", gfw: "Global Fishing Watch", telegram: "Telegram OSINT",
-    adsb: "ADS-B", ais: "AIS (UDP)", aprs: "APRS-IS", aishub: "AISHub", mail: TX("Poczta (IMAP)"), ha: "Home Assistant" };
+    adsb: "ADS-B", ais: "AIS (UDP)", aprs: "APRS-IS", aishub: "AISHub", mail: TX("Poczta (IMAP)"), ha: "Home Assistant",
+    radiation: TX("Promieniowanie (Safecast)"), acled: "ACLED", corr: TX("Zdarzenia złożone (AI)"), vgraph: TX("Graf powiązań statków (OpenSanctions)") };
   Object.entries(st).forEach(([k, v]) => { if (k.startsWith("tcp:")) N[k] = "AIS · " + (v.name || k.slice(4)); });
   $("#igStatus").innerHTML = Object.entries(N).map(([k, n]) => { const s = st[k] || {};
     return `<div class="tts-row"><span class="nm">${n}</span><span class="st ${s.ok ? "" : s.ok === false ? "red" : ""}">${s.off ? TX("wyłączone") : s.ok ? "OK" + (s.n != null ? " · " + s.n : "") : s.ok === false ? TX("BŁĄD") : "—"}</span><span class="bt"></span></div>${s.err ? `<p class="hint red">${esc0(s.err)}</p>` : ""}`; }).join("");
@@ -2586,7 +2715,7 @@ function boot(done) {
   let seen = false; try { seen = sessionStorage.getItem("k7-boot") === "1"; } catch (e) { seen = true; }
   if (!needSetup && (seen || reduce)) return done();
   const B = $("#boot"); B.hidden = false; const e = STATUS ? STATUS.engine : null, C = CURRENT || {};
-  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.16"), TX("TEST PAMIĘCI ........ OK"),
+  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.17"), TX("TEST PAMIĘCI ........ OK"),
     TX("PROCESOR GRAFICZNY ..") + " " + (e ? TX(e.hardware.gpu_name) + (e.hardware.vram_gb ? " / " + e.hardware.vram_gb + " " + TX("GB") : "") : "?"),
     TX("RDZEŃ ANALITYCZNY ...") + " " + (e && e.model ? e.model.toUpperCase() : TX("NIEAKTYWNY")),
     TX("BAZA KONFLIKTÓW .....") + " " + A(C.conflicts).length + " " + TX("WĘZŁÓW"), TX("FRONTY ..............") + " " + A(C.fronts).length + " " + TX("TEATRÓW"),
