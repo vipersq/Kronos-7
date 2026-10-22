@@ -21,6 +21,20 @@ Lokalny terminal w stylu komputerów pokładowych z filmów science fiction. Pok
 - **Polecenia głosowe** (przycisk GŁOS albo Alt+V), np. „sitrep Bałtyk”, „pokaż Ormuz”, „odśwież”, „briefing”, „odtwórz”, „na żywo”, „warstwa kable”, „pełny ekran”; wszystko inne trafia jako pytanie do AI. W Chrome i Edge rozpoznawanie mowy przetwarzają serwery Google/Microsoft.
 - Wydajność: mapa rysowana na płótnie, obliczenia orbit i przelotów w osobnym wątku, zapis historii w tle.
 
+## Wybór i pobieranie modeli lokalnych (v3.18)
+
+OPERATOR → przycisk **MODELE…** przy polu „Model AI”:
+- **Zainstalowane:** każdy model ma ocenę, jak zmieści się na Twoim sprzęcie. Przycisk **UŻYJ** ustawia go jako aktywny (albo wybierasz AUTOMATYCZNIE), **✕** usuwa go z dysku po potwierdzeniu.
+- **Polecane dla Twojego sprzętu:** 13 sprawdzonych modeli (Qwen3 1.7b–32b, Gemma 3, Llama 3.1, Phi-4, DeepSeek-R1, Mistral Small 3.2, gpt-oss) z opisem i oceną dopasowania:
+  - zielony: w całości na karcie, szybko;
+  - bursztynowy: MoE, częściowo w RAM, ale nadal szybko (np. qwen3:30b, gpt-oss:20b);
+  - szary: część w RAM albo procesor, wolno;
+  - czerwony: za duży.
+  W nagłówku okna KRONOS podpowiada najszybszy dobry model i ten o najlepszej jakości.
+- **Inny model:** wpisujesz dowolną nazwę z ollama.com/library (albo `hf.co/…` z Hugging Face) i klikasz **POBIERZ**. Widać postęp, a po pobraniu model może od razu zostać aktywnym.
+- Długość kontekstu dobiera się do wybranego modelu.
+- Pobieranie i usuwanie działa z Ollamą. W LM Studio modele pobiera się w jego własnym oknie, a tu tylko się je wybiera.
+
 ## AI w chmurze, zdarzenia złożone, graf powiązań, promieniowanie, ACLED (v3.17)
 
 **AI w chmurze** (OPERATOR → AI W CHMURZE…)

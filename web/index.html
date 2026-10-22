@@ -208,6 +208,25 @@
     </div>
   </div>
 </div>
+<div class="modal" id="modelModal" hidden role="dialog" aria-modal="true" aria-labelledby="modelTitle">
+  <div class="modal-in frame off-modal model-modal">
+    <div class="frame-h"><span id="modelTitle">&gt; MODEL AI (LOKALNY)</span><button type="button" class="btn" id="modelClose" aria-label="Zamknij">✕</button></div>
+    <div class="intg off-body">
+      <p class="hint" id="mdHw"></p>
+      <p class="sat-h">ZAINSTALOWANE</p>
+      <div class="tts-voices" id="mdInst"></div>
+      <p class="sat-h">POLECANE DLA TWOJEGO SPRZĘTU</p>
+      <p class="hint">Zielone mieszczą się w całości na karcie (szybko). Bursztynowe MoE częściowo idą do RAM, ale nadal są szybkie. Szare będą wolne albo się nie zmieszczą.</p>
+      <div class="tts-voices" id="mdCat"></div>
+      <p class="sat-h">INNY MODEL</p>
+      <label for="mdName">Nazwa z ollama.com/library <small>np. qwen3:30b, gemma3:12b, mistral-small3.2 albo hf.co/użytkownik/model:Q4_K_M</small></label>
+      <div class="set-row"><input id="mdName" autocomplete="off" spellcheck="false" placeholder="qwen3:30b"><button type="button" class="btn" id="mdPull">POBIERZ</button></div>
+      <label class="chk"><input type="checkbox" id="mdUse" checked> <span>Po pobraniu ustaw jako aktywny</span></label>
+      <div class="offbar" id="mdBar" hidden><div></div></div>
+      <p class="hint" id="mdMsg" aria-live="polite"></p>
+    </div>
+  </div>
+</div>
 <div class="modal" id="sndModal" hidden role="dialog" aria-modal="true" aria-labelledby="sndTitle">
   <div class="modal-in sit-modal frame snd-modal">
     <div class="frame-h"><span id="sndTitle">&gt; DŹWIĘK I GŁOS</span><button type="button" class="btn" id="sndClose" aria-label="Zamknij">✕</button></div>
@@ -253,7 +272,7 @@
         <input id="setT1" type="time" aria-label="Pierwsza analiza"><input id="setT2" type="time" aria-label="Druga analiza"><input id="setT3" type="time" aria-label="Trzecia analiza">
       </fieldset>
       <label for="setModel">Model AI</label>
-      <select id="setModel"></select>
+      <div class="set-row"><select id="setModel"></select><button type="button" class="btn" id="modelOpen">MODELE…</button></div>
       <label class="chk"><input id="setPull" type="checkbox"> Automatycznie pobieraj zalecany model</label>
       <fieldset class="set-group"><legend>Obciążenie karty graficznej</legend>
         <label for="setAiBg">AI w tle (Telegram OSINT, alerty morskie) <small>razem z analizą = karta pracuje tylko w godzinach analizy; nowe posty do tego czasu widać bez streszczenia AI</small></label>

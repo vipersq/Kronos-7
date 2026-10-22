@@ -174,6 +174,12 @@ class Engine:
         self._choose()
 
     def _choose(self):
+        self._choose2()
+        cat = {norm_name(m["name"]): m for m in list(self.cfg.get("model_catalog", [])) + LOCAL_CATALOG}
+        if self.model:
+            self.ctx = (cat.get(norm_name(self.model)) or {}).get("ctx", 8192)
+
+    def _choose2(self):
         ai = self.cfg["ai"]
         names = [m["name"] for m in self.installed]
         by_norm = {norm_name(n): n for n in names}
@@ -241,6 +247,36 @@ class Engine:
                 self.pull["active"] = False
                 self.refresh()
         threading.Thread(target=run, daemon=True).start()
+
+    def delete_model(self, name):
+        if self.backend != "ollama":
+            raise RuntimeError("tylko Ollama")
+        req = urllib.request.Request(self.cfg["ai"]["ollama_url"] + "/api/delete", data=json.dumps({"model": name, "name": name}).encode(),
+                                     headers={"Content-Type": "application/json"}, method="DELETE")
+        with urllib.request.urlopen(req, timeout=60) as r:
+            r.read()
+        self.refresh()
+
+    def models_view(self):
+        en = i18n.en()
+        inst = {norm_name(m["name"]): m for m in self.installed}
+        cat = []
+        for m in LOCAL_CATALOG:
+            f = fit(self.hw, m["size_gb"], m["ctx"], m.get("moe"))
+            cat.append({"name": m["name"], "size_gb": m["size_gb"], "moe": bool(m.get("moe")), "desc": m["en" if en else "pl"], "fit": f,
+                        "fit_txt": FIT_TXT[f][1 if en else 0], "installed": norm_name(m["name"]) in inst})
+        known = {norm_name(m["name"]): m for m in LOCAL_CATALOG}
+        ins = []
+        for m in self.installed:
+            k = known.get(norm_name(m["name"]))
+            f = fit(self.hw, m.get("size_gb") or (k or {}).get("size_gb", 0), (k or {}).get("ctx", 8192), (k or {}).get("moe") or bool(re.search(r"\d+b-a\d+b|moe|gpt-oss|qwen3:30b", m["name"], re.I)))
+            ins.append({"name": m["name"], "size_gb": m.get("size_gb"), "fit": f, "fit_txt": FIT_TXT[f][1 if en else 0], "active": m["name"] == self.model})
+        gpu = [c for c in cat if c["fit"] == "gpu"]
+        moe = [c for c in cat if c["fit"] == "mix_moe" and (not gpu or c["size_gb"] > max(g["size_gb"] for g in gpu))]
+        return {"backend": self.backend, "active": self.model, "auto": self.cfg["ai"].get("model", "auto") == "auto", "hw": self.hw,
+                "recommended": self.recommended["name"], "installed": ins, "catalog": cat, "pull": self.pull,
+                "best_fast": max(gpu, key=lambda c: c["size_gb"])["name"] if gpu else None,
+                "best_quality": max(moe, key=lambda c: c["size_gb"])["name"] if moe else None}
 
     def unload(self):
         """Zwalnia model z pamięci karty graficznej (Ollama: keep_alive=0). Przy następnym użyciu model wczyta się ponownie (kilka–kilkanaście sekund)."""
@@ -339,6 +375,45 @@ def parse_json(text):
         if m:
             return json.loads(m.group(0))
         raise
+
+
+# ---------------------------------------------------------------- katalog modeli lokalnych (v3.18)
+# rozmiary to pliki Ollamy w kwantyzacji domyślnej (ok. 4 bity); moe = mieszanka ekspertów – liczy tylko część wag na słowo
+LOCAL_CATALOG = [
+    {"name": "qwen3:1.7b", "size_gb": 1.4, "ctx": 6144, "pl": "Najmniejszy – słaby sprzęt albo sam procesor", "en": "Smallest – weak hardware or CPU only"},
+    {"name": "qwen3:4b", "size_gb": 2.6, "ctx": 8192, "pl": "Mały, szybki; proste streszczenia", "en": "Small, fast; simple summaries"},
+    {"name": "llama3.1:8b", "size_gb": 4.9, "ctx": 12288, "pl": "Meta; solidny po angielsku, słabszy po polsku", "en": "Meta; solid in English, weaker in Polish"},
+    {"name": "qwen3:8b", "size_gb": 5.2, "ctx": 12288, "pl": "Dobry przy 8 GB VRAM", "en": "Good with 8 GB VRAM"},
+    {"name": "gemma3:12b", "size_gb": 8.1, "ctx": 16384, "pl": "Google; mocny w językach, w tym w polskim", "en": "Google; strong in languages, including Polish"},
+    {"name": "deepseek-r1:14b", "size_gb": 9.0, "ctx": 16384, "pl": "Rozumowanie krok po kroku – wolniejszy", "en": "Step-by-step reasoning – slower"},
+    {"name": "phi4:14b", "size_gb": 9.1, "ctx": 16384, "pl": "Microsoft; dobry w analizie", "en": "Microsoft; good at analysis"},
+    {"name": "qwen3:14b", "size_gb": 9.3, "ctx": 16384, "pl": "Najlepszy balans dla 12–16 GB VRAM", "en": "Best balance for 12–16 GB VRAM"},
+    {"name": "gpt-oss:20b", "size_gb": 14.0, "ctx": 16384, "moe": True, "pl": "OpenAI (otwarty); MoE – szybki jak na rozmiar", "en": "OpenAI (open-weight); MoE – fast for its size"},
+    {"name": "mistral-small3.2:24b", "size_gb": 15.0, "ctx": 16384, "pl": "Mistral; bardzo dobry w językach europejskich", "en": "Mistral; very good in European languages"},
+    {"name": "gemma3:27b", "size_gb": 17.0, "ctx": 16384, "pl": "Google; wysoka jakość, potrzebuje 20+ GB VRAM", "en": "Google; high quality, needs 20+ GB VRAM"},
+    {"name": "qwen3:30b", "size_gb": 18.6, "ctx": 16384, "moe": True, "pl": "MoE (3 mld aktywnych): jakość bliska 32b, szybki nawet częściowo w RAM", "en": "MoE (3B active): quality close to 32b, fast even partly in RAM"},
+    {"name": "qwen3:32b", "size_gb": 20.0, "ctx": 16384, "pl": "Najwyższa jakość z rodziny Qwen3; 24 GB VRAM", "en": "Top Qwen3 quality; 24 GB VRAM"},
+]
+
+
+def fit(hw, size_gb, ctx=16384, moe=False):
+    """Czy model zmieści się na tym sprzęcie: gpu (w całości na karcie), mix_moe / mix (część w RAM), cpu, no."""
+    vram, ram = hw.get("vram_gb", 0) or 0, hw.get("ram_gb", 0) or 0
+    need = size_gb * 1.05 + ctx / 16384 * 0.8 if size_gb else 0
+    if not size_gb:
+        return "unknown"
+    if vram >= 4 and need <= vram * 0.97:
+        return "gpu"
+    if vram >= 4 and need <= vram + ram * 0.6:
+        return "mix_moe" if moe else "mix"
+    if vram < 4 and size_gb <= ram * 0.5:
+        return "cpu"
+    return "no"
+
+
+FIT_TXT = {"gpu": ("w całości na karcie – szybko", "fully on the GPU – fast"), "mix_moe": ("część w RAM, ale MoE – nadal szybko", "partly in RAM, but MoE – still fast"),
+           "mix": ("część w RAM – wyraźnie wolniej", "partly in RAM – noticeably slower"), "cpu": ("na procesorze – wolno", "on the CPU – slow"),
+           "no": ("za duży na ten sprzęt", "too big for this hardware"), "unknown": ("rozmiar nieznany", "size unknown")}
 
 
 # ---------------------------------------------------------------- AI w chmurze (v3.17)

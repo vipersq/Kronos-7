@@ -935,6 +935,10 @@ class H(BaseHTTPRequestHandler):
             return self._json(VGRAPH.graph(mm, im, g1("name") or (rec or {}).get("name"), live, (rec or {}).get("flag")))
         if p == "/api/cloud":
             return self._json(CLOUD.view())
+        if p == "/api/models":
+            if "rescan" in self.path:
+                ENGINE.refresh()
+            return self._json(ENGINE.models_view())
         if p == "/api/deck":
             return self._json(deck_state())
         if p == "/api/intg":
@@ -1170,7 +1174,7 @@ class H(BaseHTTPRequestHandler):
                 self.end_headers(); self.wfile.write(b); return
             time.sleep(1.5)
             return self._json({"ok": False}, 403)
-        if (p in ("/api/settings", "/api/model/pull", "/api/model/rescan", "/api/notify/test") or p.startswith("/api/sounds/")) and not self._local():
+        if (p in ("/api/settings", "/api/model/pull", "/api/model/rescan", "/api/model/delete", "/api/model/use", "/api/notify/test") or p.startswith("/api/sounds/")) and not self._local():
             return self._json({"error": i18n.L("Ustawienia można zmieniać tylko na komputerze z KRONOS-em.", "Settings can only be changed on the computer running KRONOS.")}, 403)
         if p in ("/api/tts/install", "/api/tts/remove", "/api/tts/settings", "/api/tts/ms/install") and not self._local():
             return self._json({"error": "local only"}, 403)
@@ -1250,8 +1254,27 @@ class H(BaseHTTPRequestHandler):
         if p == "/api/refresh":
             return self._json({"started": run_refresh(), "job": JOB})
         if p == "/api/model/pull":
-            ENGINE.pull_model(self._body().get("name"))
+            nm = str(self._body().get("name") or "").strip()
+            if nm and not re.match(r"^[A-Za-z0-9][\w.\-/]*(:[\w.\-]+)?$", nm):
+                return self._json({"ok": False, "error": i18n.L("Niepoprawna nazwa modelu (np. qwen3:14b albo hf.co/użytkownik/model:Q4_K_M).", "Invalid model name (e.g. qwen3:14b or hf.co/user/model:Q4_K_M).")}, 400)
+            if ENGINE.backend != "ollama":
+                return self._json({"ok": False, "error": i18n.L("Pobieranie działa tylko z Ollamą (w LM Studio pobierz model w jego oknie).", "Downloading works only with Ollama (in LM Studio, download the model in its own window).")}, 400)
+            if ENGINE.pull["active"]:
+                return self._json({"ok": False, "error": i18n.L("Już coś się pobiera.", "A download is already running."), "pull": ENGINE.pull}, 409)
+            ENGINE.pull_model(nm or None)
             return self._json({"ok": True, "pull": ENGINE.pull})
+        if p == "/api/model/delete":
+            nm = str(self._body().get("name") or "").strip()
+            if nm == ENGINE.model and CFG["ai"].get("model", "auto") != "auto":
+                return self._json({"ok": False, "error": i18n.L("To aktywny model – najpierw wybierz inny.", "This is the active model – choose another one first.")}, 400)
+            try:
+                ENGINE.delete_model(nm); ENGINE._choose(); log(i18n.L(f"Usunięto model {nm}.", f"Deleted model {nm}."))
+                return self._json(dict(ENGINE.models_view(), ok=True))
+            except Exception as e:
+                return self._json({"ok": False, "error": str(e)[:200]}, 400)
+        if p == "/api/model/use":
+            ok, msg = save_settings({"model": str(self._body().get("name") or "auto")})
+            return self._json(dict(ENGINE.models_view(), ok=ok, error=msg))
         if p == "/api/model/rescan":
             ENGINE.refresh(); return self._json(ENGINE.status())
         if p == "/api/ask":
@@ -1296,7 +1319,7 @@ class H(BaseHTTPRequestHandler):
 def main():
     port = int(os.environ.get("KRONOS_PORT", CFG.get("port", 7707)))
     st = ENGINE.status()
-    log("KRONOS-7 v3.17 · start")
+    log("KRONOS-7 v3.18 · start")
     log(f"Sprzęt: {st['hardware']['gpu_name']} · VRAM {st['hardware']['vram_gb']} GB · RAM {st['hardware']['ram_gb']} GB")
     log(f"AI: {st['backend'] or 'brak (zainstaluj Ollamę)'} · model: {st['model'] or '—'} · zalecany: {st['recommended']}")
     log(st["reason"])

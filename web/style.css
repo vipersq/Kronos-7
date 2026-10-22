@@ -556,3 +556,6 @@ body.bgp *:not(.ticker-in){animation-play-state:paused!important}
 .vgsvg .vgn.go{cursor:pointer}.vgsvg .vgn.go:hover circle{stroke:var(--amber);stroke-width:2}
 .vgleg{font-size:calc(11*var(--u));color:var(--phos-dim);margin:4px 0}.vgleg i{display:inline-block;width:9px;height:9px;margin:0 3px 0 8px;vertical-align:-1px}.vgleg i.o{border:2px solid;width:7px;height:7px;border-radius:50%;background:none!important}
 .vgdesc summary{cursor:pointer;color:var(--phos-dim)}.vgdesc p{font-size:calc(12*var(--u))}
+.model-modal{width:min(820px,100%)}
+.model-modal .tts-row .nm small{display:block;white-space:normal}
+.model-modal .tts-row{align-items:center}
