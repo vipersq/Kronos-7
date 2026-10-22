@@ -218,8 +218,18 @@
       <p class="sat-h">POLECANE DLA TWOJEGO SPRZĘTU</p>
       <p class="hint">Zielone mieszczą się w całości na karcie (szybko). Bursztynowe MoE częściowo idą do RAM, ale nadal są szybkie. Szare będą wolne albo się nie zmieszczą.</p>
       <div class="tts-voices" id="mdCat"></div>
+      <p class="sat-h">HUGGING FACE · MODELE GGUF</p>
+      <p class="hint">Ollama pobiera z Hugging Face tylko modele w formacie GGUF. Wyszukaj nazwę (np. „qwen3 14b”, „bielik”, „gemma 3 12b”), wybierz repozytorium, a potem wariant (kwantyzację) – zalecany jest oznaczony ★.</p>
+      <div class="set-row"><input id="hfQ" autocomplete="off" spellcheck="false" placeholder="szukaj na Hugging Face, np. bielik"><button type="button" class="btn" id="hfGo">SZUKAJ</button></div>
+      <div class="tts-voices" id="hfRes"></div>
+      <details class="hfgate"><summary>Modele z ograniczonym dostępem (Llama, Gemma i inne) – logowanie</summary>
+        <p class="hint">Hugging Face nie używa przy pobieraniu nazwy użytkownika i hasła. Ollama loguje się własnym kluczem:<br>1) na stronie modelu zaloguj się i zaakceptuj licencję („Agree and access”),<br>2) skopiuj poniższy klucz Ollamy i dodaj go na huggingface.co → Settings → SSH and GPG Keys → Add SSH Key,<br>3) pobierz model jeszcze raz.</p>
+        <div class="set-row"><input id="hfKey" readonly spellcheck="false"><button type="button" class="btn" id="hfKeyCopy">KOPIUJ</button></div>
+        <p class="hint">Token Hugging Face (opcjonalnie) – tylko do przeglądania prywatnych repozytoriów w wyszukiwarce; huggingface.co → Settings → Access Tokens → rodzaj „Read”.</p>
+        <div class="set-row"><input id="hfTok" type="password" autocomplete="off" spellcheck="false" placeholder="hf_…"><button type="button" class="btn" id="hfTokSave">ZAPISZ</button></div>
+      </details>
       <p class="sat-h">INNY MODEL</p>
-      <label for="mdName">Nazwa z ollama.com/library <small>np. qwen3:30b, gemma3:12b, mistral-small3.2 albo hf.co/użytkownik/model:Q4_K_M</small></label>
+      <label for="mdName">Nazwa albo link <small>np. qwen3:30b, link z ollama.com albo huggingface.co, „ollama run hf.co/użytkownik/model:Q4_K_M”</small></label>
       <div class="set-row"><input id="mdName" autocomplete="off" spellcheck="false" placeholder="qwen3:30b"><button type="button" class="btn" id="mdPull">POBIERZ</button></div>
       <label class="chk"><input type="checkbox" id="mdUse" checked> <span>Po pobraniu ustaw jako aktywny</span></label>
       <div class="offbar" id="mdBar" hidden><div></div></div>

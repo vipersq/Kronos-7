@@ -21,6 +21,19 @@ Lokalny terminal w stylu komputerów pokładowych z filmów science fiction. Pok
 - **Polecenia głosowe** (przycisk GŁOS albo Alt+V), np. „sitrep Bałtyk”, „pokaż Ormuz”, „odśwież”, „briefing”, „odtwórz”, „na żywo”, „warstwa kable”, „pełny ekran”; wszystko inne trafia jako pytanie do AI. W Chrome i Edge rozpoznawanie mowy przetwarzają serwery Google/Microsoft.
 - Wydajność: mapa rysowana na płótnie, obliczenia orbit i przelotów w osobnym wątku, zapis historii w tle.
 
+## Hugging Face bez błędów (v3.19)
+
+W oknie **MODELE…**:
+- **Wyszukiwarka Hugging Face:** pokazuje tylko modele w formacie GGUF, bo tylko takie Ollama potrafi pobrać. Kliknięcie **WARIANTY** wyświetla pliki (kwantyzacje) z rozmiarem i oceną dopasowania do sprzętu. Zalecany wariant ma ★ (zwykle Q4_K_M). Warianty podzielone na kilka plików są pomijane, bo Ollama ich nie pobierze.
+- **Wklejanie nazwy albo linku:** można wkleić link do strony modelu albo pliku na huggingface.co, link z ollama.com albo polecenie `ollama run …`. KRONOS sam zamienia to na poprawną nazwę.
+- **Sprawdzanie przed pobraniem** z czytelnym komunikatem zamiast „400”:
+  - repozytorium bez GGUF (z podpowiedzią, żeby szukać wersji GGUF),
+  - nieistniejący wariant (z listą dostępnych),
+  - repozytorium nieistniejące albo prywatne,
+  - model z ograniczonym dostępem.
+- **Modele z ograniczonym dostępem** (Llama, Gemma itp.): Hugging Face nie przyjmuje przy pobieraniu nazwy użytkownika i hasła, a Ollama loguje się własnym kluczem. Okno pokazuje ten klucz z przyciskiem KOPIUJ i instrukcję: zaakceptuj licencję na stronie modelu, dodaj klucz w Settings → SSH and GPG Keys, pobierz ponownie. Token HF (rodzaj „Read”) jest opcjonalny i służy tylko do przeglądania prywatnych repozytoriów.
+- **Modele oznaczone jako za duże** da się pobrać mimo to, po podwójnym kliknięciu.
+
 ## Wybór i pobieranie modeli lokalnych (v3.18)
 
 OPERATOR → przycisk **MODELE…** przy polu „Model AI”:

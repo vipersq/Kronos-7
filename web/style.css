@@ -559,3 +559,6 @@ body.bgp *:not(.ticker-in){animation-play-state:paused!important}
 .model-modal{width:min(820px,100%)}
 .model-modal .tts-row .nm small{display:block;white-space:normal}
 .model-modal .tts-row{align-items:center}
+.hffiles{padding-left:14px;border-left:1px dashed var(--phos-faint);margin:0 0 6px 6px}.hfgate summary{cursor:pointer;color:var(--amber);margin:6px 0}
+.hint.amber{color:var(--amber)}
+.btn.dimbtn{opacity:.55}

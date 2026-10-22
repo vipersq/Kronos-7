@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """KRONOS-7 — lokalny serwer planetarnego systemu wywiadowczego.
 Uruchom:  python server.py   (potem przeglądarka: http://127.0.0.1:7707)"""
-import atexit, gzip, json, mimetypes, os, re, sys, threading, time, traceback, urllib.parse, webbrowser
+import atexit, gzip, json, mimetypes, os, re, sys, threading, time, traceback, urllib.error, urllib.parse, webbrowser
 mimetypes.add_type("application/manifest+json", ".webmanifest"); mimetypes.add_type("image/svg+xml", ".svg"); mimetypes.add_type("text/javascript", ".js")
 from collections import deque
 from datetime import datetime, timedelta
@@ -935,6 +935,26 @@ class H(BaseHTTPRequestHandler):
             return self._json(VGRAPH.graph(mm, im, g1("name") or (rec or {}).get("name"), live, (rec or {}).get("flag")))
         if p == "/api/cloud":
             return self._json(CLOUD.view())
+        if p == "/api/hf/search":
+            q = urllib.parse.unquote_plus((re.search(r"q=([^&]*)", self.path) or [None, ""])[1]).strip()[:80]
+            try:
+                return self._json({"res": llm.hf_search(q, SETTINGS.get("hf_token")) if q else []})
+            except Exception as e:
+                return self._json({"res": [], "error": str(e)[:200]})
+        if p == "/api/hf/files":
+            repo = urllib.parse.unquote_plus((re.search(r"repo=([^&]*)", self.path) or [None, ""])[1]).strip()
+            if not re.match(r"^[\w.\-]+/[\w.\-]+$", repo):
+                return self._json({"error": "repo"}, 400)
+            try:
+                return self._json(llm.hf_files(repo, ENGINE.hw, SETTINGS.get("hf_token")))
+            except urllib.error.HTTPError as e:
+                return self._json({"error": (i18n.L("Hugging Face: nie ma takiego repozytorium albo jest prywatne", "Hugging Face: no such repository, or it is private") if e.code in (401, 404)
+                                             else i18n.L("Hugging Face: brak dostępu – model z ograniczonym dostępem", "Hugging Face: access denied – gated model")) + f" (HTTP {e.code})"})
+            except Exception as e:
+                return self._json({"error": str(e)[:200]})
+        if p == "/api/hf/key":
+            k, path = llm.ollama_pubkey()
+            return self._json({"key": k, "path": path, "token_set": bool(SETTINGS.get("hf_token"))})
         if p == "/api/models":
             if "rescan" in self.path:
                 ENGINE.refresh()
@@ -1174,7 +1194,7 @@ class H(BaseHTTPRequestHandler):
                 self.end_headers(); self.wfile.write(b); return
             time.sleep(1.5)
             return self._json({"ok": False}, 403)
-        if (p in ("/api/settings", "/api/model/pull", "/api/model/rescan", "/api/model/delete", "/api/model/use", "/api/notify/test") or p.startswith("/api/sounds/")) and not self._local():
+        if (p in ("/api/settings", "/api/model/pull", "/api/model/rescan", "/api/model/delete", "/api/model/use", "/api/hf/token", "/api/notify/test") or p.startswith("/api/sounds/")) and not self._local():
             return self._json({"error": i18n.L("Ustawienia można zmieniać tylko na komputerze z KRONOS-em.", "Settings can only be changed on the computer running KRONOS.")}, 403)
         if p in ("/api/tts/install", "/api/tts/remove", "/api/tts/settings", "/api/tts/ms/install") and not self._local():
             return self._json({"error": "local only"}, 403)
@@ -1253,8 +1273,33 @@ class H(BaseHTTPRequestHandler):
             return self._json({"ok": ok, "error": msg, "settings": settings_view()}, 200 if ok else 400)
         if p == "/api/refresh":
             return self._json({"started": run_refresh(), "job": JOB})
+        if p == "/api/hf/token":
+            t = str(self._body().get("token") or "").strip()
+            if t and not re.match(r"^hf_[A-Za-z0-9]{20,}$", t):
+                return self._json({"ok": False, "error": i18n.L("Token Hugging Face zaczyna się od „hf_” (huggingface.co → Settings → Access Tokens, rodzaj Read).", "A Hugging Face token starts with “hf_” (huggingface.co → Settings → Access Tokens, type Read).")}, 400)
+            SETTINGS["hf_token"] = t
+            SETTINGS_FILE.write_text(json.dumps(SETTINGS, ensure_ascii=False, indent=2), encoding="utf-8")
+            return self._json({"ok": True, "token_set": bool(t)})
         if p == "/api/model/pull":
-            nm = str(self._body().get("name") or "").strip()
+            nm = llm.model_name(str(self._body().get("name") or ""))
+            if nm.lower().startswith("hf.co/"):          # sprawdź repozytorium przed pobraniem – czytelny błąd zamiast „400”
+                try:
+                    info = llm.hf_files(nm[6:].split(":")[0], ENGINE.hw, SETTINGS.get("hf_token"))
+                    if not info["files"]:
+                        return self._json({"ok": False, "error": llm.pull_error(nm, "not gguf")}, 400)
+                    q = nm.split(":")[1].upper() if ":" in nm else None
+                    if q and not any(f["quant"] == q for f in info["files"]):
+                        return self._json({"ok": False, "error": i18n.L(f"W repozytorium nie ma wariantu {q}. Dostępne: ", f"No {q} variant in this repository. Available: ") + ", ".join(f["quant"] for f in info["files"] if f["quant"])}, 400)
+                except urllib.error.HTTPError as e:
+                    if e.code == 404:
+                        return self._json({"ok": False, "error": i18n.L("Nie ma takiego repozytorium na Hugging Face (albo jest prywatne – wtedy wpisz token).", "No such repository on Hugging Face (or it is private – then enter a token).")}, 400)
+                    if e.code == 401:
+                        return self._json({"ok": False, "error": i18n.L("Nie ma takiego repozytorium na Hugging Face albo jest prywatne – sprawdź nazwę (wielkość liter nie ma znaczenia, ukośnik między autorem a nazwą).",
+                                                                        "No such repository on Hugging Face, or it is private – check the name (author/name).")}, 400)
+                    if e.code == 403:
+                        return self._json({"ok": False, "error": llm.pull_error(nm, "403")}, 400)
+                except Exception:
+                    pass                                   # brak dostępu do API HF – spróbuj i tak
             if nm and not re.match(r"^[A-Za-z0-9][\w.\-/]*(:[\w.\-]+)?$", nm):
                 return self._json({"ok": False, "error": i18n.L("Niepoprawna nazwa modelu (np. qwen3:14b albo hf.co/użytkownik/model:Q4_K_M).", "Invalid model name (e.g. qwen3:14b or hf.co/user/model:Q4_K_M).")}, 400)
             if ENGINE.backend != "ollama":
@@ -1319,7 +1364,7 @@ class H(BaseHTTPRequestHandler):
 def main():
     port = int(os.environ.get("KRONOS_PORT", CFG.get("port", 7707)))
     st = ENGINE.status()
-    log("KRONOS-7 v3.18 · start")
+    log("KRONOS-7 v3.19 · start")
     log(f"Sprzęt: {st['hardware']['gpu_name']} · VRAM {st['hardware']['vram_gb']} GB · RAM {st['hardware']['ram_gb']} GB")
     log(f"AI: {st['backend'] or 'brak (zainstaluj Ollamę)'} · model: {st['model'] or '—'} · zalecany: {st['recommended']}")
     log(st["reason"])

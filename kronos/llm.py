@@ -1,5 +1,5 @@
 """Wykrywanie sprzętu, wybór modelu i rozmowa z lokalnym AI (Ollama albo LM Studio)."""
-import json, os, platform, re, shutil, subprocess, sys, threading, time, urllib.request, urllib.error
+import json, os, platform, re, shutil, subprocess, sys, threading, time, urllib.parse, urllib.request, urllib.error
 from . import i18n
 
 GB = 1024 ** 3
@@ -241,8 +241,14 @@ class Engine:
                 self.pull["status"] = "gotowe"
                 self.log(f"Pobrano model {name}.")
             except Exception as e:
-                self.pull["status"] = f"błąd: {e}"
-                self.log(f"Pobieranie {name} nie powiodło się: {e}")
+                raw = str(e)
+                if isinstance(e, urllib.error.HTTPError):
+                    try:
+                        raw = json.loads(e.read().decode("utf-8", "replace")).get("error") or raw
+                    except Exception:
+                        pass
+                self.pull["status"] = i18n.L("błąd", "error") + ": " + pull_error(name, raw)
+                self.log(f"Pobieranie {name} nie powiodło się: {raw}")
             finally:
                 self.pull["active"] = False
                 self.refresh()
@@ -375,6 +381,95 @@ def parse_json(text):
         if m:
             return json.loads(m.group(0))
         raise
+
+
+# ---------------------------------------------------------------- Hugging Face (v3.19): wyszukiwanie GGUF, wybór kwantyzacji, dostęp do modeli bramkowanych
+HF_API = "https://huggingface.co/api/models"
+QUANT_RX = re.compile(r"[.\-_]((?:IQ|Q)\d[\w]*|BF16|F16|F32|MXFP4\w*)\.gguf$", re.I)
+
+
+def model_name(raw):
+    """Nazwa dla Ollamy z tego, co wkleił operator: link do Hugging Face, polecenie „ollama run …”, nazwa z biblioteki Ollamy."""
+    n = (raw or "").strip().strip('"').strip("'")
+    n = re.sub(r"^(ollama\s+(run|pull)\s+)", "", n, flags=re.I).strip()
+    m = re.match(r"^(?:https?://)?(?:www\.)?(?:huggingface\.co|hf\.co)/([\w.\-]+/[\w.\-]+)(?:/(?:tree|blob|resolve)/[\w.\-]+/?([\w.\-/]*))?/?(?::([\w.\-]+))?$", n, re.I)
+    if m:
+        quant = m.group(3)
+        if not quant and m.group(2):
+            q = QUANT_RX.search(m.group(2))
+            quant = q.group(1) if q else None
+        return "hf.co/" + m.group(1) + (":" + quant if quant else "")
+    m = re.match(r"^(?:https?://)?(?:www\.)?ollama\.com/(?:library/)?([\w.\-/]+?)(?::([\w.\-]+))?/?$", n, re.I)
+    if m:
+        return m.group(1) + (":" + m.group(2) if m.group(2) else "")
+    return n
+
+
+def pull_error(name, raw):
+    r = (raw or "").lower()
+    hf = name.lower().startswith(("hf.co/", "huggingface.co/"))
+    if hf and ("gguf" in r or "not compatible" in r or "no gguf" in r or "invalid file" in r):
+        return i18n.L("to repozytorium nie zawiera plików GGUF – Ollama pobiera z Hugging Face tylko modele GGUF. Wyszukaj wersję „GGUF” (np. od unsloth albo bartowski) w sekcji HUGGING FACE.",
+                      "this repository has no GGUF files – Ollama only pulls GGUF models from Hugging Face. Search for a “GGUF” version (e.g. by unsloth or bartowski) in the HUGGING FACE section.")
+    if hf and ("401" in r or "403" in r or "unauthorized" in r or "forbidden" in r or "gated" in r or "access" in r):
+        return i18n.L("model ma ograniczony dostęp – zaakceptuj licencję na stronie modelu i dodaj klucz Ollamy do konta Hugging Face (instrukcja w sekcji „Modele z ograniczonym dostępem”).",
+                      "this model is gated – accept its licence on the model page and add your Ollama key to your Hugging Face account (see “Gated models”).")
+    if "file does not exist" in r or "manifest unknown" in r or "not found" in r or "404" in r:
+        return i18n.L(f"nie ma takiego modelu albo wariantu ({name}). Sprawdź nazwę na ollama.com/library; dla Hugging Face wybierz wariant z listy plików.",
+                      f"no such model or variant ({name}). Check the name on ollama.com/library; for Hugging Face pick a variant from the file list.")
+    if "invalid model name" in r or "400" in r:
+        return i18n.L(f"niepoprawna nazwa modelu ({name}).", f"invalid model name ({name}).")
+    if "split" in r or "multiple" in r:
+        return i18n.L("ten wariant jest podzielony na kilka plików – wybierz mniejszą kwantyzację (jeden plik).", "this variant is split into several files – pick a smaller quantisation (single file).")
+    return raw[:200]
+
+
+def _hf_get(url, token=None, timeout=25):
+    h = {"User-Agent": "KRONOS-7", "Accept": "application/json"}
+    if token:
+        h["Authorization"] = "Bearer " + token
+    with urllib.request.urlopen(urllib.request.Request(url, headers=h), timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8", "replace"))
+
+
+def hf_search(q, token=None):
+    url = HF_API + "?" + urllib.parse.urlencode({"search": q, "filter": "gguf", "sort": "downloads", "direction": -1, "limit": 30})
+    return [{"id": m["id"], "downloads": m.get("downloads", 0), "likes": m.get("likes", 0), "gated": bool(m.get("gated")), "updated": (m.get("lastModified") or m.get("createdAt") or "")[:10]}
+            for m in _hf_get(url, token)]
+
+
+def hf_files(repo, hw, token=None):
+    d = _hf_get(f"{HF_API}/{repo}?blobs=true", token)
+    files, split = [], set()
+    for sb in d.get("siblings", []):
+        f = sb.get("rfilename", "")
+        if not f.lower().endswith(".gguf") or "mmproj" in f.lower():
+            continue
+        if re.search(r"-\d{5}-of-\d{5}\.gguf$", f):
+            q = QUANT_RX.search(re.sub(r"-\d{5}-of-\d{5}", "", f)); split.add(q.group(1).upper() if q else f); continue
+        q = QUANT_RX.search(f)
+        size = round((sb.get("size") or 0) / 1e9, 1)
+        moe = bool(re.search(r"\d+b-a\d+b|moe|gpt-oss|mixtral", repo + f, re.I))
+        fi = fit(hw, size, 8192, moe)
+        files.append({"file": f, "quant": q.group(1).upper() if q else "", "size_gb": size, "fit": fi, "fit_txt": FIT_TXT[fi][1 if i18n.en() else 0],
+                      "name": f"hf.co/{repo}:{q.group(1).upper()}" if q else f"hf.co/{repo}"})
+    files.sort(key=lambda x: x["size_gb"])
+    good = [f for f in files if f["fit"] in ("gpu", "mix_moe")]
+    rec = next((f for f in files if f["quant"] == "Q4_K_M" and f["fit"] in ("gpu", "mix_moe", "cpu")), None) or (max(good, key=lambda f: f["size_gb"]) if good else None)
+    if rec:
+        rec["rec"] = True
+    return {"repo": repo, "gated": d.get("gated") or False, "gguf": bool(files) or "gguf" in d.get("tags", []), "files": files, "split": sorted(split),
+            "license": (d.get("cardData") or {}).get("license"), "url": "https://huggingface.co/" + repo}
+
+
+def ollama_pubkey():
+    for p in (os.path.join(os.path.expanduser("~"), ".ollama", "id_ed25519.pub"), "/usr/share/ollama/.ollama/id_ed25519.pub"):
+        try:
+            with open(p, encoding="utf-8") as f:
+                return f.read().strip(), p
+        except OSError:
+            continue
+    return None, None
 
 
 # ---------------------------------------------------------------- katalog modeli lokalnych (v3.18)

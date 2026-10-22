@@ -1,4 +1,4 @@
-/* KRONOS-7 v3.18 — interfejs terminala. Dane: lokalny serwer (/api/*). */
+/* KRONOS-7 v3.19 — interfejs terminala. Dane: lokalny serwer (/api/*). */
 (function () {
 "use strict";
 const $ = s => document.querySelector(s);
@@ -2547,13 +2547,13 @@ function mdRender() {
   const fitB = (f, t) => `<span class="st" style="color:${FIT_COL[f] || "inherit"}">${esc(t)}</span>`;
   $("#mdInst").innerHTML = `<div class="tts-row"><span class="nm">${TX("AUTOMATYCZNIE")} <small class="dim">${TX("najlepszy zainstalowany, który mieści się na karcie")}</small></span><span class="st">${v.auto ? TX("AKTYWNY") : ""}</span><span class="bt">${v.auto ? "" : `<button class="btn" data-use="auto">${TX("UŻYJ")}</button>`}</span></div>`
     + (A(v.installed).map(m => `<div class="tts-row"><span class="nm">${esc(m.name)} <small class="dim">${m.size_gb ? m.size_gb + " GB" : ""}</small></span>${fitB(m.fit, m.fit_txt)}<span class="bt">${m.active && !v.auto ? `<b>${TX("AKTYWNY")}</b>` : `<button class="btn" data-use="${esc(m.name)}">${TX("UŻYJ")}</button>`}${ol && !(m.active && !v.auto) ? ` <button class="btn" data-del="${esc(m.name)}" title="${TX("Usuń z dysku")}">✕</button>` : ""}</span></div>`).join("") || `<p class="hint">${TX("Brak zainstalowanych modeli.")}</p>`);
-  $("#mdCat").innerHTML = A(v.catalog).map(c => `<div class="tts-row"><span class="nm">${esc(c.name)} <small class="dim">${c.size_gb} GB${c.moe ? " · MoE" : ""} – ${esc(c.desc)}</small></span>${fitB(c.fit, c.fit_txt)}<span class="bt">${c.installed ? `<span class="dim">${TX("zainstalowany")}</span>` : ol && c.fit !== "no" ? `<button class="btn" data-pull="${esc(c.name)}">${TX("POBIERZ")}</button>` : ""}</span></div>`).join("");
+  $("#mdCat").innerHTML = A(v.catalog).map(c => `<div class="tts-row"><span class="nm">${esc(c.name)} <small class="dim">${c.size_gb} GB${c.moe ? " · MoE" : ""} – ${esc(c.desc)}</small></span>${fitB(c.fit, c.fit_txt)}<span class="bt">${c.installed ? `<span class="dim">${TX("zainstalowany")}</span>` : ol ? `<button class="btn${c.fit === "no" ? " dimbtn" : ""}" data-pull="${esc(c.name)}"${c.fit === "no" ? ' data-big="1"' : ""}>${TX("POBIERZ")}</button>` : ""}</span></div>`).join("");
   const bar = $("#mdBar"); bar.hidden = !pl.active; bar.firstChild.style.width = (pl.pct || 0) + "%";
   if (pl.active) $("#mdMsg").textContent = TX("Pobieram") + " · " + (pl.status || "") + " · " + (pl.pct || 0) + "%";
   else if (pl.status && pl.status !== "gotowe") $("#mdMsg").textContent = pl.status;
   $("#mdPull").disabled = !!pl.active || !ol; $$("#modelModal [data-pull]").forEach(b => b.disabled = !!pl.active);
   $$("#modelModal [data-use]").forEach(b => b.addEventListener("click", () => mdUse(b.dataset.use)));
-  $$("#modelModal [data-pull]").forEach(b => b.addEventListener("click", () => mdPull(b.dataset.pull)));
+  $$("#modelModal [data-pull]").forEach(b => b.addEventListener("click", () => { if (b.dataset.big && !b.dataset.sure) { b.dataset.sure = 1; b.textContent = TX("NA PEWNO?"); return; } mdPull(b.dataset.pull); }));
   $$("#modelModal [data-del]").forEach(b => b.addEventListener("click", async () => { if (!confirmDel(b)) return; const r = await api("/api/model/delete", { name: b.dataset.del }); if (r.ok === false) $("#mdMsg").textContent = r.error; else { MDV = r; mdRender(); } }));
   if (pl.active) { clearTimeout(mdT); mdT = setTimeout(() => { if (!$("#modelModal").hidden || mdWant) mdLoad(); }, 1500); }
   else if (mdWant) { const w = mdWant; mdWant = null; if (A(v.installed).some(m => m.name === w || m.name === w + ":latest" || m.name.split(":")[0] === w)) { const nm = A(v.installed).find(m => m.name === w || m.name === w + ":latest" || m.name.split(":")[0] === w).name; $("#mdMsg").textContent = TX("Pobrano") + " " + nm + "."; if ($("#mdUse").checked) mdUse(nm); } }
@@ -2566,6 +2566,25 @@ $("#modelOpen").addEventListener("click", async () => { $("#settings").hidden = 
 $("#modelClose").addEventListener("click", () => { $("#modelModal").hidden = true; });
 $("#modelModal").addEventListener("click", e => { if (e.target.id === "modelModal") $("#modelModal").hidden = true; });
 $("#mdPull").addEventListener("click", () => mdPull($("#mdName").value.trim()));
+/* Hugging Face: wyszukiwanie GGUF → repozytorium → wariant */
+const fmtN = n => n >= 1e6 ? (n / 1e6).toFixed(1) + " mln" : n >= 1e3 ? Math.round(n / 1e3) + " tys." : String(n);
+async function hfSearch() { const q = $("#hfQ").value.trim(); if (!q) return; $("#hfRes").innerHTML = `<p class="hint">${TX("Szukam…")}</p>`;
+  try { const r = await api("/api/hf/search?q=" + encodeURIComponent(q));
+    $("#hfRes").innerHTML = r.error ? `<p class="hint red">${esc(r.error)}</p>` : A(r.res).map(m => `<div class="tts-row"><span class="nm">${esc(m.id)} <small class="dim">↓ ${fmtN(m.downloads)} · ♥ ${m.likes}${m.updated ? " · " + m.updated : ""}${m.gated ? " · " + TX("ograniczony dostęp") : ""}</small></span><span class="st"></span><span class="bt"><button class="btn" data-hfrepo="${esc(m.id)}">${TX("WARIANTY")}</button></span></div><div class="hffiles" data-hff="${esc(m.id)}"></div>`).join("") || `<p class="hint">${TX("Nic nie znaleziono w formacie GGUF.")}</p>`;
+    $$("#hfRes [data-hfrepo]").forEach(b => b.addEventListener("click", () => hfFiles(b.dataset.hfrepo))); } catch (e) { $("#hfRes").innerHTML = `<p class="hint red">${TX("błąd")}</p>`; } }
+async function hfFiles(repo) { const box = $(`#hfRes [data-hff="${CSS.escape(repo)}"]`); if (!box) return; if (box.innerHTML) { box.innerHTML = ""; return; } box.innerHTML = `<p class="hint">…</p>`;
+  const r = await api("/api/hf/files?repo=" + encodeURIComponent(repo));
+  if (r.error) { box.innerHTML = `<p class="hint red">${esc(r.error)}</p>`; return; }
+  box.innerHTML = (r.gated ? `<p class="hint amber">${TX("Model z ograniczonym dostępem – zanim pobierzesz, zaakceptuj licencję na")} ${L(r.url, "huggingface.co")} ${TX("i dodaj klucz Ollamy (niżej: „Modele z ograniczonym dostępem”).")}</p>` : "")
+    + (A(r.files).map(f => `<div class="tts-row"><span class="nm">${f.rec ? "★ " : ""}${esc(f.quant || f.file)} <small class="dim">${f.size_gb} GB</small></span><span class="st" style="color:${FIT_COL[f.fit]}">${esc(f.fit_txt)}</span><span class="bt"><button class="btn${f.fit === "no" ? " dimbtn" : ""}" data-hfpull="${esc(f.name)}"${f.fit === "no" ? ` data-big="1" title="${TX("Prawdopodobnie za duży – kliknij dwa razy, aby mimo to pobrać")}"` : ""}>${TX("POBIERZ")}</button></span></div>`).join("")
+      || `<p class="hint">${TX("Brak pojedynczych plików GGUF w tym repozytorium.")}</p>`)
+    + (A(r.split).length ? `<p class="hint">${TX("Pominięte warianty podzielone na części (Ollama ich nie pobierze):")} ${esc(r.split.join(", "))}</p>` : "");
+  box.querySelectorAll("[data-hfpull]").forEach(b => b.addEventListener("click", () => { if (b.dataset.big && !b.dataset.sure) { b.dataset.sure = 1; b.textContent = TX("NA PEWNO?"); return; } mdPull(b.dataset.hfpull); })); }
+$("#hfGo").addEventListener("click", hfSearch);
+$("#hfQ").addEventListener("keydown", e => { if (e.key === "Enter") hfSearch(); });
+$(".hfgate").addEventListener("toggle", async () => { if (!$(".hfgate").open) return; try { const r = await api("/api/hf/key"); $("#hfKey").value = r.key || TX("nie znaleziono klucza Ollamy – uruchom Ollamę raz, a klucz utworzy się w folderze .ollama"); $("#hfTok").placeholder = r.token_set ? TX("token zapisany – wpisz nowy, aby zmienić") : "hf_…"; } catch (e) {} });
+$("#hfKeyCopy").addEventListener("click", async () => { try { await navigator.clipboard.writeText($("#hfKey").value); $("#mdMsg").textContent = TX("Skopiowano klucz Ollamy."); } catch (e) { $("#hfKey").select(); document.execCommand("copy"); } });
+$("#hfTokSave").addEventListener("click", async () => { const r = await api("/api/hf/token", { token: $("#hfTok").value.trim() }); $("#mdMsg").textContent = r.ok ? (r.token_set ? TX("Token zapisany.") : TX("Token usunięty.")) : r.error; $("#hfTok").value = ""; });
 $("#mdName").addEventListener("keydown", e => { if (e.key === "Enter") mdPull($("#mdName").value.trim()); });
 
 /* ------------------------------------------------------------ AI W CHMURZE (v3.17) */
@@ -2747,7 +2766,7 @@ function boot(done) {
   let seen = false; try { seen = sessionStorage.getItem("k7-boot") === "1"; } catch (e) { seen = true; }
   if (!needSetup && (seen || reduce)) return done();
   const B = $("#boot"); B.hidden = false; const e = STATUS ? STATUS.engine : null, C = CURRENT || {};
-  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.18"), TX("TEST PAMIĘCI ........ OK"),
+  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.19"), TX("TEST PAMIĘCI ........ OK"),
     TX("PROCESOR GRAFICZNY ..") + " " + (e ? TX(e.hardware.gpu_name) + (e.hardware.vram_gb ? " / " + e.hardware.vram_gb + " " + TX("GB") : "") : "?"),
     TX("RDZEŃ ANALITYCZNY ...") + " " + (e && e.model ? e.model.toUpperCase() : TX("NIEAKTYWNY")),
     TX("BAZA KONFLIKTÓW .....") + " " + A(C.conflicts).length + " " + TX("WĘZŁÓW"), TX("FRONTY ..............") + " " + A(C.fronts).length + " " + TX("TEATRÓW"),
