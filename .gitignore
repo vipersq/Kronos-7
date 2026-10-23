@@ -26,3 +26,5 @@ data/mail_seen.json
 data/tiles/
 data/vgraph.json.gz
 data/rad_base.json
+data/media/
+data/tg_account.session*

@@ -21,6 +21,22 @@ Lokalny terminal w stylu komputerów pokładowych z filmów science fiction. Pok
 - **Polecenia głosowe** (przycisk GŁOS albo Alt+V), np. „sitrep Bałtyk”, „pokaż Ormuz”, „odśwież”, „briefing”, „odtwórz”, „na żywo”, „warstwa kable”, „pełny ekran”; wszystko inne trafia jako pytanie do AI. W Chrome i Edge rozpoznawanie mowy przetwarzają serwery Google/Microsoft.
 - Wydajność: mapa rysowana na płótnie, obliczenia orbit i przelotów w osobnym wątku, zapis historii w tle.
 
+## Posty, zdjęcia i nagrania przy zdarzeniach + konto Telegram (v3.20)
+
+- **Zdjęcia i nagrania z Telegrama:** KRONOS zapisuje miniatury zdjęć i filmów z postów śledzonych kanałów w `data/media`, więc nie znikają, gdy kanał usunie post. Filmy pobierają się przy pierwszym odtworzeniu, do 60 MB. Pamięć trzyma pliki 10 dni, łącznie najwyżej 1,5 GB.
+- **Zestawienie przy każdym zdarzeniu:** w kartach alarmu UA, zdarzenia złożonego, incydentu morskiego i posta OSINT jest sekcja **POSTY I ZDJĘCIA**:
+  - KRONOS szuka nazw miejsc we wszystkich pisowniach i odmianach (ukraińskiej, rosyjskiej, angielskiej i polskiej, np. Харків/Харкові/Харьков/Kharkiv/Charków) oraz postów, które AI umieściło w pobliżu, w oknie czasu wokół zdarzenia;
+  - wyniki to galeria zdjęć i nagrań oraz lista postów z oceną wiarygodności i linkiem do oryginału;
+  - **PODSUMUJ (AI)** pisze zestawienie: co potwierdza kilka źródeł, a co twierdzi tylko jedna strona;
+  - póki karta jest otwarta, zestawienie odświeża się co 2 minuty.
+- **Podgląd:** pełny ekran, strzałki ←/→, filmy odtwarzane w KRONOS-ie. Przyciski **Sprawdź, czy już krążyło** (Google Lens, Yandex) służą do wyłapania starych albo cudzych nagrań. Zdjęcia są domyślnie rozmyte, bo bywają drastyczne; przycisk BEZ ROZMYCIA to wyłącza.
+- **Konto Telegram** (ŹRÓDŁA I INTEGRACJE → TELEGRAM – KONTO):
+  - logowanie: api_id i api_hash z my.telegram.org, numer telefonu, kod z Telegrama i hasło dwuetapowe;
+  - zestawienia przeszukują wtedy także wszystkie Twoje kanały i grupy (`messages.searchGlobal`) oraz publiczne posty z całego Telegrama: po hashtagach bez limitu, pełnotekstowo w darmowej dziennej puli (`channels.searchPosts`, KRONOS nigdy nie płaci gwiazdkami);
+  - konto działa tylko w trybie odczytu;
+  - sesja jest w pliku `data/tg_account.session`, WYLOGUJ ją usuwa;
+  - biblioteka Telethon instaluje się przyciskiem w tym samym oknie.
+
 ## Hugging Face bez błędów (v3.19)
 
 W oknie **MODELE…**:

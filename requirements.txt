@@ -1,3 +1,4 @@
 pycountry
 h3
 edge-tts
+telethon

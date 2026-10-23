@@ -1,4 +1,4 @@
-/* KRONOS-7 v3.19 — interfejs terminala. Dane: lokalny serwer (/api/*). */
+/* KRONOS-7 v3.20 — interfejs terminala. Dane: lokalny serwer (/api/*). */
 (function () {
 "use strict";
 const $ = s => document.querySelector(s);
@@ -958,6 +958,58 @@ $$("#histDays [data-d]").forEach(b => b.addEventListener("click", () => { HST.da
 $("#reportBtn").addEventListener("click", () => { sfx("click"); window.open("/report", "_blank"); });
 setInterval(() => { if (!document.hidden) loadHist(); }, 600e3);
 
+/* --- zestawienie postów i zdjęć dla zdarzenia (v3.20) */
+const EVC = {}; let EVBLUR = store.get("evblur", true) !== false, LB = null;
+function evBox(type, id) { return `<div class="evbox" data-evt="${type}" data-evid="${esc0(String(id))}"><p class="sat-h">${TX("POSTY I ZDJĘCIA")}</p><div class="evbody"><p class="hint">${TX("Szukam relacji…")}</p></div></div>`; }
+const LBS = {};
+function evThumb(m, p, i, set) { return `<button class="evth${m.k === "video" ? " vid" : ""}" data-lb="${i}" data-lbs="${set || "ev"}" title="${esc(p ? (p.chn || p.ch || "") + " · " + hm(p.t) : "")}"><img loading="lazy" src="/media/${m.h}.jpg" alt="" class="${EVBLUR ? "blur" : ""}" onerror="this.parentNode.classList.add('gone')">${m.k === "video" ? "<i>▶</i>" : ""}</button>`; }
+function evGal(ms, p) { if (!A(ms).length) return ""; LBS.post = A(ms).map(m => ({ m, p })); return `<div class="evg">${A(ms).map((m, i) => evThumb(m, p, i, "post")).join("")}</div>`; }
+async function evFill(force) {
+  const box = $("#detail .evbox"); if (!box) { bindLb(); return; }
+  const t = box.dataset.evt, id = box.dataset.evid, key = t + "|" + id, c = EVC[key];
+  if (c && !force && Date.now() - c.at < 120e3) { evRender(box, c.d); return; }
+  if (c) evRender(box, c.d);
+  try { const d = await api(`/api/media/event?type=${t}&id=${encodeURIComponent(id)}`); EVC[key] = { at: Date.now(), d }; const b2 = $(`#detail .evbox[data-evt="${t}"]`); if (b2 && b2.dataset.evid === id) evRender(b2, d); } catch (e) {}
+}
+function evRender(box, d) {
+  const el = box.querySelector(".evbody"), ps = A(d.posts), items = [];
+  ps.forEach(p => A(p.media).forEach(m => items.push({ m, p })));
+  const cr = p => p.cred ? `<span class="chip" style="color:${CRED[p.cred] || "var(--phos-dim)"}">${esc(p.cred)}</span>` : "";
+  el.innerHTML = `<p class="hint">${ps.length} ${TX("postów")} · ${items.length} ${TX("zdjęć i nagrań")} · ${hm(d.t0)}–${hm(d.t1)}${A(d.names).length ? " · " + TX("szukam:") + " " + esc(A(d.names).slice(0, 6).join(", ")) : ""}</p>`
+    + `<div class="seg"><button class="btn" data-evsum>${TX("PODSUMUJ (AI)")}</button><button class="btn" data-evref>${TX("ODŚWIEŻ")}</button><button class="btn" data-evblur aria-pressed="${!EVBLUR}">${TX("BEZ ROZMYCIA")}</button></div>`
+    + `<div class="evsum" hidden></div>`
+    + (items.length ? `<div class="evg">${items.slice(0, 48).map((x, i) => evThumb(x.m, x.p, i)).join("")}</div>` : "")
+    + (ps.length ? `<ul class="rows evposts">` + ps.slice(0, 40).map(p => `<li><button ${p.src === "tg" && !String(p.id).includes(":") ? `data-go="tg:${esc0(p.id)}"` : 'tabindex="-1" style="cursor:default"'}><span class="t">${esc(p.title || (p.text || "").slice(0, 160))}</span>${cr(p)}<span class="sub">${esc(p.src && p.src !== "tg" ? p.src + " · " : "")}${esc(p.chn || p.ch || "")} · ${hm(p.t)}${A(p.media).length ? " · " + A(p.media).length + " ▣" : ""} · ${L(p.url, TX("oryginał"))}</span></button></li>`).join("") + `</ul>`
+      : `<p class="hint">${TX("Na razie brak relacji w śledzonych kanałach. Pierwsze posty pojawiają się zwykle kilka minut po zdarzeniu – zestawienie odświeża się co 2 minuty, gdy karta jest otwarta.")}</p>`)
+    + (Object.keys(d.errors || {}).length ? `<p class="hint red">${esc(Object.entries(d.errors).map(([k, v]) => k + ": " + v).join(" · "))}</p>` : "")
+    + `<p class="hint">${TX("Zdjęcia i nagrania pochodzą z kanałów – mogą być stare, z innego miejsca albo zmanipulowane. Przycisk „Sprawdź, czy już krążyło” otwiera wyszukiwanie obrazem.")}</p>`;
+  LBS.ev = items;
+  el.querySelector("[data-evref]").addEventListener("click", () => evFill(true));
+  el.querySelector("[data-evblur]").addEventListener("click", () => { EVBLUR = !EVBLUR; store.set("evblur", EVBLUR); $$("#detail .evth img").forEach(i => i.classList.toggle("blur", EVBLUR)); el.querySelector("[data-evblur]").setAttribute("aria-pressed", !EVBLUR); });
+  el.querySelector("[data-evsum]").addEventListener("click", async () => { const sb = el.querySelector(".evsum"); sb.hidden = false; sb.textContent = TX("AI czyta relacje…");
+    try { const r = await fetch("/api/media/summary", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: box.dataset.evt, id: box.dataset.evid }) });
+      const rd = r.body.getReader(), dec = new TextDecoder(); let txt = ""; for (;;) { const { done, value } = await rd.read(); if (done) break; txt += dec.decode(value, { stream: true }); sb.textContent = txt; } } catch (e) { sb.textContent = TX("błąd"); } });
+  bindDetail2(el); bindLb();
+}
+function bindDetail2(el) { el.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => go(b.dataset.go))); }
+function bindLb() { $$("#detail .evth").forEach(b => { if (b.dataset.bound) return; b.dataset.bound = 1; b.addEventListener("click", e => { e.stopPropagation(); LB = { items: LBS[b.dataset.lbs] || [] }; lbOpen(+b.dataset.lb); }); }); }
+function lbOpen(i) {
+  if (!LB || !LB.items[i]) return; LB.i = i; const { m, p } = LB.items[i]; let o = $("#lightbox");
+  if (!o) { o = document.createElement("div"); o.id = "lightbox"; o.className = "lightbox"; document.body.appendChild(o); o.addEventListener("click", e => { if (e.target === o) lbClose(); }); }
+  const lens = m.o ? `<a class="btn" target="_blank" rel="noopener" href="https://lens.google.com/uploadbyurl?url=${encodeURIComponent(m.o)}">${TX("Sprawdź, czy już krążyło (Google)")}</a><a class="btn" target="_blank" rel="noopener" href="https://yandex.com/images/search?rpt=imageview&url=${encodeURIComponent(m.o)}">Yandex</a>` : "";
+  o.innerHTML = `<div class="lb-in">${m.k === "video" ? `<video src="/media/${m.h}.mp4" poster="/media/${m.h}.jpg" controls autoplay playsinline></video>` : `<img src="/media/${m.h}.jpg" alt="">`}
+    <div class="lb-cap"><span>${esc(p ? (p.chn || p.ch || "") + " · " + new Date(p.t).toLocaleString(LOC) : "")}</span><span>${esc(p ? (p.title || (p.text || "").slice(0, 200)) : "")}</span>
+    <div class="seg"><button class="btn" data-lbp>◀</button><button class="btn" data-lbn>▶</button>${p && p.url ? L(p.url, TX("oryginał na Telegramie")) : ""}${lens}<button class="btn" data-lbx>✕</button></div>
+    ${m.k === "video" ? `<p class="hint">${TX("Jeśli film się nie odtwarza (link wygasł), otwórz oryginał.")}</p>` : ""}</div></div>`;
+  o.hidden = false;
+  o.querySelector("[data-lbp]").onclick = () => lbOpen((LB.i - 1 + LB.items.length) % LB.items.length);
+  o.querySelector("[data-lbn]").onclick = () => lbOpen((LB.i + 1) % LB.items.length);
+  o.querySelector("[data-lbx]").onclick = lbClose;
+}
+function lbClose() { const o = $("#lightbox"); if (o) { o.hidden = true; o.innerHTML = ""; } }
+document.addEventListener("keydown", e => { const o = $("#lightbox"); if (!o || o.hidden) return; if (e.key === "Escape") lbClose(); if (e.key === "ArrowRight") lbOpen((LB.i + 1) % LB.items.length); if (e.key === "ArrowLeft") lbOpen((LB.i - 1 + LB.items.length) % LB.items.length); });
+setInterval(() => { if (!document.hidden && $("#detail .evbox")) evFill(); }, 120e3);
+
 /* --- graf powiązań statku (v3.17): właściciel, zarządcy, bandera, sankcje, flota tych samych firm */
 const VG = {}, VGC = { vessel: "var(--cyan)", org: "var(--amber)", person: "var(--violet)", flag: "var(--white)", sanc: "var(--red)" };
 const flagEmoji = c => /^[a-z]{2}$/i.test(c || "") ? String.fromCodePoint(...c.toUpperCase().split("").map(x => 0x1F1A5 + x.charCodeAt(0))) : "";
@@ -1071,7 +1123,7 @@ function msCard(iid, silent) {
     [TX("STATEK"), s.name ? [s.name, s.type, s.flag ? TX(s.flag) : null, s.imo ? "IMO " + s.imo : null].filter(Boolean).join(" · ") : null],
     [TX("ŹRÓDŁA"), A(r.reports).map(x => esc(x.name)).join(", ") + (A(r.reports).length > 1 ? " – " + TX("połączone w jedno zdarzenie") : ""), 1]]);
   h += A(r.reports).map(x => `<details class="ms-rep"><summary>${esc(x.name)} · ${esc(x.ref || "")}${x.t ? " · " + new Date(x.t).toISOString().slice(0, 16).replace("T", " ") + " UTC" : ""}</summary><pre>${esc0(x.text || x.title || "")}</pre>${x.url ? L(x.url, TX("otwórz źródło")) : ""}</details>`).join("");
-  if (r.pos) h += satBtn(r.pos[0], r.pos[1], 1.5);
+  if (r.pos) h += evBox("mi", iid) + satBtn(r.pos[0], r.pos[1], 1.5);
   if (inReplay) h += `<p><button class="btn" data-msreplay="${r.t}">${TX("ODTWÓRZ RUCH STATKÓW I SAMOLOTÓW Z TEJ CHWILI")}</button></p>`;
   h += `<p class="hint">${ai.title ? TX("Tytuł i streszczenie: lokalne AI na podstawie oryginalnych zgłoszeń (poniżej).") : TX("Lokalne AI jeszcze nie przeanalizowało tego zgłoszenia – zrobi to w wolnej chwili.")} ${r.warn ? TX("Ostrzeżenie zniknie z mapy, gdy źródło je wycofa.") : ""}</p>`;
   setTimeout(() => { const b = $("#detail [data-msreplay]"); if (b) b.addEventListener("click", async () => { await replayOpen(); if (REPLAY.on) replayFetch(Math.max(REPLAY.from, Math.min(REPLAY.to, +b.dataset.msreplay))); }); }, 0);
@@ -1637,7 +1689,7 @@ function pick(id, silent) {
     h = chip(TX("ŹRÓDŁO") + (s.rel ? " " + TX("· WIARYGODNOŚĆ") + " " + s.rel : ""), "var(--phos)") + `<h2 class="glow">${esc(s.name)}</h2>` + dd([[TX("STAN"), s.state], [TX("UWAGI"), s.note], s.url ? [TX("ADRES"), L(s.url, s.url), 1] : null]);
   } else return;
   if (t === "c") { const c0 = A(S.conflicts).find(x => x.id === key); if (c0 && c0.lat != null) h += satBtn(c0.lat, c0.lon, 3); }
-  $("#detail").innerHTML = h; bindDetail(); bindSatImg(); vgFill();
+  $("#detail").innerHTML = h; bindDetail(); bindSatImg(); vgFill(); evFill();
 }
 function idleDetail() {
   const hot = A(S.conflicts).filter(c => c.trend === "esc" || c.trend === "new");
@@ -2478,7 +2530,7 @@ function intelCard(t, key) {
       + (a.routine ? `<p class="hint">${TX("AI uznało to za rutynowe tło – bez powiadomienia.")}</p>` : "") + (c.hidden ? `<p class="hint">${TX("AI uznało, że sygnały nie są powiązane (przypadkowa zbieżność).")}</p>` : "")
       + dd([[TX("WARSTWY"), c.lnames.join(", ")], [TX("SYGNAŁÓW"), c.n], [TX("ZASIĘG"), "≈ " + c.ext + " km"], [TX("OD"), new Date(c.first).toLocaleString(LOC)], [TX("OSTATNI"), new Date(c.last).toLocaleString(LOC)]])
       + `<p class="sat-h">${TX("SYGNAŁY")}</p><ul class="rows">` + A(c.sig).map(x => `<li><button ${x.go ? `data-go="${esc0(x.go)}"` : 'tabindex="-1" style="cursor:default"'}><span class="t">${esc(x.text)}</span><span class="dim">${hm(x.t)}</span><span class="sub">${esc(x.ln)}</span></button></li>`).join("") + `</ul>`
-      + `<p class="hint">${TX("Zdarzenie złożone = kilka różnych warstw danych w tym samym rejonie i czasie. Ocena i scalanie powtórzeń: AI. To hipoteza do sprawdzenia, nie potwierdzony fakt.")}</p>`; }
+      + `<p class="hint">${TX("Zdarzenie złożone = kilka różnych warstw danych w tym samym rejonie i czasie. Ocena i scalanie powtórzeń: AI. To hipoteza do sprawdzenia, nie potwierdzony fakt.")}</p>` + evBox("cr", c.id); }
   if (t === "rd") { const r = A(d.rad && d.rad.pts).find(x => x.id === key); if (!r) return "";
     return chip(TX("PROMIENIOWANIE · SAFECAST"), radCol(r.usv)) + `<h2 class="glow">${esc(r.name)} · ${r.usv} µSv/h</h2>` + dd([[TX("TŁO TEJ STACJI"), r.base + " µSv/h"], [TX("STOSUNEK DO TŁA"), (r.usv / Math.max(r.base, .01)).toFixed(1) + "×"],
       [TX("ANOMALIA"), r.anom ? TX("TAK – wyraźnie ponad tłem") : TX("nie")], [TX("KRAJ"), r.cc], [TX("ODCZYT"), new Date(r.t).toLocaleString(LOC)], [TX("POZYCJA"), fmtLL(r.lat, r.lon)]])
@@ -2491,7 +2543,7 @@ function intelCard(t, key) {
       + `<p class="hint">${TX("ACLED – zdarzenia zweryfikowane przez analityków, publikowane z opóźnieniem (zwykle kilka dni). Liczby ofiar to szacunki z raportów.")}</p>`; }
   if (t === "ua") { const o = A(d.ua && d.ua.oblasts).find(x => x.id === key); if (!o) return "";
     return chip(TX("ALARM PRZECIWLOTNICZY"), "var(--red)") + `<h2 class="glow">${esc(o.name)}</h2>` + dd([[TX("STAN"), o.on ? TX("ALARM TRWA") : TX("brak alarmu")], [TX("OD"), o.since ? hm(o.since) + " (" + cd(Date.now() - o.since) + ")" : null],
-      [TX("RODZAJ"), A(o.kinds).join(", ")], [TX("ŹRÓDŁO"), d.ua.src]]) + `<p class="hint">${TX("Dokładniejsze dane (rodzaj zagrożenia, rejony i gminy) daje darmowy token alerts.in.ua.")}</p>` + satBtn(o.lat, o.lon, 2.5); }
+      [TX("RODZAJ"), A(o.kinds).join(", ")], [TX("ŹRÓDŁO"), d.ua.src]]) + `<p class="hint">${TX("Dokładniejsze dane (rodzaj zagrożenia, rejony i gminy) daje darmowy token alerts.in.ua.")}</p>` + evBox("ua", o.id) + satBtn(o.lat, o.lon, 2.5); }
   if (t === "nt") { const n = A(d.notam && d.notam.items).find(x => x.id === key); if (!n) return "";
     return chip("NOTAM · " + (NT_N[n.kind] || n.kind), NT_COL[n.kind] || "var(--violet)") + `<h2 class="glow">${esc(n.loc)} ${esc(n.num || "")}</h2>` + dd([[TX("OD"), n.from], [TX("DO"), n.to], [TX("PROMIEŃ"), n.r ? Math.round(n.r) + " km" : null]])
       + `<pre class="ntext">${esc0(n.text)}</pre><p class="hint">${TX("Źródło: FAA NOTAM API. Treść w oryginalnym, skrótowym formacie ICAO.")}</p>`; }
@@ -2499,7 +2551,7 @@ function intelCard(t, key) {
     return chip("TELEGRAM · @" + p.ch, "var(--cyan)") + `<h2 class="glow">${esc(p.title || p.ch)}</h2>` + (p.summary ? `<p>${esc(p.summary)}</p>` : "")
       + dd([[TX("KANAŁ"), `${esc(p.chn)} (${esc(p.type)})`, 1], [TX("WIARYGODNOŚĆ"), p.cred ? p.cred + " · " + (REL[p.cred] || "") : null], [TX("KIEDY"), new Date(p.t).toLocaleString(LOC)], [TX("MIEJSCE"), p.place],
         [TX("TO SAMO PODAJĄ"), A(p.also).map(x => "@" + x).join(", ")], [TX("ORYGINAŁ"), L(p.url, "t.me/" + p.id), 1]])
-      + `<p class="hint">${TX("Streszczenie i ocena: lokalne AI. Komunikaty stron wojny i propaganda to twierdzenia, nie potwierdzone fakty. Pozycja na mapie jest przybliżona.")}</p>` + (p.pos ? satBtn(p.pos[0], p.pos[1], 1.2) : ""); }
+      + evGal(p.m, p) + `<p class="hint">${TX("Streszczenie i ocena: lokalne AI. Komunikaty stron wojny i propaganda to twierdzenia, nie potwierdzone fakty. Pozycja na mapie jest przybliżona.")}</p>` + evBox("tg", p.id) + (p.pos ? satBtn(p.pos[0], p.pos[1], 1.2) : ""); }
   if (t === "la") { const a = A(sdr.adsb).find(x => x.hex === key); if (!a) return "";
     return chip(TX("TWÓJ ODBIORNIK ADS-B"), a.mil ? "var(--cyan)" : "var(--phos)") + `<h2 class="glow">${esc(a.cs || a.hex.toUpperCase())} · ${esc(a.t || "?")}</h2>` + dd([[TX("REJESTRACJA"), a.r], [TX("ADRES ICAO"), a.hex.toUpperCase()],
       [TX("WYSOKOŚĆ"), a.alt != null ? a.alt + " ft" : null], [TX("PRĘDKOŚĆ"), a.gs ? Math.round(a.gs) + " kt" : null], [TX("KURS"), a.trk != null ? Math.round(a.trk) + "°" : null], [TX("SQUAWK"), a.sq],
@@ -2675,7 +2727,32 @@ async function openIntg() {
     if (el.type === "checkbox") el.checked = !!INTG[k];
     else if (INTG_SECRET.has(k)) { el.value = ""; el.placeholder = INTG[k] ? TX("ustawiony") + " (" + INTG[k] + ") – " + TX("wpisz nowy, aby zmienić") : el.dataset.ph || ""; }
     else { el.value = INTG[k] || ""; if (INTG.defaults[k]) el.placeholder = INTG.defaults[k]; } });
-  renderTgCat(); renderIntgStatus(); $("#intgModal").hidden = false; $("#intgClose").focus();
+  renderTgCat(); renderIntgStatus(); tgaLoad(); $("#intgModal").hidden = false; $("#intgClose").focus();
+}
+/* konto Telegram (v3.20) */
+let TGA = null, tgaT = null;
+async function tgaLoad() { try { TGA = await api("/api/tgacct"); } catch (e) { return; } tgaRender(); }
+function tgaRender(msg) {
+  const v = TGA; if (!v) return; const box = $("#tgaBox"); let h = "";
+  if (!v.installed) h = `<p class="hint">${TX("Potrzebna biblioteka Telethon (ok. 2 MB).")}</p><div class="set-row"><button type="button" class="btn" data-tga="install" ${v.install === "running" ? "disabled" : ""}>${v.install === "running" ? TX("INSTALUJĘ…") : TX("ZAINSTALUJ OBSŁUGĘ KONTA")}</button></div>${v.install && v.install.startsWith("error") ? `<p class="hint red">${esc(v.install)}</p>` : ""}`;
+  else if (v.step === "ready") h = `<div class="tts-row"><span class="nm">${TX("Zalogowano")}: <b>${esc((v.me || {}).name || "")}</b>${(v.me || {}).username ? " @" + esc(v.me.username) : ""}${(v.me || {}).premium ? " · Premium" : ""}</span><span class="st">OK</span><span class="bt"><button type="button" class="btn" data-tga="logout">${TX("WYLOGUJ")}</button></span></div>`
+    + (v.flood ? `<p class="hint">${TX("Darmowe wyszukiwania pełnotekstowe dziś:")} ${v.flood.remains} / ${v.flood.total}</p>` : "");
+  else {
+    h = `<input id="tga_id" inputmode="numeric" autocomplete="off" placeholder="api_id" value="${esc(v.api_id || "")}">`
+      + `<input id="tga_hash" type="password" autocomplete="off" placeholder="${v.hash_set ? TX("api_hash zapisany – wpisz nowy, aby zmienić") : "api_hash"}">`
+      + `<input id="tga_phone" autocomplete="off" placeholder="${TX("numer telefonu z kierunkowym, np. +447…")}" value="${esc(v.phone || "")}">`
+      + `<div class="set-row"><button type="button" class="btn" data-tga="save">${TX("ZAPISZ")}</button>${v.configured && v.phone ? `<button type="button" class="btn" data-tga="code">${TX("WYŚLIJ KOD")}</button>` : ""}</div>`;
+    if (v.step === "code") h += `<label for="tga_code">${TX("Kod z Telegrama")} <small>${TX("przyszedł w aplikacji Telegram (czat „Telegram”)")}</small></label><div class="set-row"><input id="tga_code" inputmode="numeric" autocomplete="one-time-code"><button type="button" class="btn" data-tga="signin">${TX("ZALOGUJ")}</button></div>`;
+    if (v.step === "password") h += `<label for="tga_pw">${TX("Hasło dwuetapowe (chmurowe) Telegrama")}</label><div class="set-row"><input id="tga_pw" type="password" autocomplete="current-password"><button type="button" class="btn" data-tga="password">${TX("ZALOGUJ")}</button></div>`;
+  }
+  h += (msg || v.err) ? `<p class="hint red">${esc(msg || v.err)}</p>` : "";
+  h += `<p class="hint">${TX("Sesja zapisuje się w pliku data/tg_account.session – daje dostęp do konta, nie udostępniaj go. WYLOGUJ usuwa sesję.")}</p>`;
+  box.innerHTML = h;
+  box.querySelectorAll("[data-tga]").forEach(b => b.addEventListener("click", async () => { const act = b.dataset.tga, body = { act };
+    if (act === "save") Object.assign(body, { api_id: $("#tga_id").value, api_hash: $("#tga_hash").value, phone: $("#tga_phone").value });
+    if (act === "signin") body.code = $("#tga_code").value; if (act === "password") body.password = $("#tga_pw").value;
+    b.disabled = true; try { TGA = await api("/api/tgacct", body); tgaRender(TGA.error); } catch (e) { tgaRender(TX("błąd")); }
+    if (act === "install") { clearTimeout(tgaT); const poll = async () => { await tgaLoad(); if (TGA.install === "running") tgaT = setTimeout(poll, 2500); }; tgaT = setTimeout(poll, 2500); } }));
 }
 /* katalog kanałów Telegram – lista z zaznaczaniem, pogrupowana regionami */
 function renderTgCat() {
@@ -2696,7 +2773,7 @@ $("#tgNone").addEventListener("click", () => { $("#tgCat").querySelectorAll("[da
 function renderIntgStatus() {
   const st = (INTG && INTG.status) || {}, N = { ua_alerts: TX("Alarmy UA"), deepstate: "DeepStateMap", notam: "NOTAM (FAA)", gfw: "Global Fishing Watch", telegram: "Telegram OSINT",
     adsb: "ADS-B", ais: "AIS (UDP)", aprs: "APRS-IS", aishub: "AISHub", mail: TX("Poczta (IMAP)"), ha: "Home Assistant",
-    radiation: TX("Promieniowanie (Safecast)"), acled: "ACLED", corr: TX("Zdarzenia złożone (AI)"), vgraph: TX("Graf powiązań statków (OpenSanctions)") };
+    radiation: TX("Promieniowanie (Safecast)"), acled: "ACLED", tgacct: TX("Telegram – konto"), corr: TX("Zdarzenia złożone (AI)"), vgraph: TX("Graf powiązań statków (OpenSanctions)") };
   Object.entries(st).forEach(([k, v]) => { if (k.startsWith("tcp:")) N[k] = "AIS · " + (v.name || k.slice(4)); });
   $("#igStatus").innerHTML = Object.entries(N).map(([k, n]) => { const s = st[k] || {};
     return `<div class="tts-row"><span class="nm">${n}</span><span class="st ${s.ok ? "" : s.ok === false ? "red" : ""}">${s.off ? TX("wyłączone") : s.ok ? "OK" + (s.n != null ? " · " + s.n : "") : s.ok === false ? TX("BŁĄD") : "—"}</span><span class="bt"></span></div>${s.err ? `<p class="hint red">${esc0(s.err)}</p>` : ""}`; }).join("");
@@ -2766,7 +2843,7 @@ function boot(done) {
   let seen = false; try { seen = sessionStorage.getItem("k7-boot") === "1"; } catch (e) { seen = true; }
   if (!needSetup && (seen || reduce)) return done();
   const B = $("#boot"); B.hidden = false; const e = STATUS ? STATUS.engine : null, C = CURRENT || {};
-  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.19"), TX("TEST PAMIĘCI ........ OK"),
+  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.20"), TX("TEST PAMIĘCI ........ OK"),
     TX("PROCESOR GRAFICZNY ..") + " " + (e ? TX(e.hardware.gpu_name) + (e.hardware.vram_gb ? " / " + e.hardware.vram_gb + " " + TX("GB") : "") : "?"),
     TX("RDZEŃ ANALITYCZNY ...") + " " + (e && e.model ? e.model.toUpperCase() : TX("NIEAKTYWNY")),
     TX("BAZA KONFLIKTÓW .....") + " " + A(C.conflicts).length + " " + TX("WĘZŁÓW"), TX("FRONTY ..............") + " " + A(C.fronts).length + " " + TX("TEATRÓW"),

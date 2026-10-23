@@ -408,6 +408,7 @@ class TgOsint(Source):
         self.file = Path(data_dir) / "osint_tg.json"
         self.posts = OrderedDict()            # id -> post
         self.ai = None; self.busy = lambda: False
+        self.on_media = None                # v3.20: zdjęcia z nowych postów trafiają do pamięci na dysku
         self.bg = lambda: "after"           # "after" – AI tylko razem z główną analizą; "always" – także po każdym pobraniu
         self.lock = threading.Lock()
         self.events = deque(maxlen=40)
@@ -429,6 +430,22 @@ class TgOsint(Source):
             s = json.dumps(list(self.posts.values())[-4000:], ensure_ascii=False)
         tmp = self.file.with_suffix(".tmp"); tmp.write_text(s, encoding="utf-8"); tmp.replace(self.file)
 
+    @staticmethod
+    def _media(blk, pid):
+        """Zdjęcia i nagrania z podglądu kanału: miniatura (zdjęcie lub kadr filmu) i – dla filmów – adres pliku mp4 (ważny kilka godzin)."""
+        out = []
+        marks = [m.start() for m in re.finditer(r'tgme_widget_message_(?:photo_wrap|video_player)', blk)]
+        for n, a in enumerate(marks):
+            seg = blk[a: marks[n + 1] if n + 1 < len(marks) else len(blk)]
+            vid = seg.startswith("tgme_widget_message_video_player")
+            bg = re.search(r"background-image:url\('([^']+)'\)", seg)
+            if not bg:
+                continue
+            v = re.search(r'<video[^>]+src="([^"]+)"', seg) if vid else None
+            out.append({"k": "video" if vid else "photo", "u": html.unescape(bg.group(1)), "v": html.unescape(v.group(1)) if v else None,
+                        "h": hashlib.sha1(f"{pid}#{n}".encode()).hexdigest()[:16]})
+        return out[:8]
+
     def fetch(self, ch):
         s = _get(f"https://t.me/s/{ch}", 30).decode("utf-8", "replace")
         out = []
@@ -436,18 +453,23 @@ class TgOsint(Source):
             pid = blk.split('"', 1)[0]
             m = re.search(r'class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>', blk, re.S)
             t = re.search(r'<time datetime="([^"]+)"', blk)
-            if not m or not t:
+            if not t:
                 continue
-            text = _txt(m.group(1))
-            if len(text) < 40 or TG_SKIP.search(text):          # krótkie wpisy i reklamy nie trafiają do AI
-                continue
+            media = self._media(blk, pid)
+            text = _txt(m.group(1)) if m else ""
             try:
                 ms = int(datetime.fromisoformat(t.group(1)).timestamp() * 1000)
             except Exception:
                 ms = _now_ms()
-            out.append({"id": pid, "ch": ch, "t": ms, "text": text[:2500], "url": "https://t.me/" + pid})
+            if not text and media and out and out[-1]["ch"] == ch and abs(ms - out[-1]["t"]) < 180e3:
+                out[-1].setdefault("media", []).extend(media); continue      # zdjęcia bez podpisu = dalsza część albumu poprzedniego posta
+            if (len(text) < 40 and not media) or (text and TG_SKIP.search(text)):   # krótkie wpisy i reklamy pomijamy
+                continue
+            p = {"id": pid, "ch": ch, "t": ms, "text": text[:2500], "url": "https://t.me/" + pid}
+            if media:
+                p["media"] = media
+            out.append(p)
         return out
-
     def run_once(self):
         new = 0; errs = []
         for ch in self.channels():
@@ -457,6 +479,13 @@ class TgOsint(Source):
                         if p["id"] not in self.posts:
                             p["first"] = _now_ms()
                             self.posts[p["id"]] = p; new += 1
+                            if p.get("media") and self.on_media:
+                                self.on_media(p)
+                        elif p.get("media"):
+                            old = self.posts[p["id"]]
+                            fresh = {m["h"]: m for m in p["media"]}
+                            old["media"] = [dict(m, **{k: fresh[m["h"]][k] for k in ("u", "v") if fresh.get(m["h"], {}).get(k)}) for m in old.get("media", [])] \
+                                + [m for m in p["media"] if m["h"] not in {x["h"] for x in old.get("media", [])}]
             except Exception as e:
                 errs.append(f"{ch}: {e}")
             time.sleep(.8)
@@ -476,7 +505,7 @@ class TgOsint(Source):
         if not self.ai or not self.ai.status().get("ready"):
             return 0
         with self.lock:
-            todo = [p for p in self.posts.values() if "ai" not in p and p["t"] > _now_ms() - 3 * 86400e3 and p.get("ai_fail", 0) < 2]
+            todo = [p for p in self.posts.values() if "ai" not in p and len(p.get("text") or "") >= 40 and p["t"] > _now_ms() - 3 * 86400e3 and p.get("ai_fail", 0) < 2]
         tier = lambda p: (lambda ty: 0 if ("oficjalne" in ty or "OSINT" in ty) else 1 if "media" in ty else 3 if "propaganda" in ty else 2)(TG_DEFAULT.get(p["ch"], ("", "inne"))[1])
         todo.sort(key=lambda p: -(p["t"] - tier(p) * 3 * 3600e3))   # nowsze najpierw; źródła oficjalne i OSINT mają kilka godzin „przewagi”
         todo = todo[:limit]
@@ -553,7 +582,8 @@ class TgOsint(Source):
             a = p.get("ai") or {}
             out.append({"id": p["id"], "ch": p["ch"], "chn": TG_DEFAULT.get(p["ch"], (p["ch"], ""))[0], "type": TG_DEFAULT.get(p["ch"], ("", "inne"))[1],
                         "t": p["t"], "title": a.get("title"), "summary": a.get("summary"), "place": a.get("place"), "pos": a.get("pos"), "cred": a.get("cred"),
-                        "also": [x.split("/")[0] for x in p.get("also", [])], "text": p["text"][:600] if not a else None, "url": p["url"], "ai": bool(a)})
+                        "also": [x.split("/")[0] for x in p.get("also", [])], "text": p["text"][:600] if not a else None, "url": p["url"], "ai": bool(a),
+                        "m": [{"k": m["k"], "h": m["h"]} for m in p.get("media", [])][:8]})
         return out
 
     def brief(self, hours=24, limit=15):

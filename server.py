@@ -4,13 +4,13 @@ Uruchom:  python server.py   (potem przeglądarka: http://127.0.0.1:7707)"""
 import atexit, gzip, json, mimetypes, os, re, sys, threading, time, traceback, urllib.error, urllib.parse, webbrowser
 mimetypes.add_type("application/manifest+json", ".webmanifest"); mimetypes.add_type("image/svg+xml", ".svg"); mimetypes.add_type("text/javascript", ".js")
 from collections import deque
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-from kronos import analyst, collector, history, i18n, live_air, live_sea, llm, marsec, notify, report, satinfo, sats, tts, intel, sdr, mailin, tiles, vgraph, correlate  # noqa: E402
+from kronos import analyst, collector, history, i18n, live_air, live_sea, llm, marsec, notify, report, satinfo, sats, tts, intel, sdr, mailin, tiles, vgraph, correlate, media, evsearch, tgacct  # noqa: E402
 
 DATA = ROOT / "data"; ARCH = DATA / "archive"; WEB = ROOT / "web"
 ARCH.mkdir(parents=True, exist_ok=True)
@@ -98,6 +98,26 @@ DARKSAR = intel.DarkSAR(log, intg_cfg)
 TGOSINT = intel.TgOsint(log, intg_cfg, DATA)
 SATIMG = intel.SatImg()
 TILES = tiles.TileCache(DATA, log, intg_cfg)
+MEDIA = media.MediaStore(DATA, log)                  # v3.20: zdjęcia i nagrania z postów
+TGOSINT.on_media = MEDIA.register_post
+for _p in list(TGOSINT.posts.values()):
+    for _m in _p.get("media", []):
+        MEDIA.register(_m, prefetch=time.time() * 1000 - _p["t"] < 24 * 3600e3)
+TGACCT = tgacct.TgAccount(DATA, log, lambda: SETTINGS.get("tgacct") or {}, None, MEDIA)   # v3.20: konto Telegram (cały Telegram, tylko odczyt)
+
+
+def _tg_acct_search(names, pos, t0, t1):
+    rows = TGACCT.search(names, pos, t0, t1)
+    rx = evsearch.name_rx(names); out = []
+    for r in rows:
+        sc = (3 if rx and rx.search(r["text"]) else 1) + (1 if evsearch.STRIKE_KW.search(r["text"]) else 0) + (1 if r["media"] else 0)
+        out.append(dict(r, score=sc, why=["tg-account"], title=None, summary=None, cred=None, text=r["text"][:500], media=[dict(m, o=None) for m in r["media"]]))
+    return out
+
+
+_tg_acct_search.label = "Telegram (konto)"
+EV_SEARCH = [_tg_acct_search]                          # dodatkowe wyszukiwarki (konto Telegram, inne serwisy): f(names, pos, t0, t1) -> lista postów
+EV_CACHE = {}
 RADIATION = intel.Radiation(log, intg_cfg, DATA)      # v3.17: promieniowanie (Safecast)
 ACLED = intel.Acled(log, intg_cfg)                     # v3.17: zdarzenia konfliktowe ACLED
 VGRAPH = vgraph.VGraph(DATA, log)                     # v3.17: statek – właściciel – zarządca – bandera – sankcje
@@ -137,6 +157,8 @@ def intg_status():
     return {"ua_alerts": UAALERT.status, "deepstate": DEEPST.status, "notam": NOTAMS.status, "gfw": DARKSAR.status, "telegram": TGOSINT.status,
             "adsb": LADSB.status, "ais": LAIS.status, "aprs": APRSIS.status, "aishub": AISHUB.status,
             **{"tcp:" + k: v for k, v in AISTCP.status.items()}, "mail": MAILIN.status, "radiation": RADIATION.status, "acled": ACLED.status, "corr": CORR.status,
+            "tgacct": {"ok": True if TGACCT.ready() else (False if TGACCT.state.get("err") else None), "err": TGACCT.state.get("err"), "off": not TGACCT.configured(),
+                       "n": (TGACCT.state.get("me") or {}).get("username")},
             "vgraph": {"ok": bool(VGRAPH.meta.get("n_v")) if VGRAPH.meta.get("n_v") or VGRAPH.meta.get("err") else None, "err": VGRAPH.meta.get("err"), "n": VGRAPH.meta.get("n_v")}, "ha": {"ok": None if not NOTIFY.cfg.get("ha") else NOTIFY.ha_err is None, "err": NOTIFY.ha_err}}
 
 
@@ -387,6 +409,95 @@ def corr_signals():
 
 
 CORR = correlate.Correlator(log, corr_signals, AI_BG, lambda: JOB["running"])
+
+
+def ev_query(typ, iid, q):
+    """Parametry wyszukiwania dla zdarzenia: nazwy miejsc, pozycja, promień, okno czasu, tytuł."""
+    now = int(time.time() * 1000)
+    if typ == "ua":
+        o = next((x for x in ((UAALERT.data or {}).get("oblasts") or []) if x["id"] == iid), None)
+        ob = intel.OBLASTS.get(iid)
+        if not ob:
+            return None
+        names = evsearch.UA_PLACES.get(iid, []) + [ob[0], ob[1]]
+        t0 = (o or {}).get("since") or now - 3 * 3600e3
+        return {"names": names, "pos": (ob[2], ob[3]), "r": 150, "t0": t0 - 1800e3, "t1": now, "title": (o or {}).get("name") or ob[1 if i18n.en() else 0]}
+    if typ == "cr":
+        c = next((x for x in CORR.view() if x["id"] == iid), None)
+        if not c:
+            return None
+        names = []
+        for sg in c["sig"]:
+            if sg.get("go", "").startswith("ua:"):
+                names += evsearch.UA_PLACES.get(sg["go"][3:], [])
+        return {"names": names, "pos": (c["lat"], c["lon"]), "r": max(80, c["ext"] + 50), "t0": c["first"] - 3600e3, "t1": max(c["last"], now - 6 * 3600e3),
+                "title": (c.get("ai") or {}).get("title") or ", ".join(c["lnames"])}
+    if typ == "mi":
+        r = MARSEC.items.get(iid) or {}
+        if not r.get("pos"):
+            return None
+        t = r.get("t") or now
+        return {"names": [w for w in re.findall(r"[A-Z][a-z]{3,}", r.get("title") or "")][:4], "pos": tuple(r["pos"][:2]), "r": 200, "t0": t - 6 * 3600e3, "t1": t + 24 * 3600e3,
+                "title": r.get("title") or iid}
+    if typ == "tg":
+        p = TGOSINT.posts.get(iid) or {}
+        a = p.get("ai") or {}
+        if not p:
+            return None
+        return {"names": [a["place"]] if a.get("place") and len(a["place"]) < 40 else [], "pos": tuple(a["pos"][:2]) if a.get("pos") else None, "r": 80,
+                "t0": p["t"] - 6 * 3600e3, "t1": p["t"] + 6 * 3600e3, "title": a.get("title") or p.get("text", "")[:80], "self": iid}
+    if typ == "geo":
+        try:
+            la, lo, h = float(q.get("lat")), float(q.get("lon")), float(q.get("h") or 6)
+        except (TypeError, ValueError):
+            return None
+        return {"names": [x.strip() for x in str(q.get("q") or "").split(",") if x.strip()], "pos": (la, lo), "r": float(q.get("r") or 60),
+                "t0": now - h * 3600e3, "t1": now, "title": q.get("q") or f"{la:.3f}, {lo:.3f}"}
+    return None
+
+
+def post_out(p, sc=0, why=()):
+    a = p.get("ai") or {}
+    meta = intel.TG_DEFAULT.get(p.get("ch"), (p.get("chn") or p.get("ch") or "", p.get("type") or "inne"))
+    return {"id": p["id"], "src": p.get("src", "tg"), "ch": p.get("ch"), "chn": p.get("chn") or meta[0], "type": p.get("type") or meta[1], "t": p["t"],
+            "title": a.get("title"), "summary": a.get("summary"), "text": (p.get("text") or "")[:500], "url": p.get("url"), "cred": a.get("cred"),
+            "media": [{"k": m["k"], "h": m["h"], "o": m.get("u")} for m in p.get("media", [])][:8], "score": sc, "why": list(why), "also": p.get("also", [])}
+
+
+def ev_media(typ, iid, q):
+    key = f"{typ}|{iid}|{sorted(q.items()) if typ == 'geo' else ''}"
+    c = EV_CACHE.get(key)
+    if c and time.time() - c[0] < 90:
+        return c[1]
+    eq = ev_query(typ, iid, q)
+    if not eq:
+        return {"error": "brak", "posts": []}
+    with TGOSINT.lock:
+        posts = list(TGOSINT.posts.values())
+    hits = evsearch.search_posts(posts, eq["names"], eq["pos"], eq["r"], eq["t0"], eq["t1"], 40)
+    out = [post_out(p, sc, why) for sc, p, why in hits if p["id"] != eq.get("self")]
+    extra, errs = [], {}
+    if EV_SEARCH:
+        from concurrent.futures import ThreadPoolExecutor, wait
+        with ThreadPoolExecutor(len(EV_SEARCH)) as ex:
+            futs = {ex.submit(f, eq["names"], eq["pos"], eq["t0"], eq["t1"]): getattr(f, "label", "?") for f in EV_SEARCH}
+            done, _ = wait(futs, timeout=25)
+            for fu in done:
+                try:
+                    extra += fu.result() or []
+                except Exception as e:
+                    errs[futs[fu]] = str(e)[:160]
+            for fu in set(futs) - done:
+                errs[futs[fu]] = "timeout"
+    seen = {x["url"] for x in out}
+    out += [x for x in extra if x.get("url") not in seen]
+    out.sort(key=lambda x: (-x.get("score", 0), -x["t"]))
+    res = {"title": eq["title"], "names": eq["names"][:12], "t0": eq["t0"], "t1": eq["t1"], "r": eq["r"], "posts": out[:60],
+           "n_media": sum(len(x["media"]) for x in out[:60]), "errors": errs, "at": int(time.time() * 1000)}
+    EV_CACHE[key] = (time.time(), res)
+    if len(EV_CACHE) > 200:
+        EV_CACHE.clear()
+    return res
 
 
 HIST.on_event = _on_event
@@ -847,6 +958,35 @@ class H(BaseHTTPRequestHandler):
             try: gen.close()
             except Exception: pass
 
+    def _media_file(self, h, ext):
+        f = MEDIA.get(h, ext)
+        if not f:
+            self.send_response(404); self.send_header("Content-Length", "0"); self.end_headers(); return
+        size = f.stat().st_size; ct = "image/jpeg" if ext == "jpg" else "video/mp4"
+        rng = re.match(r"bytes=(\d*)-(\d*)", self.headers.get("Range") or "")
+        a, b = 0, size - 1
+        if rng and ext == "mp4":
+            if rng.group(1):
+                a = int(rng.group(1)); b = int(rng.group(2)) if rng.group(2) else size - 1
+            elif rng.group(2):
+                a = max(0, size - int(rng.group(2)))
+            b = min(b, size - 1)
+            self.send_response(206); self.send_header("Content-Range", f"bytes {a}-{b}/{size}")
+        else:
+            self.send_response(200)
+        self.send_header("Content-Type", ct); self.send_header("Accept-Ranges", "bytes"); self.send_header("Content-Length", str(b - a + 1))
+        self.send_header("Cache-Control", "max-age=604800"); self.end_headers()
+        try:
+            with open(f, "rb") as fh:
+                fh.seek(a); left = b - a + 1
+                while left > 0:
+                    chunk = fh.read(min(262144, left))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk); left -= len(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
     def _local(self):
         return self.client_address[0] in ("127.0.0.1", "::1", "::ffff:127.0.0.1")
 
@@ -935,6 +1075,14 @@ class H(BaseHTTPRequestHandler):
             return self._json(VGRAPH.graph(mm, im, g1("name") or (rec or {}).get("name"), live, (rec or {}).get("flag")))
         if p == "/api/cloud":
             return self._json(CLOUD.view())
+        if p == "/api/media/event":
+            q = {k: v[0] for k, v in urllib.parse.parse_qs(self.path.partition("?")[2]).items()}
+            return self._json(ev_media(q.get("type", ""), q.get("id", ""), q))
+        m = re.match(r"^/media/([0-9a-f]{16})\.(jpg|mp4)$", p)
+        if m:
+            return self._media_file(m.group(1), m.group(2))
+        if p == "/api/tgacct":
+            return self._json(TGACCT.view())
         if p == "/api/hf/search":
             q = urllib.parse.unquote_plus((re.search(r"q=([^&]*)", self.path) or [None, ""])[1]).strip()[:80]
             try:
@@ -1273,6 +1421,59 @@ class H(BaseHTTPRequestHandler):
             return self._json({"ok": ok, "error": msg, "settings": settings_view()}, 200 if ok else 400)
         if p == "/api/refresh":
             return self._json({"started": run_refresh(), "job": JOB})
+        if p == "/api/tgacct":
+            if not self._local():
+                return self._json({"error": "local"}, 403)
+            b = self._body(); act = b.get("act")
+            try:
+                if act == "install":
+                    TGACCT.install()
+                elif act == "save":
+                    c = dict(SETTINGS.get("tgacct") or {})
+                    aid = str(b.get("api_id") or "").strip()
+                    if aid and not aid.isdigit():
+                        return self._json(dict(TGACCT.view(), error=i18n.L("api_id to liczba (my.telegram.org → API development tools).", "api_id is a number (my.telegram.org → API development tools).")))
+                    if aid:
+                        c["api_id"] = aid
+                    if str(b.get("api_hash") or "").strip():
+                        h = b["api_hash"].strip()
+                        if not re.match(r"^[0-9a-f]{32}$", h):
+                            return self._json(dict(TGACCT.view(), error=i18n.L("api_hash ma 32 znaki (cyfry i litery a–f).", "api_hash has 32 characters (digits and letters a–f).")))
+                        c["api_hash"] = h
+                    if "phone" in b:
+                        c["phone"] = re.sub(r"[^\d+]", "", str(b["phone"]))[:20]
+                    SETTINGS["tgacct"] = c
+                    SETTINGS_FILE.write_text(json.dumps(SETTINGS, ensure_ascii=False, indent=2), encoding="utf-8")
+                    threading.Thread(target=TGACCT.reconfigure, daemon=True).start(); time.sleep(1.5)
+                elif act == "code":
+                    TGACCT.send_code((SETTINGS.get("tgacct") or {}).get("phone") or "")
+                elif act == "signin":
+                    TGACCT.sign_in(str(b.get("code") or ""))
+                elif act == "password":
+                    TGACCT.sign_in_password(str(b.get("password") or ""))
+                elif act == "logout":
+                    TGACCT.logout()
+                return self._json(TGACCT.view())
+            except Exception as e:
+                msg = str(e)
+                for k, v in (("PHONE_CODE_INVALID", i18n.L("zły kod", "wrong code")), ("PHONE_CODE_EXPIRED", i18n.L("kod wygasł – wyślij nowy", "code expired – send a new one")),
+                             ("PASSWORD_HASH_INVALID", i18n.L("złe hasło dwuetapowe", "wrong two-step password")), ("PHONE_NUMBER_INVALID", i18n.L("zły numer telefonu (z kierunkowym, np. +44…)", "invalid phone number (with country code, e.g. +44…)")),
+                             ("API_ID_INVALID", i18n.L("zły api_id lub api_hash", "invalid api_id or api_hash")), ("FLOOD", i18n.L("Telegram każe odczekać – spróbuj później", "Telegram asks to wait – try later"))):
+                    if k in msg.upper():
+                        msg = v + f" ({msg[:80]})"; break
+                TGACCT.state["err"] = msg[:240]
+                return self._json(dict(TGACCT.view(), error=msg[:240]))
+        if p == "/api/media/summary":
+            b = self._body(); res = ev_media(str(b.get("type") or ""), str(b.get("id") or ""), b)
+            ps = res.get("posts") or []
+            if not ps:
+                return self._stream(iter([i18n.L("Brak postów do podsumowania.", "No posts to summarise.")]))
+            lines = "\n".join(f"[{i + 1}] {datetime.fromtimestamp(x['t'] / 1000, timezone.utc):%d.%m %H:%M} UTC · {x['chn']} ({x['type']}): {(x.get('title') or '')} – {(x.get('summary') or x.get('text') or '')[:400]}"
+                              for i, x in enumerate(ps[:30]))
+            sysm = ("Jesteś analitykiem OSINT systemu KRONOS-7. Na podstawie relacji z kanałów napisz zwięzłe zestawienie zdarzenia: co się stało, gdzie, kiedy, "
+                    "co potwierdza kilka niezależnych źródeł, a co podaje tylko jedna strona (zaznacz to), liczby (ofiary, zniszczenia, zestrzelenia) z podaniem źródła [nr]. "
+                    "Komunikaty stron wojny traktuj jako twierdzenia. Bez wstępów, krótkie akapity.")
+            return self._stream(AI_ASK.chat_stream(sysm, f"ZDARZENIE: {res.get('title')}\nRELACJE:\n{lines}", 0.2))
         if p == "/api/hf/token":
             t = str(self._body().get("token") or "").strip()
             if t and not re.match(r"^hf_[A-Za-z0-9]{20,}$", t):
@@ -1364,7 +1565,7 @@ class H(BaseHTTPRequestHandler):
 def main():
     port = int(os.environ.get("KRONOS_PORT", CFG.get("port", 7707)))
     st = ENGINE.status()
-    log("KRONOS-7 v3.19 · start")
+    log("KRONOS-7 v3.20 · start")
     log(f"Sprzęt: {st['hardware']['gpu_name']} · VRAM {st['hardware']['vram_gb']} GB · RAM {st['hardware']['ram_gb']} GB")
     log(f"AI: {st['backend'] or 'brak (zainstaluj Ollamę)'} · model: {st['model'] or '—'} · zalecany: {st['recommended']}")
     log(st["reason"])
@@ -1384,6 +1585,7 @@ def main():
         TGOSINT.ai = AI_BG; TGOSINT.busy = lambda: JOB["running"]; TGOSINT.bg = lambda: SETTINGS.get("ai_bg", "after")
         for src in (UAALERT, DEEPST, NOTAMS, DARKSAR, TGOSINT, LADSB, LAIS, APRSIS, MAILIN, AISTCP, AISHUB, VGRAPH, RADIATION, ACLED, CORR):
             src.start()
+        threading.Thread(target=TGACCT.start, daemon=True, name="tg-account-start").start()
         HIST.extra = [("ua", UAALERT), ("osint", TGOSINT), ("rad", RADIATION), ("corr", CORR)]
     url = f"http://127.0.0.1:{port}"
     log(f"Terminal: {url}")
