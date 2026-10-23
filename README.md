@@ -25,6 +25,7 @@ Lokalny terminal w stylu komputerów pokładowych z filmów science fiction. Pok
 - **ŹRÓDŁA I INTEGRACJE**: na górze okna pasek z podsumowaniem („STAN: 16 OK · 2 z błędem · 15 wyłączonych”) i przyciskiem **TESTUJ WSZYSTKO** – KRONOS od razu łączy się ze wszystkimi źródłami naraz (do ok. minuty). Na liście STAN ŹRÓDEŁ każde źródło ma własny przycisk **TEST**.
 - Wynik przy źródle: OK z liczbą danych, BŁĄD z opisem (odmowa dostępu, za dużo zapytań, brak połączenia…) albo „wyłączone”; do tego godzina testu, czas odpowiedzi i uwaga.
 - Testowane są: AI lokalne i w chmurze, samoloty, statki (Digitraffic, aisstream.io), wszystkie źródła wywiadowcze, Telegram (kanały i konto), wyszukiwarki, Copernicus, OpenSky, Stadia, bot Telegram i Discord (bez wysyłania wiadomości), poczta, odbiorniki SDR, Home Assistant.
+- **v3.22.1 – filtr śmieci w wyszukiwaniu Telegrama:** wyniki z konta Telegram (cały Telegram) nie omijają już filtra. Odrzucane są kanały „towarzyskie”, kasyna, narkotyki i inny spam doklejający nazwy miast i hashtagi. Zostają tylko wpisy o ataku lub wybuchu, a z całego Telegrama dodatkowo tylko te z nazwą miejsca. Prywatne rozmowy nigdy nie trafiają do zestawień, a zdjęcia spamu nie są pobierane.
 - **Na bieżąco:** KRONOS sam testuje wszystko co godzinę w tle (bez AI w chmurze, bo test zużywa zapytanie z limitu). Wynik w panelu STATUS SYSTEMU, wiersz ŹRÓDŁA – kliknięcie otwiera szczegóły.
 
 ## Więcej źródeł: Izrael, mapy ISW, GeoConfirmed, WarSpotting, Copernicus (v3.21)

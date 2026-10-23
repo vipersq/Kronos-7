@@ -39,6 +39,17 @@ UA_PLACES = {
 STRIKE_KW = re.compile(r"ракет|балістик|баллистик|крилат|крылат|шахед|шахід|дрон|бпла|бпла|вибух|взрыв|приліт|прилет|удар|атак|уламк|обломк|пожеж|пожар|"
                        r"missile|ballistic|drone|shahed|explosion|blast|strike|attack|debris|fire|rakiet|dron|wybuch|atak|pożar", re.I)
 
+# v3.22: spam z wyszukiwania w całym Telegramie (kanały „towarzyskie”, kasyna, narkotyki dopisują nazwy miast i hashtagi)
+SPAM_STRONG = re.compile(r"знакомств|знайомств|интим|інтим|эскорт|ескорт|досуг|дозвілл|проститу|индивидуалк|индивидуалок|шлюх|порн|нюдс|\bню\b|эротик|еротик|"
+                         r"onlyfans|онлифанс|онліфанс|18\s*\+|\bxxx\b|nsfw|escort|hookup|nudes?\b|казино|casino|букмекер|ставки на спорт|"
+                         r"закладк|\bмеф\b|мефедрон|кокаин|кокаїн|\bweed\b|randk[ai]|towarzysk|roksa", re.I)
+SPAM_TITLE = re.compile(r"девушк|дівчат|девочк|girls?\b|красотк|красун|знакомств|знайомств|массаж|масаж|relax|релакс|vip|sexy|секс|hot\b|\b18\b|"
+                        r"казино|casino|crypto|крипт|заработ|заробіт", re.I)
+
+
+def is_spam(text, title=""):
+    return bool(SPAM_STRONG.search(text or "") or SPAM_STRONG.search(title or "") or SPAM_TITLE.search(title or ""))
+
 
 def km(a, b):
     r = math.pi / 180

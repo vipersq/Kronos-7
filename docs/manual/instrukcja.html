@@ -56,7 +56,7 @@ a { color: var(--acc); }
     <p class="t">KRONOS-7_</p>
     <p class="s">PLANETARNY SYSTEM WYWIADOWCZY</p>
     <h1>Instrukcja obsługi</h1>
-    <p class="d">Wersja programu <b>3.22</b> · instrukcja z dnia 23.10.2026</p>
+    <p class="d">Wersja programu <b>3.22.1</b> · instrukcja z dnia 23.10.2026</p>
     <p class="d">Instalacja, konfiguracja krok po kroku, skąd wziąć każdy klucz API, rozwiązywanie problemów.</p>
   </div>
   <img src="img/main.jpg" alt="">
@@ -480,6 +480,7 @@ a { color: var(--acc); }
 <li>Wpisz kod, który przyjdzie w aplikacji Telegram (czat „Telegram”), → <span class="btn">ZALOGUJ</span>. Jeśli masz hasło dwuetapowe, KRONOS o nie zapyta.</li>
 </ol>
 <div class="warn">Sesja zapisuje się w pliku <code>data/tg_account.session</code> – daje <b>pełny dostęp do Twojego konta</b>. Nigdy go nikomu nie wysyłaj. <span class="btn">WYLOGUJ</span> usuwa sesję. api_hash też traktuj jak hasło.</div>
+<p><b>Filtr śmieci:</b> wyniki z całego Telegrama przechodzą przez filtr – odrzucane są kanały „towarzyskie”, kasyna, narkotyki i inny spam, który dopisuje nazwy miast i hashtagi; do zestawienia trafiają tylko wpisy o ataku/wybuchu (a z całego Telegrama – także z nazwą miejsca). Prywatne rozmowy nigdy nie trafiają do zestawień. Zdjęcia w zestawieniach są domyślnie rozmyte.</p>
 <p>Po zalogowaniu zestawienia POSTY I ZDJĘCIA przeszukują dodatkowo wszystkie Twoje kanały i grupy oraz publiczne posty z całego Telegrama (hashtagi bez limitu, pełny tekst w darmowej dziennej puli).</p>
 </div>
 
@@ -594,6 +595,7 @@ a { color: var(--acc); }
 <tr><td>Powiadomienia nie przychodzą</td><td>Czy napisałeś do bota „start”? Czy ID czatu jest liczbą od @userinfobot? Kliknij WYŚLIJ TEST. Czy zaznaczone są rodzaje powiadomień?</td></tr>
 <tr><td>Brak głosu briefingu</td><td>DŹWIĘKI I GŁOS LEKTORA → zainstaluj głosy Microsoft albo pobierz Pipera; albo dodaj polski głos w Windows (Ustawienia → Czas i język → Mowa).</td></tr>
 <tr><td>Telegram konto: błąd logowania</td><td>Numer z kierunkowym (+44…). Kod przychodzi w aplikacji Telegram, nie SMS-em. api_id to liczba, api_hash – 32 znaki.</td></tr>
+<tr><td>W zestawieniu POSTY I ZDJĘCIA pojawiają się śmieci (reklamy, „randki”)</td><td>Od v3.22.1 filtrowane automatycznie. Jeśli coś się prześlizgnie – zdjęcia są rozmyte; daj znać, jakie słowa miał ten post, dopiszę je do filtra.</td></tr>
 <tr><td>Po aktualizacji coś nie działa</td><td>Usuń <code>data\.deps_ok</code> i uruchom <code>start.bat</code> ponownie. W przeglądarce Ctrl+F5.</td></tr>
 </table>
 
@@ -638,7 +640,7 @@ a { color: var(--acc); }
 <tr><td>Gmail (IMAP)</td><td>Konto Google → Bezpieczeństwo → Hasła do aplikacji</td><td>ŹRÓDŁA I INTEGRACJE</td></tr>
 <tr><td>Hugging Face</td><td>huggingface.co → Settings → SSH and GPG Keys</td><td>OPERATOR → MODELE…</td></tr>
 </table>
-<p class="small" style="margin-top:14pt">Strony dostawców czasem zmieniają wygląd i nazwy menu – jeśli coś wygląda inaczej, szukaj na ich stronie słów „API”, „API key”, „Token” albo „Developer”. Instrukcja dotyczy KRONOS-7 v3.22.</p>
+<p class="small" style="margin-top:14pt">Strony dostawców czasem zmieniają wygląd i nazwy menu – jeśli coś wygląda inaczej, szukaj na ich stronie słów „API”, „API key”, „Token” albo „Developer”. Instrukcja dotyczy KRONOS-7 v3.22.1.</p>
 
 </body>
 </html>

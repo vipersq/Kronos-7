@@ -10,7 +10,7 @@ import asyncio, hashlib, importlib, os, re, site, subprocess, sys, threading, ti
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import i18n
+from . import evsearch, i18n
 
 
 def installed():
@@ -32,6 +32,7 @@ class TgAccount:
         self.refs = {}                  # h -> (peer, msg_id, video)
         self.lock = threading.Lock()
         self.last_search = 0
+        self.dropped = 0                # odrzucone przez filtr (spam, nie na temat)
 
     # ------------------------------------------------------------ instalacja biblioteki
     def install(self):
@@ -86,7 +87,7 @@ class TgAccount:
         from telethon import TelegramClient
         c = self.cfg()
         if self.client is None:
-            self.client = TelegramClient(self.session, int(c["api_id"]), c["api_hash"].strip(), device_model="KRONOS-7", app_version="3.22",
+            self.client = TelegramClient(self.session, int(c["api_id"]), c["api_hash"].strip(), device_model="KRONOS-7", app_version="3.22.1",
                                          system_version=sys.platform, receive_updates=False)
         if not self.client.is_connected():
             await self.client.connect()
@@ -217,11 +218,15 @@ class TgAccount:
         if flood:
             self.state["flood"] = flood
         out, seen = [], set()
+        rx = evsearch.name_rx(names)
         for kind, r in res:
             chats = {c.id: c for c in list(getattr(r, "chats", [])) + list(getattr(r, "users", []))}
             for m in getattr(r, "messages", []):
                 if not getattr(m, "message", None) and not getattr(m, "media", None):
                     continue
+                pid0 = getattr(m.peer_id, "user_id", None)
+                if pid0 is not None:
+                    continue                       # prywatne rozmowy i boty – nigdy nie trafiają do zestawień
                 d = m.date.timestamp() * 1000 if m.date else 0
                 if d < t0 - 1800e3 or d > t1 + 3 * 3600e3:
                     continue
@@ -232,6 +237,13 @@ class TgAccount:
                     continue
                 seen.add(key)
                 uname = getattr(ch, "username", None)
+                txt = m.message or ""
+                title = " ".join(x for x in (getattr(ch, "title", None), uname) if x)
+                # filtr: bez spamu, musi być tekst o ataku/wybuchu, a z całego Telegrama (hashtag / pełny tekst) także nazwa miejsca
+                if len(txt.strip()) < 25 or evsearch.is_spam(txt, title) or not evsearch.STRIKE_KW.search(txt):
+                    self.dropped += 1; continue
+                if kind != "global" and not (rx and rx.search(txt)):
+                    self.dropped += 1; continue
                 url = f"https://t.me/{uname}/{m.id}" if uname else f"https://t.me/c/{pid}/{m.id}"
                 media = []
                 vid = bool(getattr(m, "video", None) or (getattr(m, "document", None) and "video" in (getattr(m.document, "mime_type", "") or "")))

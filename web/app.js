@@ -1,4 +1,4 @@
-/* KRONOS-7 v3.22 — interfejs terminala. Dane: lokalny serwer (/api/*). */
+/* KRONOS-7 v3.22.1 — interfejs terminala. Dane: lokalny serwer (/api/*). */
 (function () {
 "use strict";
 const $ = s => document.querySelector(s);
@@ -2947,7 +2947,7 @@ function boot(done) {
   let seen = false; try { seen = sessionStorage.getItem("k7-boot") === "1"; } catch (e) { seen = true; }
   if (!needSetup && (seen || reduce)) return done();
   const B = $("#boot"); B.hidden = false; const e = STATUS ? STATUS.engine : null, C = CURRENT || {};
-  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.22"), TX("TEST PAMIĘCI ........ OK"),
+  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.22.1"), TX("TEST PAMIĘCI ........ OK"),
     TX("PROCESOR GRAFICZNY ..") + " " + (e ? TX(e.hardware.gpu_name) + (e.hardware.vram_gb ? " / " + e.hardware.vram_gb + " " + TX("GB") : "") : "?"),
     TX("RDZEŃ ANALITYCZNY ...") + " " + (e && e.model ? e.model.toUpperCase() : TX("NIEAKTYWNY")),
     TX("BAZA KONFLIKTÓW .....") + " " + A(C.conflicts).length + " " + TX("WĘZŁÓW"), TX("FRONTY ..............") + " " + A(C.fronts).length + " " + TX("TEATRÓW"),

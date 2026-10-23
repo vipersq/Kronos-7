@@ -111,6 +111,8 @@ def _tg_acct_search(names, pos, t0, t1):
     rows = TGACCT.search(names, pos, t0, t1)
     rx = evsearch.name_rx(names); out = []
     for r in rows:
+        if evsearch.is_spam(r["text"], r.get("chn") or "") or not evsearch.STRIKE_KW.search(r["text"]):
+            continue                                   # druga linia obrony – to samo co w tgacct
         sc = (3 if rx and rx.search(r["text"]) else 1) + (1 if evsearch.STRIKE_KW.search(r["text"]) else 0) + (1 if r["media"] else 0)
         out.append(dict(r, score=sc, why=["tg-account"], title=None, summary=None, cred=None, text=r["text"][:500], media=[dict(m, o=None) for m in r["media"]]))
     return out
@@ -186,7 +188,7 @@ TEST_RUN = {"running": False, "at": 0}
 
 
 def _probe_http(url, headers=None, timeout=15):
-    req = urllib.request.Request(url, headers=dict({"User-Agent": "KRONOS-7/3.22 (connection test)"}, **(headers or {})))
+    req = urllib.request.Request(url, headers=dict({"User-Agent": "KRONOS-7/3.22.1 (connection test)"}, **(headers or {})))
     with urllib.request.urlopen(req, timeout=timeout) as r:
         b = r.read(200000)
     return r.status, b
@@ -772,6 +774,8 @@ def ev_media(typ, iid, q):
                     return rows
                 out2 = []
                 for r in rows:
+                    if evsearch.is_spam(r.get("text") or "", r.get("chn") or ""):
+                        continue
                     nm = bool(rx and rx.search(r.get("text") or "")); kw = bool(evsearch.STRIKE_KW.search(r.get("text") or ""))
                     if (f.label == "gdelt" and not nm) or (f.label != "gdelt" and not kw):
                         continue                       # media społecznościowe: tylko wpisy o ataku/wybuchu; GDELT: tylko z nazwą miejsca
@@ -1899,7 +1903,7 @@ class H(BaseHTTPRequestHandler):
 def main():
     port = int(os.environ.get("KRONOS_PORT", CFG.get("port", 7707)))
     st = ENGINE.status()
-    log("KRONOS-7 v3.22 · start")
+    log("KRONOS-7 v3.22.1 · start")
     log(f"Sprzęt: {st['hardware']['gpu_name']} · VRAM {st['hardware']['vram_gb']} GB · RAM {st['hardware']['ram_gb']} GB")
     log(f"AI: {st['backend'] or 'brak (zainstaluj Ollamę)'} · model: {st['model'] or '—'} · zalecany: {st['recommended']}")
     log(st["reason"])
