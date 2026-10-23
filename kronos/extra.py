@@ -11,7 +11,7 @@ from pathlib import Path
 from . import i18n
 from .intel import Source, _now_ms
 
-UA = "KRONOS-7/3.22.2 (personal OSINT dashboard)"
+UA = "KRONOS-7/3.22.3 (personal OSINT dashboard)"
 
 
 def _get(url, timeout=40, headers=None, data=None, method=None, raw=False):
@@ -551,7 +551,7 @@ class OpenSky:
     """Ślad lotu z OpenSky Network (darmowe konto; od 2025 logowanie kluczem API – client_id i client_secret)."""
 
     def __init__(self, settings):
-        self.settings = settings; self.tok = (None, 0)
+        self.settings = settings; self.tok = (None, 0); self.bad = None; self.auth_err = None
 
     def _h(self):
         c = self.settings() or {}
@@ -559,8 +559,19 @@ class OpenSky:
             return {}
         t, exp = self.tok
         if not t or time.time() > exp - 60:
+            if getattr(self, "bad", None) == (c["opensky_id"], c["opensky_secret"]):
+                return {}                       # te dane już odrzucono – bez ponownych prób, działamy bez konta
             body = urllib.parse.urlencode({"grant_type": "client_credentials", "client_id": c["opensky_id"].strip(), "client_secret": c["opensky_secret"].strip()}).encode()
-            r = _get("https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token", 30, {"Content-Type": "application/x-www-form-urlencoded"}, body, "POST")
+            try:
+                r = _get("https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token", 30, {"Content-Type": "application/x-www-form-urlencoded"}, body, "POST")
+            except urllib.error.HTTPError as e:
+                if e.code in (400, 401):
+                    self.bad = (c["opensky_id"], c["opensky_secret"])
+                    self.auth_err = i18n.L("OpenSky odrzucił client_id / client_secret („Invalid client credentials”) – utwórz nowego API clienta na opensky-network.org/my-opensky/account i wpisz nowe dane. Do tego czasu ślad lotu działa bez konta (z limitem).",
+                                           "OpenSky rejected the client_id / client_secret (“Invalid client credentials”) – create a new API client at opensky-network.org/my-opensky/account and enter the new details. Until then the flight track works without an account (limited).")
+                    return {}
+                raise
+            self.auth_err = None
             self.tok = (r["access_token"], time.time() + int(r.get("expires_in") or 1800)); t = self.tok[0]
         return {"Authorization": "Bearer " + t}
 

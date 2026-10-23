@@ -56,7 +56,7 @@ a { color: var(--acc); }
     <p class="t">KRONOS-7_</p>
     <p class="s">PLANETARNY SYSTEM WYWIADOWCZY</p>
     <h1>Instrukcja obsługi</h1>
-    <p class="d">Wersja programu <b>3.22.2</b> · instrukcja z dnia 23.10.2026</p>
+    <p class="d">Wersja programu <b>3.22.3</b> · instrukcja z dnia 23.10.2026</p>
     <p class="d">Instalacja, konfiguracja krok po kroku, skąd wziąć każdy klucz API, rozwiązywanie problemów.</p>
   </div>
   <img src="img/main.jpg" alt="">
@@ -366,6 +366,7 @@ a { color: var(--acc); }
 <li>W sekcji <b>API Client</b> utwórz nowego klienta. Pobierze się plik <code>credentials.json</code> – otwórz go w Notatniku.</li>
 <li>Skopiuj wartości <code>clientId</code> i <code>clientSecret</code> do pól OpenSky client_id i client_secret.</li>
 <li>Test: kliknij samolot na mapie → <span class="btn">ŚLAD LOTU (OpenSky)</span>.</li>
+<li>Jeśli test pokazuje <i>„OpenSky odrzucił client_id / client_secret”</i>, dane z pliku są nieważne (np. klient został usunięty albo utworzony ponownie). Na stronie konta usuń starego klienta, utwórz nowego, pobierz <b>nowy</b> <code>credentials.json</code> i wpisz dane jeszcze raz. Do tego czasu ślad lotu działa bez konta.</li>
 </ol>
 </div>
 
@@ -649,7 +650,7 @@ a { color: var(--acc); }
 <tr><td>Gmail (IMAP)</td><td>Konto Google → Bezpieczeństwo → Hasła do aplikacji</td><td>ŹRÓDŁA I INTEGRACJE</td></tr>
 <tr><td>Hugging Face</td><td>huggingface.co → Settings → SSH and GPG Keys</td><td>OPERATOR → MODELE…</td></tr>
 </table>
-<p class="small" style="margin-top:14pt">Strony dostawców czasem zmieniają wygląd i nazwy menu – jeśli coś wygląda inaczej, szukaj na ich stronie słów „API”, „API key”, „Token” albo „Developer”. Instrukcja dotyczy KRONOS-7 v3.22.2.</p>
+<p class="small" style="margin-top:14pt">Strony dostawców czasem zmieniają wygląd i nazwy menu – jeśli coś wygląda inaczej, szukaj na ich stronie słów „API”, „API key”, „Token” albo „Developer”. Instrukcja dotyczy KRONOS-7 v3.22.3.</p>
 
 </body>
 </html>

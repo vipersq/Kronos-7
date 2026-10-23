@@ -25,6 +25,7 @@ Lokalny terminal w stylu komputerów pokładowych z filmów science fiction. Pok
 - **Karta punktu GeoConfirmed**: opis, sprzęt, jednostki, rodzaj materiału, miejscowość oraz linki do oryginału (Telegram, X) i geolokalizacji – z ukrytego API szczegółów GeoConfirmed.
 - **POSTY I ZDJĘCIA przy punkcie GeoConfirmed**: na górze oryginalny post z Telegrama (zdjęcia/film) i treść posta z X (oficjalny oEmbed, bez klucza), niżej relacje z Telegrama, Bluesky itd. z tego miejsca i 2 dni od daty. Nazwy miejscowości po ukraińsku, rosyjsku i angielsku KRONOS bierze z OpenStreetMap (Nominatim, raz na miejsce).
 - **PODSUMUJ (AI)** dostaje opis GeoConfirmed i ocenia, które relacje dotyczą tego samego zdarzenia.
+- **v3.22.3 – OpenSky:** odrzucone client_id/secret nie blokują już śladu lotu (działa wtedy bez konta), a test źródła pokazuje czytelny komunikat, co zrobić.
 - **Łańcuch przyczyn**: przy podkładach kafelkowych (CIEMNA SZCZEGÓŁOWA, SATELITA, OSM) mapa zasłaniała graf – naprawione.
 
 ## Test połączenia źródeł (v3.22)

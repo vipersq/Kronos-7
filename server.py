@@ -188,7 +188,7 @@ TEST_RUN = {"running": False, "at": 0}
 
 
 def _probe_http(url, headers=None, timeout=15):
-    req = urllib.request.Request(url, headers=dict({"User-Agent": "KRONOS-7/3.22.2 (connection test)"}, **(headers or {})))
+    req = urllib.request.Request(url, headers=dict({"User-Agent": "KRONOS-7/3.22.3 (connection test)"}, **(headers or {})))
     with urllib.request.urlopen(req, timeout=timeout) as r:
         b = r.read(200000)
     return r.status, b
@@ -313,7 +313,10 @@ def _t_copernicus():
 
 
 def _t_opensky():
+    OPENSKY.bad = None; OPENSKY.tok = (None, 0)       # test zawsze próbuje zalogować się od nowa
     h = OPENSKY._h()
+    if OPENSKY.auth_err:
+        return {"ok": False, "err": OPENSKY.auth_err}
     _, b = _probe_http("https://opensky-network.org/api/states/all?lamin=51&lomin=-1&lamax=52&lomax=0", h, 25)
     n = len(json.loads(b).get("states") or [])
     return {"ok": True, "n": n, "note": i18n.L("z kontem" if h else "bez konta (limit)", "with account" if h else "anonymous (limited)")}
@@ -1952,7 +1955,7 @@ class H(BaseHTTPRequestHandler):
 def main():
     port = int(os.environ.get("KRONOS_PORT", CFG.get("port", 7707)))
     st = ENGINE.status()
-    log("KRONOS-7 v3.22.2 · start")
+    log("KRONOS-7 v3.22.3 · start")
     log(f"Sprzęt: {st['hardware']['gpu_name']} · VRAM {st['hardware']['vram_gb']} GB · RAM {st['hardware']['ram_gb']} GB")
     log(f"AI: {st['backend'] or 'brak (zainstaluj Ollamę)'} · model: {st['model'] or '—'} · zalecany: {st['recommended']}")
     log(st["reason"])
