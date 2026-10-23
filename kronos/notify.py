@@ -22,6 +22,7 @@ KINDS = {  # rodzaj zdarzenia: (opis PL, opis EN)
     "osint": ("Ważny post z kanałów OSINT (Telegram)", "Important OSINT post (Telegram)"),
     "corr": ("Zdarzenie złożone – kilka warstw danych w jednym miejscu, ocenione przez AI", "Correlated incident – several data layers in one place, assessed by AI"),
     "rad": ("Promieniowanie wyraźnie powyżej tła stacji (Safecast)", "Radiation clearly above a station's background (Safecast)"),
+    "il_alert": ("Alarm rakietowy lub dronowy w Izraelu (Tzeva Adom)", "Rocket or drone alert in Israel (Tzeva Adom)"),
 }
 DEFAULT_ON = {"threat", "loiter", "squawk", "sanc", "sts", "cable", "pass", "marsec", "corr", "rad"}
 

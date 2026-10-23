@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-from kronos import analyst, collector, history, i18n, live_air, live_sea, llm, marsec, notify, report, satinfo, sats, tts, intel, sdr, mailin, tiles, vgraph, correlate, media, evsearch, tgacct  # noqa: E402
+from kronos import analyst, collector, history, i18n, live_air, live_sea, llm, marsec, notify, report, satinfo, sats, tts, intel, sdr, mailin, tiles, vgraph, correlate, media, evsearch, tgacct, extra  # noqa: E402
 
 DATA = ROOT / "data"; ARCH = DATA / "archive"; WEB = ROOT / "web"
 ARCH.mkdir(parents=True, exist_ok=True)
@@ -118,6 +118,15 @@ def _tg_acct_search(names, pos, t0, t1):
 _tg_acct_search.label = "Telegram (konto)"
 EV_SEARCH = [_tg_acct_search]                          # dodatkowe wyszukiwarki (konto Telegram, inne serwisy): f(names, pos, t0, t1) -> lista postów
 EV_CACHE = {}
+GEOCONF = extra.GeoConfirmed(log, intg_cfg)            # v3.21: nowe źródła
+WARSPOT = extra.WarSpotting(log, intg_cfg)
+TZEVA = extra.TzevaAdom(log, intg_cfg, DATA)
+EMSC = extra.Emsc(log, intg_cfg)
+ISW = extra.Isw(log, intg_cfg)
+CFRADAR = extra.CfRadar(log, intg_cfg)
+SEARCHERS = extra.Searchers(intg_cfg, MEDIA, log)
+COPERNICUS = extra.Copernicus(intg_cfg)
+OPENSKY = extra.OpenSky(intg_cfg)
 RADIATION = intel.Radiation(log, intg_cfg, DATA)      # v3.17: promieniowanie (Safecast)
 ACLED = intel.Acled(log, intg_cfg)                     # v3.17: zdarzenia konfliktowe ACLED
 VGRAPH = vgraph.VGraph(DATA, log)                     # v3.17: statek – właściciel – zarządca – bandera – sankcje
@@ -128,11 +137,13 @@ APRSIS = sdr.APRS(log, intg_cfg)
 AISTCP = sdr.AISTcp(log, intg_cfg, SEA)
 AISHUB = sdr.AISHub(log, intg_cfg, SEA)
 MAILIN = mailin.MailIn(DATA, log, intg_cfg, MARSEC)
-INTG_SECRET = ("alerts_token", "gfw_token", "faa_secret", "imap_pass", "acled_pass")
+INTG_SECRET = ("alerts_token", "gfw_token", "faa_secret", "imap_pass", "acled_pass", "reddit_secret", "yt_key", "vk_token", "cf_token", "cdse_secret", "opensky_secret")
 INTG_KEYS = {"alerts_token": 200, "gfw_token": 2000, "faa_id": 200, "faa_secret": 200, "notam_locs": 400, "tg_channels": 4000, "adsb_url": 300, "ais_port": 6,
              "aprs_on": 0, "aprs_km": 4, "ha_webhook": 400, "imap_host": 120, "imap_port": 5, "imap_user": 200, "imap_pass": 200, "imap_folder": 120,
              "imap_senders": 400, "imap_days": 3, "ua_watch": 400, "kystverket": 0, "ais_tcp": 300, "aishub_user": 80, "stadia_key": 80,
-             "acled_user": 200, "acled_pass": 200, "acled_days": 3}
+             "acled_user": 200, "acled_pass": 200, "acled_days": 3,
+             "gc_conflicts": 200, "ev_sources": 120, "reddit_id": 80, "reddit_secret": 120, "reddit_subs": 400, "yt_key": 120, "vk_token": 300, "cf_token": 120,
+             "cdse_id": 120, "cdse_secret": 200, "opensky_id": 120, "opensky_secret": 200}
 
 
 def intg_view():
@@ -157,6 +168,8 @@ def intg_status():
     return {"ua_alerts": UAALERT.status, "deepstate": DEEPST.status, "notam": NOTAMS.status, "gfw": DARKSAR.status, "telegram": TGOSINT.status,
             "adsb": LADSB.status, "ais": LAIS.status, "aprs": APRSIS.status, "aishub": AISHUB.status,
             **{"tcp:" + k: v for k, v in AISTCP.status.items()}, "mail": MAILIN.status, "radiation": RADIATION.status, "acled": ACLED.status, "corr": CORR.status,
+            "geoconfirmed": GEOCONF.status, "warspotting": WARSPOT.status, "tzevaadom": TZEVA.status, "emsc": EMSC.status, "isw": ISW.status, "cfradar": CFRADAR.status,
+            **{"sx_" + k: v for k, v in SEARCHERS.status.items()},
             "tgacct": {"ok": True if TGACCT.ready() else (False if TGACCT.state.get("err") else None), "err": TGACCT.state.get("err"), "off": not TGACCT.configured(),
                        "n": (TGACCT.state.get("me") or {}).get("username")},
             "vgraph": {"ok": bool(VGRAPH.meta.get("n_v")) if VGRAPH.meta.get("n_v") or VGRAPH.meta.get("err") else None, "err": VGRAPH.meta.get("err"), "n": VGRAPH.meta.get("n_v")}, "ha": {"ok": None if not NOTIFY.cfg.get("ha") else NOTIFY.ha_err is None, "err": NOTIFY.ha_err}}
@@ -186,7 +199,7 @@ def save_intg(body):
     SETTINGS = new
     SETTINGS_FILE.write_text(json.dumps(new, ensure_ascii=False, indent=2), encoding="utf-8")
     NOTIFY.configure(new)
-    for src in (UAALERT, DEEPST, NOTAMS, DARKSAR, TGOSINT, ACLED):
+    for src in (UAALERT, DEEPST, NOTAMS, DARKSAR, TGOSINT, ACLED, GEOCONF, CFRADAR):
         src.wake.set()
     MAILIN.wake.set()
 
@@ -285,7 +298,7 @@ TTS = tts.TTS(DATA, log)
 atexit.register(TTS.stop_all)
 NOTIFY = notify.Notifier(log)
 NOTIFY.configure(SETTINGS)
-EMO = {"air": "✈", "sea": "⚓", "marsec": "🏴‍☠️", "corr": "🔗", "rad": "☢"}
+EMO = {"air": "✈", "sea": "⚓", "marsec": "🏴‍☠️", "corr": "🔗", "rad": "☢", "il": "🚀"}
 NOTE_SEEN = {}
 
 
@@ -332,6 +345,11 @@ def _on_event(src, e):
                        f"Notification muted (part of incident “{(inc.get('ai') or {}).get('title', '')}”): {e.get('msg')}"))
             return
     NOTIFY.send(notify.kind_of(src, e), f"{EMO.get(src, '')} {e.get('msg')}")
+
+
+def feeds_centroid(c):
+    from kronos import feeds
+    return feeds.centroid(c)
 
 
 def corr_signals():
@@ -396,6 +414,24 @@ def corr_signals():
         for x in ((RADIATION.data or {}).get("pts") or []):
             if x.get("anom"):
                 add("rad-" + x["id"], "rad", x["t"], x["lat"], x["lon"], f"{x['name']}: {x['usv']} µSv/h ({i18n.L('tło', 'background')} {x['base']})", "rd:" + x["id"])
+        for e in list(TZEVA.events):
+            if e.get("lat") is not None:
+                add("il-" + e["id"], "il", e["at"], e["lat"], e["lon"], e["msg"])
+        for x in ((EMSC.data or {}).get("items") or []):
+            if (x.get("mag") or 0) >= 4 and x.get("t"):
+                add("eq-" + str(x["id"]), "quake", x["t"], x["lat"], x["lon"], f"EMSC M{x['mag']} {x.get('where') or ''}", "eq:" + str(x["id"]))
+        for x in ((GEOCONF.data or {}).get("pts") or [])[:800]:
+            if now - x["t"] < 40 * 3600e3:
+                add("gc-" + x["id"], "gc", x["t"] + 12 * 3600e3, x["lat"], x["lon"], f"GeoConfirmed ({x.get('conf')}, {x.get('fac')}): zgeolokalizowane nagranie", "gc:" + x["id"])
+        for x in ((CFRADAR.data or {}).get("items") or []):
+            if x.get("t") and now - x["t"] < 36 * 3600e3:
+                try:
+                    import pycountry
+                    ll = feeds_centroid(pycountry.countries.get(alpha_2=x["cc"]))
+                except Exception:
+                    ll = None
+                if ll:
+                    add(f"net-{x['cc']}-{x['t']}", "net", x["t"], ll[0], ll[1], f"Cloudflare Radar: {x['kind']} {x['cc']} {x.get('cause') or x.get('type') or ''}")
         for x in ((ACLED.data or {}).get("ev") or [])[:4000]:
             try:
                 t = int(datetime.fromisoformat(x["d"] + "T12:00:00+00:00").timestamp() * 1000)
@@ -477,10 +513,26 @@ def ev_media(typ, iid, q):
     hits = evsearch.search_posts(posts, eq["names"], eq["pos"], eq["r"], eq["t0"], eq["t1"], 40)
     out = [post_out(p, sc, why) for sc, p, why in hits if p["id"] != eq.get("self")]
     extra, errs = [], {}
-    if EV_SEARCH:
+    provs = EV_SEARCH + SEARCHERS.all()
+    if provs:
         from concurrent.futures import ThreadPoolExecutor, wait
-        with ThreadPoolExecutor(len(EV_SEARCH)) as ex:
-            futs = {ex.submit(f, eq["names"], eq["pos"], eq["t0"], eq["t1"]): getattr(f, "label", "?") for f in EV_SEARCH}
+        rx = evsearch.name_rx(eq["names"])
+        def scored(f):
+            def g(names, pos, t0, t1):
+                rows = f(names, pos, t0, t1)
+                if getattr(f, "label", "") == "Telegram (konto)":
+                    return rows
+                out2 = []
+                for r in rows:
+                    nm = bool(rx and rx.search(r.get("text") or "")); kw = bool(evsearch.STRIKE_KW.search(r.get("text") or ""))
+                    if (f.label == "gdelt" and not nm) or (f.label != "gdelt" and not kw):
+                        continue                       # media społecznościowe: tylko wpisy o ataku/wybuchu; GDELT: tylko z nazwą miejsca
+                    out2.append(dict(r, score=(3 if nm else 1) + (1 if kw else 0) + (1 if r.get("media") else 0), why=[f.label], title=None, summary=None, cred=None))
+                return out2
+            g.label = getattr(f, "label", "?")
+            return g
+        with ThreadPoolExecutor(len(provs)) as ex:
+            futs = {ex.submit(scored(f), eq["names"], eq["pos"], eq["t0"], eq["t1"]): getattr(f, "label", "?") for f in provs}
             done, _ = wait(futs, timeout=25)
             for fu in done:
                 try:
@@ -527,6 +579,9 @@ def run_refresh():
                     log(f"AI w tle: {e}")
             base = dict(STATE); base["marsec"] = MARSEC.brief(); base["osint_tg"] = TGOSINT.brief()
             base["acled"] = ACLED.brief() if ACLED.data else None; base["radiation"] = RADIATION.brief() if RADIATION.data else None; base["correlations"] = CORR.brief()
+            base["warspotting"] = WARSPOT.brief() if WARSPOT.data else None
+            base["il_alerts"] = len((TZEVA.data or {}).get("hist") or [])
+            base["net_outages"] = [f"{x['cc']} {x['kind']} {x.get('cause') or x.get('type') or ''}" for x in ((CFRADAR.data or {}).get("items") or [])[:10]]
             st = analyst.Pipeline(CFG, AI_MAIN, log, progress).run(base)
             with STATE_LOCK:
                 prev = (STATE.get("threat") or {}).get("level")
@@ -1120,7 +1175,32 @@ class H(BaseHTTPRequestHandler):
                                "deepstate": {"at": DEEPST.data["at"], "n": len(DEEPST.data["polys"])} if DEEPST.data else None,
                                "tg": TGOSINT.view(48), "tg_names": {k: v[0] for k, v in intel.TG_DEFAULT.items()},
                                "ua_watch": [x.strip() for x in str((SETTINGS.get("intg") or {}).get("ua_watch") or "").split(",") if x.strip()],
-                               "rad": RADIATION.data, "corr": CORR.view(), "acled_n": len((ACLED.data or {}).get("ev") or []), "acled_at": (ACLED.data or {}).get("at")})
+                               "rad": RADIATION.data, "corr": CORR.view(), "il": TZEVA.data, "emsc": (EMSC.data or {}).get("items"), "net": (CFRADAR.data or {}).get("items"),
+                               "gc_n": len((GEOCONF.data or {}).get("pts") or []), "ws_n": len((WARSPOT.data or {}).get("items") or []), "sx": SEARCHERS.status, "acled_n": len((ACLED.data or {}).get("ev") or []), "acled_at": (ACLED.data or {}).get("at")})
+        if p == "/api/intel/gc":
+            return self._json(GEOCONF.data or {"pts": []})
+        if p == "/api/intel/isw":
+            return self._json(ISW.data or {"layers": {}})
+        if p == "/api/intel/ws":
+            return self._json(WARSPOT.data or {"items": []})
+        if p == "/api/s2img":
+            q = {k: v[0] for k, v in urllib.parse.parse_qs(self.path.partition("?")[2]).items()}
+            try:
+                b = COPERNICUS.image(float(q["lat"]), float(q["lon"]), max(1.0, min(60.0, float(q.get("span") or 6))), q.get("kind") if q.get("kind") in ("s2", "s1", "fire") else "s2")
+            except urllib.error.HTTPError as e:
+                return self._json({"error": f"Copernicus HTTP {e.code}"}, 502)
+            except Exception as e:
+                return self._json({"error": str(e)[:200]}, 502)
+            self.send_response(200); self.send_header("Content-Type", "image/jpeg"); self.send_header("Content-Length", str(len(b)))
+            self.send_header("Cache-Control", "max-age=3600"); self.end_headers(); self.wfile.write(b); return
+        if p == "/api/opensky/track":
+            ic = (re.search(r"icao24=([0-9a-fA-F]{6})", self.path) or [None, ""])[1]
+            try:
+                return self._json(OPENSKY.track(ic))
+            except urllib.error.HTTPError as e:
+                return self._json({"error": f"OpenSky HTTP {e.code}" + (i18n.L(" – brak danych o tym locie albo potrzebne konto", " – no data for this flight or an account is needed") if e.code in (401, 403, 404) else "")})
+            except Exception as e:
+                return self._json({"error": str(e)[:200]})
         if p == "/api/intel/acled":
             ev = (ACLED.data or {}).get("ev") or []
             T_I = {t: i for i, t in enumerate(("battle", "explosion", "civilians", "strategic", "riot", "protest", "other"))}
@@ -1565,7 +1645,7 @@ class H(BaseHTTPRequestHandler):
 def main():
     port = int(os.environ.get("KRONOS_PORT", CFG.get("port", 7707)))
     st = ENGINE.status()
-    log("KRONOS-7 v3.20 · start")
+    log("KRONOS-7 v3.21 · start")
     log(f"Sprzęt: {st['hardware']['gpu_name']} · VRAM {st['hardware']['vram_gb']} GB · RAM {st['hardware']['ram_gb']} GB")
     log(f"AI: {st['backend'] or 'brak (zainstaluj Ollamę)'} · model: {st['model'] or '—'} · zalecany: {st['recommended']}")
     log(st["reason"])
@@ -1583,10 +1663,11 @@ def main():
     if os.environ.get("KRONOS_NO_LIVE") != "1" or os.environ.get("KRONOS_MARSEC") == "1":
         MARSEC.start(AI_BG, lambda: JOB["running"], lambda: SETTINGS.get("ai_bg", "after"))
         TGOSINT.ai = AI_BG; TGOSINT.busy = lambda: JOB["running"]; TGOSINT.bg = lambda: SETTINGS.get("ai_bg", "after")
-        for src in (UAALERT, DEEPST, NOTAMS, DARKSAR, TGOSINT, LADSB, LAIS, APRSIS, MAILIN, AISTCP, AISHUB, VGRAPH, RADIATION, ACLED, CORR):
+        for src in (UAALERT, DEEPST, NOTAMS, DARKSAR, TGOSINT, LADSB, LAIS, APRSIS, MAILIN, AISTCP, AISHUB, VGRAPH, RADIATION, ACLED, CORR,
+                    GEOCONF, WARSPOT, TZEVA, EMSC, ISW, CFRADAR):
             src.start()
         threading.Thread(target=TGACCT.start, daemon=True, name="tg-account-start").start()
-        HIST.extra = [("ua", UAALERT), ("osint", TGOSINT), ("rad", RADIATION), ("corr", CORR)]
+        HIST.extra = [("ua", UAALERT), ("osint", TGOSINT), ("rad", RADIATION), ("corr", CORR), ("il", TZEVA)]
     url = f"http://127.0.0.1:{port}"
     log(f"Terminal: {url}")
     if CFG.get("open_browser", True) and os.environ.get("KRONOS_NO_BROWSER") != "1":

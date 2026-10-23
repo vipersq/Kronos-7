@@ -28,3 +28,4 @@ data/vgraph.json.gz
 data/rad_base.json
 data/media/
 data/tg_account.session*
+data/tz_cities.json

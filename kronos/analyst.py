@@ -445,6 +445,9 @@ Jeśli nie ma takich wydarzeń, zwróć pustą listę.
                 + "\n".join("- " + x for x in (acl.get("deadliest") or [])[:12])) if acl.get("by_country") else ""
         rad = st.get("radiation") or {}
         rads = ("stacji: {}; anomalie: {}".format(rad.get("stations"), "; ".join(rad.get("anomalies") or []) or "brak")) if rad.get("stations") else ""
+        ws = st.get("warspotting") or {}
+        wss = ("\n".join("- " + x for x in (ws.get("latest") or [])[:8]) + f"\npodsumowanie 4 dni: {ws.get('summary')}") if ws.get("latest") else ""
+        nets = "; ".join(st.get("net_outages") or []) or ""
         corr = "\n".join("- [{}] {} (warstwy: {}; waga {}): {}".format(x.get("when"), x.get("title"), x.get("layers"), x.get("sev"), x.get("assess") or "") for x in st.get("correlations", [])[:10])
         prompt = f"""Oceń globalny poziom napięcia i przygotuj briefing.
 level: 1 (spokój) do 5 (kryzys globalny). label: jedno słowo (NISKI, UMIARKOWANY, PODWYŻSZONY, WYSOKI, KRYTYCZNY). note: główne ogniska, do 60 znaków.
@@ -480,6 +483,11 @@ ACLED – zdarzenia konfliktowe z lokalizacją (bitwy, ostrzały, przemoc wobec 
 
 PROMIENIOWANIE (sieć Safecast; anomalia = odczyt wyraźnie ponad tłem danej stacji):
 {rads or "brak danych"}
+
+STRATY SPRZĘTU potwierdzone zdjęciami (WarSpotting, 4 dni):
+{wss or "brak danych"}
+
+WYŁĄCZENIA INTERNETU (Cloudflare Radar, 7 dni): {nets or "brak danych"}; ALARMY W IZRAELU (7 dni, Tzeva Adom): {st.get("il_alerts") or 0} miejscowości
 
 ZDARZENIA ZŁOŻONE (ten sam rejon i czas w kilku warstwach danych, ocenione przez AI):
 {corr or "brak"}

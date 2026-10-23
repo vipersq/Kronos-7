@@ -7,7 +7,7 @@ from pathlib import Path
 
 from . import i18n
 
-UA = "KRONOS-7/3.20 (personal desktop dashboard)"
+UA = "KRONOS-7/3.21 (personal desktop dashboard)"
 # warstwa: (adres, rozszerzenie, maks. zoom, wolno pobierać hurtowo)
 LAYERS = {
     "dark": ("https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}.png", "png", 20, True),

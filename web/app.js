@@ -1,4 +1,4 @@
-/* KRONOS-7 v3.20 — interfejs terminala. Dane: lokalny serwer (/api/*). */
+/* KRONOS-7 v3.21 — interfejs terminala. Dane: lokalny serwer (/api/*). */
 (function () {
 "use strict";
 const $ = s => document.querySelector(s);
@@ -203,15 +203,15 @@ const gSphere = root.append("path").attr("class", "sphere");
 const gGrat = root.append("path").attr("class", "grat");
 const gLand = root.append("path").attr("class", "land");
 const LAYERS = [["conf", TX("KONFLIKTY"), 1], ["front", TX("FRONTY"), 1], ["move", TX("NATARCIA"), 1], ["strike", TX("UDERZENIA"), 1], ["force", TX("SIŁY"), 1], ["ship", TX("ŻEGLUGA"), 1],
-  ["haz", TX("NATURA"), 1], ["sat", TX("ORBITY"), 1], ["air", TX("LOTNICTWO"), 1], ["vessel", TX("STATKI"), 1], ["cable", TX("KABLE"), 0], ["marsec", TX("INCYDENTY MORSKIE"), 1], ["uaal", TX("ALARMY UA"), 1], ["dstate", TX("DEEPSTATE"), 0], ["notam", TX("NOTAM"), 0], ["sar", TX("SAR"), 0], ["osint", TX("OSINT TG"), 0], ["corr", TX("KORELACJE"), 1], ["acled", TX("ACLED"), 0], ["rad", TX("PROMIENIOWANIE"), 0], ["myadsb", TX("MOJE ADS-B"), 0], ["aprs", TX("APRS"), 0], ["flank", TX("FLANKA"), 1], ["nuke", TX("ATOM"), 1], ["asp", TX("PRZESTRZEŃ"), 0], ["gps", TX("GNSS"), 0],
+  ["haz", TX("NATURA"), 1], ["sat", TX("ORBITY"), 1], ["air", TX("LOTNICTWO"), 1], ["vessel", TX("STATKI"), 1], ["cable", TX("KABLE"), 0], ["marsec", TX("INCYDENTY MORSKIE"), 1], ["uaal", TX("ALARMY UA"), 1], ["dstate", TX("DEEPSTATE"), 0], ["notam", TX("NOTAM"), 0], ["sar", TX("SAR"), 0], ["osint", TX("OSINT TG"), 0], ["corr", TX("KORELACJE"), 1], ["acled", TX("ACLED"), 0], ["rad", TX("PROMIENIOWANIE"), 0], ["il", TX("ALARMY IL"), 1], ["isw", TX("ISW"), 0], ["gc", TX("GEOCONFIRMED"), 0], ["emsc", TX("EMSC"), 0], ["myadsb", TX("MOJE ADS-B"), 0], ["aprs", TX("APRS"), 0], ["flank", TX("FLANKA"), 1], ["nuke", TX("ATOM"), 1], ["asp", TX("PRZESTRZEŃ"), 0], ["gps", TX("GNSS"), 0],
   ["fire", TX("POŻARY"), 0], ["net", TX("SIEĆ"), 0], ["hum", TX("HUMANITARNE"), 0], ["cyber", TX("CYBER"), 0], ["news", TX("DEPESZE"), 0], ["night", TX("NOC"), 1]];
-const DRAW_ORDER = ["uaal", "dstate", "notam", "sar", "osint", "corr", "acled", "rad", "myadsb", "aprs", "marsec", "cable", "night", "gps", "fire", "asp", "vessel", "ship", "sat", "haz", "front", "move", "strike", "force", "net", "hum", "nuke", "flank", "air", "airlive", "cyber", "news", "conf"];
+const DRAW_ORDER = ["uaal", "dstate", "notam", "sar", "osint", "corr", "acled", "rad", "il", "isw", "gc", "emsc", "myadsb", "aprs", "marsec", "cable", "night", "gps", "fire", "asp", "vessel", "ship", "sat", "haz", "front", "move", "strike", "force", "net", "hum", "nuke", "flank", "air", "airlive", "cyber", "news", "conf"];
 const G = {}; DRAW_ORDER.forEach(k => G[k] = root.append("g").attr("data-l", k));
 const pNight = G.night.append("path").attr("class", "night"), pTwi = G.night.append("path").attr("class", "twi");
 let layerOn = Object.assign(Object.fromEntries(LAYERS.map(l => [l[0], !!l[2]])), store.get("layers3", {}));
 $("#layers").innerHTML = LAYERS.map(([k, n]) => `<button class="btn" data-layer="${k}" aria-pressed="${!!layerOn[k]}">${n}</button>`).join("");
 function applyLayers() { LAYERS.forEach(([k]) => G[k].style("display", layerOn[k] ? null : "none"));
-  G.air.style("display", layerOn.air && !AIR.ok ? null : "none"); if (layerOn.cable) loadCables(); if (layerOn.dstate) loadDS(); if (layerOn.myadsb || layerOn.aprs) pollSdr(); if (layerOn.acled && typeof loadAcled === "function") loadAcled(); markStatic(); }
+  G.air.style("display", layerOn.air && !AIR.ok ? null : "none"); if (layerOn.cable) loadCables(); if (layerOn.dstate) loadDS(); if (layerOn.myadsb || layerOn.aprs) pollSdr(); if (layerOn.acled && typeof loadAcled === "function") loadAcled(); if (typeof loadX === "function") loadX(); markStatic(); }
 $$("[data-layer]").forEach(b => b.addEventListener("click", () => { const k = b.dataset.layer; layerOn[k] = !layerOn[k]; b.setAttribute("aria-pressed", layerOn[k]); store.set("layers3", layerOn); beep(600); applyLayers(); }));
 function ensureLayer(k) { if (k && !layerOn[k]) { const b = $(`[data-layer="${k}"]`); if (b) b.click(); } }
 
@@ -623,6 +623,7 @@ function drawStatic() {
   SX.putImageData(img, 0, 0); SX.setTransform(DPR, 0, 0, DPR, 0, 0);
   if (layerOn.cable && CABLES.lines) drawCables(k);   // pod punktami (destination-over)
   if (layerOn.dstate && IN.ds) drawDS(k);
+  if (layerOn.isw && IN.isw) drawISW(k);
   if (cl.length) { SX.lineWidth = 1;
     SCATS.forEach((cat, ci) => { SX.beginPath(); let any = false;
       for (let i = 0; i < cl.length; i += 5) if (cl[i + 3] === ci) { any = true; SX.moveTo(cl[i] + cl[i + 2], cl[i + 1]); SX.arc(cl[i], cl[i + 1], cl[i + 2], 0, 6.2832); }
@@ -743,6 +744,9 @@ function tipText(id) {
   if (t === "tg") { const p = A(IN.d && IN.d.tg).find(x => x.id === key); return p ? `@${p.ch} · ${p.title || ""}` : ""; }
   if (t === "cr") { const c = A(IN.d && IN.d.corr).find(x => x.id === id.slice(3)); return c ? `⛓ ${(c.ai && c.ai.title) || c.lnames.join(" + ")}` : ""; }
   if (t === "rd") { const r = A(IN.d && IN.d.rad && IN.d.rad.pts).find(x => x.id === id.slice(3)); return r ? `☢ ${r.name} · ${r.usv} µSv/h${r.anom ? " · " + TX("ANOMALIA") : ""}` : ""; }
+  if (id.startsWith("il:")) { const a = ilAll().filter(x => x.c === id.slice(3)).sort((x, y) => y.t - x.t)[0]; return a ? `🚀 ${a.c} · ${(((IN.d || {}).il || {}).types || {})[a.thr] || ""} · ${hm(a.t)}` : ""; }
+  if (id.startsWith("gc:")) { const g = A(IN.gc).find(x => x.id === id.slice(3)); return g ? `GeoConfirmed · ${g.fac || ""} · ${new Date(g.t).toLocaleDateString(LOC)}` : ""; }
+  if (id.startsWith("eq:")) { const e = A((IN.d || {}).emsc).find(x => String(x.id) === id.slice(3)); return e ? `EMSC M${e.mag} · ${e.where || ""}` : ""; }
   if (id.startsWith("acl:")) { const a = A(IN.acl).find(x => String(x[0]) === id.slice(4)); return a ? `ACLED · ${ACL_N[ACL_T[a[3]]]} · ${a[5]}${a[4] ? " · " + a[4] + " " + TX("ofiar") : ""}` : ""; }
   if (t === "la") { const a = A(IN.sdr && IN.sdr.adsb).find(x => x.hex === key); return a ? `${a.cs || a.hex} · ${a.t || ""} · ${a.alt ?? ""} ft · ${TX("Twój odbiornik")}` : ""; }
   if (t === "ap") { const s2 = A(IN.sdr && IN.sdr.aprs).find(x => x.call === key); return s2 ? `APRS ${s2.call} · ${s2.cmt || s2.kind || ""}` : ""; }
@@ -969,7 +973,8 @@ async function evFill(force) {
   const t = box.dataset.evt, id = box.dataset.evid, key = t + "|" + id, c = EVC[key];
   if (c && !force && Date.now() - c.at < 120e3) { evRender(box, c.d); return; }
   if (c) evRender(box, c.d);
-  try { const d = await api(`/api/media/event?type=${t}&id=${encodeURIComponent(id)}`); EVC[key] = { at: Date.now(), d }; const b2 = $(`#detail .evbox[data-evt="${t}"]`); if (b2 && b2.dataset.evid === id) evRender(b2, d); } catch (e) {}
+  const gq = t === "geo" ? (() => { const [la, lo, hh, ...nm] = id.split(","); return `&lat=${la}&lon=${lo}&h=${hh}&q=${encodeURIComponent(nm.join(","))}`; })() : "";
+  try { const d = await api(`/api/media/event?type=${t}&id=${encodeURIComponent(id)}${gq}`); EVC[key] = { at: Date.now(), d }; const b2 = $(`#detail .evbox[data-evt="${t}"]`); if (b2 && b2.dataset.evid === id) evRender(b2, d); } catch (e) {}
 }
 function evRender(box, d) {
   const el = box.querySelector(".evbody"), ps = A(d.posts), items = [];
@@ -1513,7 +1518,7 @@ const frontOf = cid => A(S.fronts).filter(f => f.conflict === cid);
 function go(id) { go.busy = true; try { go2(id); } finally { go.busy = false; } }
 function go2(id) {
   if (!go.remote && BC && mapHidden()) BC.postMessage({ t: "go", id });   // mapa jest w innym oknie – tam też pokaż
-  const parts = id.split(":"), t = parts[0], key = t === "mi" || t === "rd" || t === "acl" || t === "cr" ? id.slice(t.length + 1) : parts[1];
+  const parts = id.split(":"), t = parts[0], key = t === "mi" || t === "rd" || t === "acl" || t === "cr" || t === "il" || t === "gc" || t === "eq" ? id.slice(t.length + 1) : parts[1];
   const fly = (lat, lon, s, layer) => { ensureLayer(layer); setView("map"); flyTo(lat, lon, s); };
   if (t === "f") { const f = A(S.fronts).find(x => x.id === key); if (f) { ensureLayer("front"); setView("map"); const th = THEATERS.find(x => x[0] === f.theater); if (th) setTheater(th[0], true); else flyPts([].concat(...A(f.line))); } }
   else if (t === "m") { const f = A(S.fronts).find(x => x.id === key), m = f && A(f.moves)[+parts[2]]; if (m) { ensureLayer("move"); setView("map"); flyPts([m.from, m.to]); } }
@@ -1535,7 +1540,7 @@ function locExtra(t, key) {
   if (t === "ah") { const a = A(AIR.d && AIR.d.ac).find(x => x.hex === key); if (!a) return null; const p = airPos(a, Date.now() + AIR.skew); return [p[0], p[1], 4, "air"]; }
   if (t === "gd") { const g = A(f.gdacs)[+key]; return g && [g.lat, g.lon, 12, "haz"]; }
   if (t === "mi") { const x = A(MS.d && MS.d.items).find(y => y.id === key); return x && x.pos && [x.pos[0], x.pos[1], 4, "marsec"]; }
-  if (/^(ua|nt|tg|la|ap|cr|rd|acl)$/.test(t)) return intelLL(t, key);
+  if (/^(ua|nt|tg|la|ap|cr|rd|acl|il|gc|eq)$/.test(t)) return intelLL(t, key);
   if (t === "nhc") { const n = A(f.nhc)[+key]; return n && [n.lat, n.lon, 12, "haz"]; }
   if (t === "asp") { const a = A(S.airspace).find(x => x.id === key); return a && [a.lat, a.lon, 14, "asp"]; }
   if (t === "net") { const n = A(f.ioda)[+key]; return n && [n.lat, n.lon, 14, "net"]; }
@@ -1633,7 +1638,7 @@ function pick(id, silent) {
         [TX("MMSI"), r.mmsi], [TX("IMO"), r.imo], [TX("ZNAK WYWOŁAWCZY"), r.cs], [TX("ŹRÓDŁO"), r.src], [TX("PODGLĄD"), L(r.u, TX("MarineTraffic")), 1]]) + shipWatch(r) + vgBox(r.mmsi) +
         `<p class="hint">${TX("Dane AIS nadaje sam statek, więc nazwa, typ i cel podróży mogą być nieaktualne lub fałszywe. Okręty zwykle wyłączają AIS. Linia przerywana to trasa z ostatnich godzin.")}</p>`; }
   } else if (t === "mi") { h = msCard(id.slice(3), silent);
-  } else if (/^(ua|nt|tg|la|ap|cr|rd|acl)$/.test(t)) { h = intelCard(t, id.slice(t.length + 1)); if (!h) return;
+  } else if (/^(ua|nt|tg|la|ap|cr|rd|acl|il|gc|eq)$/.test(t)) { h = intelCard(t, id.slice(t.length + 1)); if (!h) return;
   } else if (t === "ah") { const a = A(AIR.d && AIR.d.ac).find(x => x.hex === key);
     if (!a) h = chip(TX("ADS-B NA ŻYWO"), "var(--cyan)") + `<h2 class="glow">${esc(key)}</h2><p class="hint">${TX("Samolot przestał nadawać albo zniknął z zasięgu odbiorników.")}</p>`;
     else { const now = Date.now() + AIR.skew, p = airPos(a, now), age = airAge(a, now);
@@ -1644,6 +1649,7 @@ function pick(id, silent) {
         [TX("PRĘDKOŚĆ"), a.gs ? `${Math.round(a.gs)} ${TX("kt (")}${Math.round(a.gs * 1.852)} km/h)` : null], [TX("KURS"), a.trk != null ? Math.round(a.trk) + "°" : null],
         [TX("WZNOSZENIE"), a.vr ? (a.vr > 0 ? "+" : "") + a.vr + " ft/min" : null], [TX("SQUAWK"), a.sq], [TX("OSTATNI ODCZYT"), agoTxt(age) + (a.mlat ? " " + TX("· pozycja z MLAT") : "")],
         [TX("ŹRÓDŁO"), L(a.u, (AIR.d.status || {}).src || TX("ADS-B")), 1]]) +
+        `<p class="satimg-row"><button class="btn" onclick="this.disabled=true;window.__osTrack('${esc0(a.hex)}')">${TX("ŚLAD LOTU (OpenSky)")}</button> <span class="hint ostrk"></span></p>` +
         `<p class="hint">${TX("Pozycja aktualizowana co")} ${AIR.d.interval || 10} ${TX("s, między odczytami przewidywana z kursu i prędkości. Linia za samolotem to trasa z ostatnich 30 minut.")}</p>`; }
   } else if (t === "ac") { const a = A(f.adsb && f.adsb.ac)[+key]; if (!a) return;
     h = chip(TX("ADS-B ·") + " " + (ACN[a.cat] || a.cat), "var(--cyan)") + `<h2 class="glow">${esc(a.cs || a.hex)} · ${esc(a.t)}</h2>` + dd([[TX("POZYCJA"), fmtLL(a.lat, a.lon)], [TX("WYSOKOŚĆ"), a.alt != null ? a.alt + " ft" : null], [TX("KURS"), a.trk + "°"], [TX("MIGAWKA"), f.adsb.t], [TX("ŚLAD"), L(a.u, TX("globe.adsb.lol")), 1]]) + `<p class="hint">${TX("Pozycja z chwili pobrania, nie na żywo. Nad strefami walk samoloty często lecą z wyłączonym transponderem.")}</p>`;
@@ -2460,6 +2466,16 @@ function drawIntel() {
     const age = (now - t.t) / 3600e3; CX.globalAlpha = age < 3 ? 1 : age < 12 ? .75 : .45;
     CX.beginPath(); CX.arc(p[0], p[1], 4.5, 0, 6.2832); CX.fillStyle = cssv(CRED[t.cred] || "var(--phos-dim)"); CX.fill(); CX.strokeStyle = "#050805"; CX.lineWidth = 1; CX.stroke(); CX.globalAlpha = 1;
     AHIT.push([p[0], p[1], "tg:" + t.id]); }
+  if (d && layerOn.il && d.il) { for (const x of A(d.il.hist)) { const p = scr(x.lon, x.lat); if (!p || !inView(p[0], p[1], 4)) continue; const age = (now - x.t) / 3600e3;
+      CX.globalAlpha = age < 6 ? .9 : age < 48 ? .5 : .25; CX.fillStyle = IL_COL; CX.fillRect(p[0] - 2, p[1] - 2, 4, 4); CX.globalAlpha = 1; AHIT.push([p[0], p[1], "il:" + x.c]); }
+    for (const x of A(d.il.active)) { const p = scr(x.lon, x.lat); if (!p) continue; const pulse = (now / 700) % 1; CX.beginPath(); CX.arc(p[0], p[1], 6, 0, 6.2832); CX.fillStyle = "rgba(255,90,74,.5)"; CX.fill();
+      CX.globalAlpha = 1 - pulse; ring(p, 6 + pulse * 16, IL_COL, 1.4); CX.globalAlpha = 1; AHIT.push([p[0], p[1], "il:" + x.c]); needDraw = true; } }
+  if (d && layerOn.emsc) for (const e of A(d.emsc)) { const p = scr(e.lon, e.lat); if (!p || !inView(p[0], p[1], 20)) continue; const r = Math.max(3, (e.mag - 2.5) * 3.2);
+    ring(p, r, "rgba(255,179,71,.9)", 1.3); AHIT.push([p[0], p[1], "eq:" + e.id]); }
+  if (layerOn.gc && IN.gc) { for (const g of IN.gc) { const p = scr(g.lon, g.lat); if (!p || !inView(p[0], p[1], 4)) continue; const age = (now - g.t) / 86400e3;
+      CX.globalAlpha = age < 2 ? 1 : age < 10 ? .6 : .3; CX.fillStyle = g.col || "#6fe4ff"; CX.beginPath(); CX.arc(p[0], p[1], 3, 0, 6.2832); CX.fill(); CX.globalAlpha = 1; AHIT.push([p[0], p[1], "gc:" + g.id]); } }
+  if (OS_TRK && OS_TRK.path && OS_TRK.path.length) { CX.beginPath(); let f2 = true; for (const q of OS_TRK.path) { const p = scr(q[1], q[0]); if (!p) { f2 = true; continue; } f2 ? CX.moveTo(p[0], p[1]) : CX.lineTo(p[0], p[1]); f2 = false; }
+    CX.setLineDash([5, 3]); CX.strokeStyle = "rgba(111,228,255,.9)"; CX.lineWidth = 1.5; CX.stroke(); CX.setLineDash([]); }
   if (layerOn.acled && IN.acl) { for (const a of IN.acl) { const p = scr(a[2], a[1]); if (!p || !inView(p[0], p[1], 6)) continue; const sz = a[4] >= 10 ? 4.5 : a[4] ? 3.4 : 2.6;
       CX.fillStyle = ACL_C[ACL_T[a[3]]] || "#9fdcb0"; CX.globalAlpha = .8; CX.beginPath(); CX.moveTo(p[0], p[1] - sz); CX.lineTo(p[0] + sz, p[1]); CX.lineTo(p[0], p[1] + sz); CX.lineTo(p[0] - sz, p[1]); CX.closePath(); CX.fill(); CX.globalAlpha = 1;
       AHIT.push([p[0], p[1], "acl:" + a[0]]); } }
@@ -2499,7 +2515,16 @@ function renderIntel() {
   h += `<li class="hd">NOTAM · ${nt.length}</li>` + (nt.length ? nt.slice(0, 30).map(n => `<li><button data-go="nt:${esc0(n.id)}"><span class="t">${esc(n.loc)} · ${esc(NT_N[n.kind] || n.kind)}</span><span class="dim">${esc(n.num || "")}</span><span class="sub">${esc((n.text || "").slice(0, 140))}</span></button></li>`).join("")
     : `<li class="empty">${(d.status.notam || {}).off ? TX("Wpisz darmowy klucz FAA w oknie ŹRÓDŁA I INTEGRACJE.") : TX("Brak NOTAM-ów z wybranych kategorii.")}</li>`);
   const g = d.gfw; h += `<li class="hd">${TX("Ciemne statki z radaru SAR")}</li><li><button tabindex="-1" style="cursor:default"><span class="sub">${g ? `${A(g.cells).length} ${TX("obszarów z wykryciami bez AIS")} · ${esc(g.from)}–${esc(g.to)}` : (d.status.gfw || {}).off ? TX("Wpisz darmowy klucz Global Fishing Watch w oknie ŹRÓDŁA I INTEGRACJE.") : esc((d.status.gfw || {}).err || "…")}</span></button></li>`;
+  const il = d.il || {}, ila = A(il.active), ty = il.types || {};
+  const ilh = A(il.hist).slice().sort((a, b) => b.t - a.t);
+  h += `<li class="hd">${TX("Izrael – alarmy (Tzeva Adom)")} · ${ila.length ? ila.length + " " + TX("TERAZ") : ilh.length + " " + TX("w 7 dni")}</li>`
+    + (ila.concat(ilh.slice(0, 12)).map(x => `<li><button data-go="il:${esc0(x.c)}"><span class="t">${esc(x.c)}</span><span class="${x.on ? "red" : "dim"}">${x.on ? TX("TERAZ") : hm(x.t)}</span><span class="sub">${esc(ty[x.thr] || "")}${x.on ? "" : " · " + new Date(x.t).toLocaleDateString(LOC)}</span></button></li>`).join("") || `<li class="empty">${TX("Brak alarmów.")}</li>`);
+  const eqs = A(d.emsc).slice(0, 10);
+  if (eqs.length) h += `<li class="hd">${TX("Trzęsienia ziemi (EMSC, 48 h, M3.5+)")}</li>` + eqs.map(e => `<li><button data-go="eq:${esc0(String(e.id))}"><span class="t">M${e.mag} · ${esc(e.where || "")}</span><span class="dim">${hm(e.t)}</span></button></li>`).join("");
+  const nets = A(d.net).slice(0, 10);
+  if (nets.length) h += `<li class="hd">${TX("Wyłączenia internetu (Cloudflare Radar, 7 dni)")}</li>` + nets.map(n => `<li><button tabindex="-1" style="cursor:default"><span class="t">${esc(n.cc)} · ${esc(n.kind === "outage" ? TX("wyłączenie") : TX("anomalia ruchu"))}</span><span class="dim">${n.t ? hm(n.t) : ""}</span><span class="sub">${esc([n.cause, n.type, n.asn].filter(Boolean).join(" · "))} · ${n.t ? new Date(n.t).toLocaleDateString(LOC) : ""}</span></button></li>`).join("");
   rowsInto("#alerts2", h);
+  if ($("#wsList") && (!IN.wsAt || Date.now() - IN.wsAt > (A((IN.ws || {}).items).length ? 30 * 60e3 : 60e3))) { IN.wsAt = Date.now(); api("/api/intel/ws").then(r => { IN.ws = r; renderWS(); }).catch(() => {}); }
   $("#alT").textContent = on.length ? on.length + " " + TX("alarmów") : "";
 }
 function renderSdr() {
@@ -2522,8 +2547,43 @@ const radCol = u => u >= 1 ? "#ff4b4b" : u >= 0.3 ? "#ffb347" : u >= 0.15 ? "#f0
 const ACLD = {};
 async function loadAcled(force) { if (!force && IN.aclAt && Date.now() - IN.aclAt < 30 * 60e3) return; IN.aclAt = Date.now(); try { const r = await api("/api/intel/acled"); IN.acl = A(r.rows); IN.aclDays = r.days; markStatic(); needDraw = true; } catch (e) {} }
 async function acledDetail(id) { if (ACLD[id]) return; ACLD[id] = { loading: 1 }; try { ACLD[id] = await api("/api/intel/acled/" + encodeURIComponent(id)); } catch (e) { ACLD[id] = { error: 1 }; } if (selected === "acl:" + id) pick(selected, true); }
+const IL_COL = "#ff5a4a"; let OS_TRK = null;
+window.__osTrack = hex => osTrack(hex);
+async function osTrack(hex) { const box = $("#detail .ostrk"); if (box) box.textContent = TX("Pobieram ślad z OpenSky…");
+  try { const r = await api("/api/opensky/track?icao24=" + hex); if (r.error) { if (box) box.textContent = r.error; return; } OS_TRK = r; markStatic(); needDraw = true;
+    if (box) box.textContent = `${TX("Ślad")}: ${r.path.length} ${TX("punktów")} · ${hm(r.start)}–${hm(r.end)} · ${TX("linia przerywana na mapie")}`; } catch (e) { if (box) box.textContent = TX("błąd"); } }
+function renderWS() {
+  const r = IN.ws || {}, it = A(r.items), sm = r.sum || {};
+  $("#wsT").textContent = it.length ? `RU ${Object.values(sm.russia || {}).reduce((a, b) => a + b, 0)} · UA ${Object.values(sm.ukraine || {}).reduce((a, b) => a + b, 0)} · 4 ${TX("dni")}` : "";
+  rowsInto("#wsList", it.slice(0, 60).map(x => `<li><button tabindex="-1" style="cursor:default"><span class="t">${esc(x.model || x.type || "")}</span><span class="${x.side === "russia" ? "red" : "cyan"}">${x.side === "russia" ? "RU" : "UA"}</span><span class="sub">${esc(x.type || "")} · ${esc(x.status || "")}${x.near ? " · " + esc(x.near) : ""} · ${esc(x.d || "")} · ${L(x.url, TX("zdjęcie"))}</span></button></li>`).join("")
+    || `<li class="empty">${TX("Brak danych.")}</li>`);
+}
+function ilAll() { const il = (IN.d || {}).il || {}; return A(il.active).concat(A(il.hist)); }
+async function loadX(force) {
+  const due = k => force || !IN["x_" + k] || Date.now() - IN["x_" + k] > 30 * 60e3;
+  try { if (layerOn.gc && due("gc")) { IN.x_gc = Date.now(); const r = await api("/api/intel/gc"); IN.gc = A(r.pts); markStatic(); }
+    if (layerOn.isw && due("isw")) { IN.x_isw = Date.now(); const r = await api("/api/intel/isw"); IN.isw = r.layers || {}; markStatic(); } } catch (e) {}
+}
+function drawISW(k) {
+  const L2 = IN.isw || {}, sty = { control: ["rgba(255,75,75,.20)", "rgba(255,75,75,.8)", null], infiltration: ["rgba(255,160,60,.18)", "rgba(255,160,60,.7)", [3, 3]],
+    claimed: ["rgba(0,0,0,0)", "rgba(255,120,120,.7)", [6, 4]], uacounter: ["rgba(90,160,255,.16)", "rgba(90,160,255,.75)", [5, 3]], gains24: ["rgba(255,40,40,.4)", "rgba(255,40,40,1)", null] };
+  SX.save(); SX.globalCompositeOperation = "destination-over";
+  for (const [lk, st] of Object.entries(sty)) { const fc = L2[lk]; if (!fc || !A(fc.features).length) continue; SX.beginPath();
+    for (const f of fc.features) { const g = f.geometry || {}, polys = g.type === "MultiPolygon" ? g.coordinates : g.type === "Polygon" ? [g.coordinates] : [];
+      for (const pg of polys) for (const ring of pg) { let first = true; for (const c of ring) { const p = scr(c[0], c[1]); if (!p) { first = true; continue; } first ? SX.moveTo(p[0], p[1]) : SX.lineTo(p[0], p[1]); first = false; } SX.closePath(); } }
+    SX.fillStyle = st[0]; SX.fill("evenodd"); SX.strokeStyle = st[1]; SX.lineWidth = k >= 6 ? 1.3 : .8; if (st[2]) SX.setLineDash(st[2]); SX.stroke(); SX.setLineDash([]); }
+  SX.restore();
+}
 function intelCard(t, key) {
   const d = IN.d || {}, sdr = IN.sdr || {};
+  if (t === "il") { const a = ilAll().filter(x => x.c === key).sort((x, y) => y.t - x.t), x = a[0]; if (!x) return ""; const ty = (d.il || {}).types || {};
+    return chip(TX("IZRAEL · ALARM") + (x.on ? " · " + TX("TRWA") : ""), IL_COL) + `<h2 class="glow">${esc(x.c)}</h2>` + dd([[TX("ZAGROŻENIE"), ty[x.thr] || x.thr], [TX("CZAS"), new Date(x.t).toLocaleString(LOC)], [TX("ALARMÓW W 7 DNI"), a.length]])
+      + `<p class="hint">${TX("Źródło: Pikud HaOref przez tzevaadom.co.il.")}</p>` + evBox("geo", `${x.lat},${x.lon},6,${x.c}`); }
+  if (t === "gc") { const g = A(IN.gc).find(x => x.id === key); if (!g) return "";
+    return chip("GEOCONFIRMED · " + esc(g.conf || ""), g.col || "var(--cyan)") + `<h2 class="glow">${esc(g.fac || "")} · ${new Date(g.t).toLocaleDateString(LOC)}</h2>` + (g.icon ? `<p><img src="${esc(g.icon)}" alt="" style="height:28px"></p>` : "")
+      + dd([[TX("POZYCJA"), fmtLL(g.lat, g.lon)], [TX("MATERIAŁ"), L(g.url, "geoconfirmed.org"), 1]]) + `<p class="hint">${TX("Nagranie lub zdjęcie zgeolokalizowane przez wolontariuszy GeoConfirmed – szczegóły, źródło i nagranie na stronie.")}</p>` + satBtn(g.lat, g.lon, .6); }
+  if (t === "eq") { const e = A(d.emsc).find(x => String(x.id) === key); if (!e) return "";
+    return chip("EMSC · " + TX("TRZĘSIENIE ZIEMI"), "#ffb347") + `<h2 class="glow">M${e.mag} · ${esc(e.where || "")}</h2>` + dd([[TX("CZAS"), new Date(e.t).toLocaleString(LOC)], [TX("GŁĘBOKOŚĆ"), e.depth != null ? Math.round(e.depth) + " km" : null], [TX("POZYCJA"), fmtLL(e.lat, e.lon)], [TX("SZCZEGÓŁY"), L(e.url, "seismicportal.eu"), 1]]); }
   if (t === "cr") { const c = A(d.corr).find(x => x.id === key); if (!c) return ""; const a = c.ai || {};
     return chip(TX("ZDARZENIE ZŁOŻONE") + (a.sev ? " · " + TX("WAGA") + " " + a.sev + "/5" : ""), CORR_SEV[a.sev || 2]) + `<h2 class="glow">${esc(a.title || c.lnames.join(" + "))}</h2>`
       + (a.assess ? `<p>${esc(a.assess)}</p>` : `<p class="hint">${TX("AI jeszcze nie oceniło tego zdarzenia (ocena co kilka minut; podczas głównej analizy czeka).")}</p>`)
@@ -2567,6 +2627,9 @@ function intelLL(t, key) {
   if (t === "cr") { const c = A(d.corr).find(x => x.id === key); return c && [c.lat, c.lon, Math.max(1.5, Math.min(8, (c.ext || 80) / 40)), "corr"]; }
   if (t === "rd") { const r = A(d.rad && d.rad.pts).find(x => x.id === key); return r && [r.lat, r.lon, 2, "rad"]; }
   if (t === "acl") { const a = A(IN.acl).find(x => String(x[0]) === key); return a && [a[1], a[2], 1.5, "acled"]; }
+  if (t === "il") { const a = ilAll().find(x => x.c === key); return a && [a.lat, a.lon, 1, "il"]; }
+  if (t === "gc") { const g = A(IN.gc).find(x => x.id === key); return g && [g.lat, g.lon, 1, "gc"]; }
+  if (t === "eq") { const e = A(d.emsc).find(x => String(x.id) === key); return e && [e.lat, e.lon, 6, "emsc"]; }
   if (t === "ua") { const o = A(d.ua && d.ua.oblasts).find(x => x.id === key); return o && [o.lat, o.lon, 8, "uaal"]; }
   if (t === "nt") { const n = A(d.notam && d.notam.items).find(x => x.id === key); return n && n.pos && [n.pos[0], n.pos[1], 6, "notam"]; }
   if (t === "tg") { const p = A(d.tg).find(x => x.id === key); return p && p.pos && [p.pos[0], p.pos[1], 4, "osint"]; }
@@ -2579,7 +2642,8 @@ function satBtn(lat, lon, span) { return `<p class="satimg-row"><button class="b
 function bindSatImg() {
   const b = $("#detail [data-satimg]"); if (!b) return;
   b.addEventListener("click", () => { const [la, lo, sp] = b.dataset.satimg.split(",").map(Number), box = $("#detail .satimg"); box.hidden = false;
-    const show = (layer, date) => { box.innerHTML = `<div class="seg"><button class="btn" data-sl="true">${TX("KOLOR")}</button><button class="btn" data-sl="fires">${TX("POŻARY")}</button><button class="btn" data-sl="night">${TX("NOC (ŚWIATŁA)")}</button><button class="btn" data-sz="0.5">${TX("BLIŻEJ")}</button><button class="btn" data-sz="2">${TX("DALEJ")}</button></div><img alt="" src="/api/satimg?lat=${la}&lon=${lo}&span=${box.dataset.sp || sp}&layer=${layer}"><p class="hint">${TX("NASA Worldview · VIIRS/MODIS · zdjęcie z wczoraj (dane z opóźnieniem do doby; chmury zasłaniają widok). Warstwa NOC pokazuje światła miast – przydaje się do wykrywania przerw w dostawach prądu.")}</p>`;
+    const show = (layer, date) => { const cop = /^s2|s1|swir$/.test(layer); box.innerHTML = `<div class="seg"><button class="btn" data-sl="true">${TX("KOLOR")}</button><button class="btn" data-sl="fires">${TX("POŻARY")}</button><button class="btn" data-sl="night">${TX("NOC (ŚWIATŁA)")}</button><button class="btn" data-sl="s2" title="${TX("Copernicus Sentinel-2: 10 m, najmniej chmur z ostatnich 12 dni (klucz w ŹRÓDŁA I INTEGRACJE)")}">SENTINEL-2</button><button class="btn" data-sl="s1" title="${TX("Copernicus Sentinel-1: radar, widzi przez chmury i w nocy")}">${TX("RADAR S-1")}</button><button class="btn" data-sl="swir" title="${TX("Sentinel-2 w podczerwieni – pożary i świeże wypalenia")}">SWIR</button><button class="btn" data-sz="0.5">${TX("BLIŻEJ")}</button><button class="btn" data-sz="2">${TX("DALEJ")}</button></div>${cop ? `<img alt="" src="/api/s2img?lat=${la}&lon=${lo}&span=${Math.max(2, Math.round((box.dataset.sp || sp) * 30))}&kind=${layer === "swir" ? "fire" : layer}" onerror="this.outerHTML='<p class=&quot;hint red&quot;>${TX("Copernicus: brak klucza (ŹRÓDŁA I INTEGRACJE) albo brak zdjęcia z ostatnich dni.")}</p>'"><p class="hint">${TX("Copernicus Sentinel (ESA) · 10 m na piksel · najnowsze zdjęcie z ostatnich dni; radar S-1 widzi przez chmury i w nocy (jasne = metal, budynki, statki).")}</p>`
+      : `<img alt="" src="/api/satimg?lat=${la}&lon=${lo}&span=${box.dataset.sp || sp}&layer=${layer}"><p class="hint">${TX("NASA Worldview · VIIRS/MODIS · zdjęcie z wczoraj (dane z opóźnieniem do doby; chmury zasłaniają widok). Warstwa NOC pokazuje światła miast – przydaje się do wykrywania przerw w dostawach prądu.")}</p>`}`;
       box.querySelectorAll("[data-sl]").forEach(x => { x.setAttribute("aria-pressed", x.dataset.sl === layer); x.addEventListener("click", () => show(x.dataset.sl)); });
       box.querySelectorAll("[data-sz]").forEach(x => x.addEventListener("click", () => { box.dataset.sp = Math.max(.2, Math.min(12, (+box.dataset.sp || sp) * +x.dataset.sz)); show(layer); })); };
     box.dataset.sp = sp; show("true"); b.closest(".satimg-row").hidden = true; });
@@ -2718,8 +2782,9 @@ $("#offClear").addEventListener("click", async () => { await api("/api/tiles", {
 
 /* ------------------------------------------------------------ okno ŹRÓDŁA I INTEGRACJE */
 const INTG_FIELDS = ["stadia_key", "kystverket", "ais_tcp", "aishub_user", "alerts_token", "ua_watch", "faa_id", "faa_secret", "notam_locs", "gfw_token", "adsb_url", "ais_port", "aprs_on", "aprs_km", "ha_webhook",
-  "imap_host", "imap_port", "imap_user", "imap_pass", "imap_folder", "imap_senders", "imap_days", "acled_user", "acled_pass", "acled_days"];
-const INTG_SECRET = new Set(["alerts_token", "gfw_token", "faa_secret", "imap_pass", "acled_pass"]);
+  "imap_host", "imap_port", "imap_user", "imap_pass", "imap_folder", "imap_senders", "imap_days", "acled_user", "acled_pass", "acled_days",
+  "ev_sources", "reddit_id", "reddit_secret", "reddit_subs", "yt_key", "vk_token", "gc_conflicts", "cdse_id", "cdse_secret", "opensky_id", "opensky_secret", "cf_token"];
+const INTG_SECRET = new Set(["alerts_token", "gfw_token", "faa_secret", "imap_pass", "acled_pass", "reddit_secret", "yt_key", "vk_token", "cdse_secret", "opensky_secret", "cf_token"]);
 let INTG = null;
 async function openIntg() {
   $("#settings").hidden = true; try { INTG = await api("/api/intg"); } catch (e) { return; }
@@ -2773,7 +2838,8 @@ $("#tgNone").addEventListener("click", () => { $("#tgCat").querySelectorAll("[da
 function renderIntgStatus() {
   const st = (INTG && INTG.status) || {}, N = { ua_alerts: TX("Alarmy UA"), deepstate: "DeepStateMap", notam: "NOTAM (FAA)", gfw: "Global Fishing Watch", telegram: "Telegram OSINT",
     adsb: "ADS-B", ais: "AIS (UDP)", aprs: "APRS-IS", aishub: "AISHub", mail: TX("Poczta (IMAP)"), ha: "Home Assistant",
-    radiation: TX("Promieniowanie (Safecast)"), acled: "ACLED", tgacct: TX("Telegram – konto"), corr: TX("Zdarzenia złożone (AI)"), vgraph: TX("Graf powiązań statków (OpenSanctions)") };
+    radiation: TX("Promieniowanie (Safecast)"), acled: "ACLED", tgacct: TX("Telegram – konto"), geoconfirmed: "GeoConfirmed", warspotting: "WarSpotting",
+    tzevaadom: TX("Alarmy w Izraelu (Tzeva Adom)"), emsc: "EMSC", isw: TX("Mapy ISW / CTP"), cfradar: "Cloudflare Radar", sx_bluesky: "Bluesky", sx_reddit: "Reddit", sx_gdelt: "GDELT", sx_youtube: "YouTube", sx_vk: "VK", corr: TX("Zdarzenia złożone (AI)"), vgraph: TX("Graf powiązań statków (OpenSanctions)") };
   Object.entries(st).forEach(([k, v]) => { if (k.startsWith("tcp:")) N[k] = "AIS · " + (v.name || k.slice(4)); });
   $("#igStatus").innerHTML = Object.entries(N).map(([k, n]) => { const s = st[k] || {};
     return `<div class="tts-row"><span class="nm">${n}</span><span class="st ${s.ok ? "" : s.ok === false ? "red" : ""}">${s.off ? TX("wyłączone") : s.ok ? "OK" + (s.n != null ? " · " + s.n : "") : s.ok === false ? TX("BŁĄD") : "—"}</span><span class="bt"></span></div>${s.err ? `<p class="hint red">${esc0(s.err)}</p>` : ""}`; }).join("");
@@ -2843,7 +2909,7 @@ function boot(done) {
   let seen = false; try { seen = sessionStorage.getItem("k7-boot") === "1"; } catch (e) { seen = true; }
   if (!needSetup && (seen || reduce)) return done();
   const B = $("#boot"); B.hidden = false; const e = STATUS ? STATUS.engine : null, C = CURRENT || {};
-  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.20"), TX("TEST PAMIĘCI ........ OK"),
+  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.21"), TX("TEST PAMIĘCI ........ OK"),
     TX("PROCESOR GRAFICZNY ..") + " " + (e ? TX(e.hardware.gpu_name) + (e.hardware.vram_gb ? " / " + e.hardware.vram_gb + " " + TX("GB") : "") : "?"),
     TX("RDZEŃ ANALITYCZNY ...") + " " + (e && e.model ? e.model.toUpperCase() : TX("NIEAKTYWNY")),
     TX("BAZA KONFLIKTÓW .....") + " " + A(C.conflicts).length + " " + TX("WĘZŁÓW"), TX("FRONTY ..............") + " " + A(C.fronts).length + " " + TX("TEATRÓW"),

@@ -109,7 +109,8 @@
     {"name": "The Hacker News", "url": "https://feeds.feedburner.com/TheHackersNews", "rating": "C", "sector": "cyber"},
     {"name": "SecurityWeek", "url": "https://www.securityweek.com/feed/", "rating": "B", "sector": "cyber"},
     {"name": "Dark Reading", "url": "https://www.darkreading.com/rss.xml", "rating": "B", "sector": "cyber"},
-    {"name": "NASASpaceflight", "url": "https://www.nasaspaceflight.com/feed/", "rating": "B", "sector": "space"}
+    {"name": "NASASpaceflight", "url": "https://www.nasaspaceflight.com/feed/", "rating": "B", "sector": "space"},
+    {"name": "Oryx (straty sprzętu)", "url": "https://www.oryxspioenkop.com/feeds/posts/default?alt=rss", "rating": "A", "sector": "world", "max_age_h": 168}
   ],
 
   "source_ratings": {

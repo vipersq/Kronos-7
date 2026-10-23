@@ -16,6 +16,7 @@ LAYER = {   # warstwa: (nazwa PL, nazwa EN, promień km, „ostra”)
     "marsec": ("incydent morski", "maritime incident", 120, True), "osint": ("Telegram OSINT", "Telegram OSINT", 80, True),
     "notam": ("NOTAM", "NOTAM", 150, False), "gps": ("zakłócenia GPS", "GPS jamming", 120, False), "fire": ("pożary (satelita)", "fires (satellite)", 40, True),
     "quake": ("trzęsienie ziemi", "earthquake", 250, True), "rad": ("promieniowanie", "radiation", 120, True), "acled": ("ACLED", "ACLED", 40, True),
+    "il": ("alarmy w Izraelu", "Israel alerts", 60, True), "gc": ("GeoConfirmed", "GeoConfirmed", 30, True), "net": ("wyłączenie internetu", "internet outage", 400, True),
 }
 WINDOW = 36 * 3600 * 1000
 

@@ -21,6 +21,24 @@ Lokalny terminal w stylu komputerów pokładowych z filmów science fiction. Pok
 - **Polecenia głosowe** (przycisk GŁOS albo Alt+V), np. „sitrep Bałtyk”, „pokaż Ormuz”, „odśwież”, „briefing”, „odtwórz”, „na żywo”, „warstwa kable”, „pełny ekran”; wszystko inne trafia jako pytanie do AI. W Chrome i Edge rozpoznawanie mowy przetwarzają serwery Google/Microsoft.
 - Wydajność: mapa rysowana na płótnie, obliczenia orbit i przelotów w osobnym wątku, zapis historii w tle.
 
+## Więcej źródeł: Izrael, mapy ISW, GeoConfirmed, WarSpotting, Copernicus (v3.21)
+Bez klucza (działa od razu):
+- **Alarmy w Izraelu (Tzeva Adom / Pikud HaOref)** – warstwa ALARMY IL, sekcja w panelu alarmów, powiadomienia, zestawienie postów i zdjęć dla miejsca alarmu, wejście do zdarzeń złożonych.
+- **Mapy ISW / CTP** – warstwa ISW: ocenione postępy Rosji, infiltracje, zdobycze z 24 h, terytorium deklarowane przez Rosję, kontrofensywy UA.
+- **GeoConfirmed** – warstwa GEOCONFIRMED: zgeolokalizowane nagrania i zdjęcia (Ukraina, Izrael, Sudan, Syria, Mjanma – lista w ŹRÓDŁA I INTEGRACJE).
+- **WarSpotting** – panel STRATY SPRZĘTU: potwierdzone zdjęciami straty sprzętu RU/UA z ostatnich dni; trafiają też do analizy AI.
+- **EMSC** – trzęsienia ziemi M3.5+ z 48 h (warstwa EMSC, sekcja w panelu alarmów, wejście do zdarzeń złożonych – pomaga odróżnić wybuch od wstrząsu).
+- **Oryx** (RSS) i 57 nowych kanałów RSS, 5 kanałów gubernatorów obwodów przygranicznych Rosji w katalogu Telegrama.
+- **Bluesky** i **GDELT** – dodatkowe wyszukiwarki w zestawieniach POSTY I ZDJĘCIA.
+- **OpenSky** – przycisk ŚLAD LOTU w karcie samolotu (bez konta z limitem).
+
+Z darmowym kluczem (ŹRÓDŁA I INTEGRACJE – przy każdym polu jest instrukcja):
+- **Copernicus Data Space** – przyciski SENTINEL-2 / RADAR S-1 / SWIR w podglądzie satelitarnym (zdjęcia 10 m z ostatnich dni; radar widzi przez chmury).
+- **Cloudflare Radar** – wyłączenia i anomalie internetu na świecie (sekcja w panelu alarmów, wejście do zdarzeń złożonych i analizy).
+- **Reddit**, **YouTube**, **VK** – dodatkowe wyszukiwarki w zestawieniach (Reddit działa też bez klucza, ale często blokuje).
+
+Pominięte: EURDEP (europejska sieć pomiaru promieniowania) nie udostępnia publicznego API z danymi – zostaje Safecast.
+
 ## Posty, zdjęcia i nagrania przy zdarzeniach + konto Telegram (v3.20)
 
 - **Zdjęcia i nagrania z Telegrama:** KRONOS zapisuje miniatury zdjęć i filmów z postów śledzonych kanałów w `data/media`, więc nie znikają, gdy kanał usunie post. Filmy pobierają się przy pierwszym odtworzeniu, do 60 MB. Pamięć trzyma pliki 10 dni, łącznie najwyżej 1,5 GB.
