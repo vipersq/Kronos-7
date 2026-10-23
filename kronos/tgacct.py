@@ -87,7 +87,7 @@ class TgAccount:
         from telethon import TelegramClient
         c = self.cfg()
         if self.client is None:
-            self.client = TelegramClient(self.session, int(c["api_id"]), c["api_hash"].strip(), device_model="KRONOS-7", app_version="3.22.3",
+            self.client = TelegramClient(self.session, int(c["api_id"]), c["api_hash"].strip(), device_model="KRONOS-7", app_version="3.23",
                                          system_version=sys.platform, receive_updates=False)
         if not self.client.is_connected():
             await self.client.connect()

@@ -56,7 +56,7 @@ a { color: var(--acc); }
     <p class="t">KRONOS-7_</p>
     <p class="s">PLANETARNY SYSTEM WYWIADOWCZY</p>
     <h1>Instrukcja obsługi</h1>
-    <p class="d">Wersja programu <b>3.22.3</b> · instrukcja z dnia 23.10.2026</p>
+    <p class="d">Wersja programu <b>3.23</b> · instrukcja z dnia 23.10.2026</p>
     <p class="d">Instalacja, konfiguracja krok po kroku, skąd wziąć każdy klucz API, rozwiązywanie problemów.</p>
   </div>
   <img src="img/main.jpg" alt="">
@@ -78,7 +78,7 @@ a { color: var(--acc); }
   <a href="#s11"><span>11</span>Telegram – kanały i konto</a>
   <a href="#s12"><span>12</span>Własne odbiorniki, poczta, Home Assistant</a>
   <a href="#s13"><span>13</span>Mapy offline i obciążenie komputera</a>
-  <a href="#s14"><span>14</span>Telefon, widżet, Stream Deck, sterowanie</a>
+  <a href="#s14"><span>14</span>Telefon, XENEON EDGE, Stream Deck, sterowanie</a>
   <a href="#s15"><span>15</span>Pliki, kopia zapasowa, bezpieczeństwo</a>
   <a href="#s16"><span>16</span>Rozwiązywanie problemów</a>
   <a href="#s17"><span>17</span>Skróty klawiszowe i ściąga</a>
@@ -545,7 +545,7 @@ a { color: var(--acc); }
 </ul>
 
 <!-- ============================================================ 14 -->
-<h2 id="s14"><span class="n">14</span>Telefon, widżet, Stream Deck, sterowanie</h2>
+<h2 id="s14"><span class="n">14</span>Telefon, XENEON EDGE, Stream Deck, sterowanie</h2>
 <h3>Telefon i tablet w sieci domowej</h3>
 <ol>
 <li>OPERATOR → zaznacz „Udostępnij terminal w sieci lokalnej”, wpisz PIN (4–8 cyfr), <span class="btn">ZAPISZ</span>.</li>
@@ -555,6 +555,27 @@ a { color: var(--acc); }
 </ol>
 <h3>Widżet</h3>
 <p><code>http://127.0.0.1:7707/widget</code> (po angielsku <code>?lang=en</code>) – poziom napięcia, odliczanie analizy, liczniki, przelot satelity. Do iCUE (XENEON EDGE), tabletu albo drugiego monitora.</p>
+<h3>Widżet na CORSAIR XENEON EDGE (iCUE)</h3>
+<figure><img src="img/edge-m.png" alt="" style="width:55%"><figcaption>Widżet KRONOS-7 w rozmiarze M (840×696).</figcaption></figure>
+<ol>
+<li>Zaktualizuj iCUE do wersji <b>5.52 lub nowszej</b>.</li>
+<li>Uruchom KRONOS-7 (widżet łączy się z nim pod adresem <code>127.0.0.1:7707</code>).</li>
+<li>Kliknij dwa razy plik <code>xeneon/dist/KRONOS-7-XENEON.icuewidget</code> albo w iCUE: <i>XENEON EDGE → Widgets → <b>+</b></i> i wybierz ten plik.</li>
+<li>iCUE pokaże uprawnienie <b>localhost:7707 / 127.0.0.1:7707</b> – zaakceptuj (to tylko połączenie z KRONOS-em na tym komputerze).</li>
+<li>Przeciągnij widżet <b>KRONOS-7</b> na ekran XENEON w wybranym rozmiarze: S, M, L albo XL (poziomo).</li>
+</ol>
+<table>
+<tr><th style="width:16%">Rozmiar</th><th>Co widać</th></tr>
+<tr><td>S 840×344</td><td>Najważniejszy alarm lub zdarzenie (duży napis), kolejne pozycje, liczniki w nagłówku (UA, IL, złożone, samoloty, statki), pasek depesz.</td></tr>
+<tr><td>M 840×696</td><td>Do tego dłuższa lista zdarzeń i 12 liczników kontaktów na żywo.</td></tr>
+<tr><td>L 1688×696</td><td>Zdarzenia obok kontaktów i stanu źródeł.</td></tr>
+<tr><td>XL 2536×696</td><td>Zdarzenia, kontakty i osobna kolumna depesz.</td></tr>
+</table>
+<ul>
+<li><b>Dotyk</b>: dotknięcie alarmu, zdarzenia lub depeszy pokazuje je na mapie KRONOS-a (okno KRONOS-a musi być otwarte w przeglądarce). <span class="btn">▶ ANALIZA</span> uruchamia analizę dopiero po <b>drugim</b> dotknięciu w ciągu 4 s.</li>
+<li><b>Ustawienia</b> (iCUE → widżet → ustawienia): port KRONOS-a (domyślnie 7707 – zmień, jeśli zmieniłeś <code>port</code> w <code>config.json</code>), odświeżanie 5–60 s, kontakty / depesze / stan źródeł / zdarzenia lotnicze i morskie wł./wył., kolory, przezroczystość tła, linie skanowania.</li>
+<li><b>Bez KRONOS-a</b> widżet pokazuje „BRAK POŁĄCZENIA Z KRONOS-7”; gdy połączenie się zerwie, zostają ostatnie dane z czerwonym „OFFLINE · godzina”.</li>
+</ul>
 <h3>Stream Deck</h3>
 <p>Dwuklik na <code>streamdeck/dist/com.vipersq.kronos7.streamDeckPlugin</code> (Stream Deck 6.4+). Akcje w kategorii KRONOS-7: poziom napięcia, analiza AI, teatr działań, warstwa mapy, licznik kontaktów, przelot satelity.</p>
 <h3>Polecenia z innych programów</h3>
@@ -650,7 +671,7 @@ a { color: var(--acc); }
 <tr><td>Gmail (IMAP)</td><td>Konto Google → Bezpieczeństwo → Hasła do aplikacji</td><td>ŹRÓDŁA I INTEGRACJE</td></tr>
 <tr><td>Hugging Face</td><td>huggingface.co → Settings → SSH and GPG Keys</td><td>OPERATOR → MODELE…</td></tr>
 </table>
-<p class="small" style="margin-top:14pt">Strony dostawców czasem zmieniają wygląd i nazwy menu – jeśli coś wygląda inaczej, szukaj na ich stronie słów „API”, „API key”, „Token” albo „Developer”. Instrukcja dotyczy KRONOS-7 v3.22.3.</p>
+<p class="small" style="margin-top:14pt">Strony dostawców czasem zmieniają wygląd i nazwy menu – jeśli coś wygląda inaczej, szukaj na ich stronie słów „API”, „API key”, „Token” albo „Developer”. Instrukcja dotyczy KRONOS-7 v3.23.</p>
 
 </body>
 </html>

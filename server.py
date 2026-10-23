@@ -188,7 +188,7 @@ TEST_RUN = {"running": False, "at": 0}
 
 
 def _probe_http(url, headers=None, timeout=15):
-    req = urllib.request.Request(url, headers=dict({"User-Agent": "KRONOS-7/3.22.3 (connection test)"}, **(headers or {})))
+    req = urllib.request.Request(url, headers=dict({"User-Agent": "KRONOS-7/3.23 (connection test)"}, **(headers or {})))
     with urllib.request.urlopen(req, timeout=timeout) as r:
         b = r.read(200000)
     return r.status, b
@@ -1141,6 +1141,45 @@ def deck_state():
             "ui": dict(UI, age=round(now - UI.get("at", 0)))}
 
 
+def edge_state():
+    """Dane dla widżetu iCUE na XENEON EDGE: zdarzenia, kontakty, depesze, stan źródeł – jedno lekkie zapytanie."""
+    now = int(time.time() * 1000)
+    en = i18n.en()
+    ev = []
+    for c in CORR.view()[:20]:
+        a = c.get("ai") or {}
+        if c.get("hidden") or a.get("routine") or (a.get("sev") or 2) < 3:
+            continue
+        ev.append({"id": "cr:" + c["id"], "k": "corr", "t": c["last"], "sev": a.get("sev") or 3,
+                   "title": a.get("title") or " + ".join(c.get("lnames") or []), "sub": (a.get("assess") or "")[:140]})
+    ua = sorted([o for o in ((UAALERT.data or {}).get("oblasts") or []) if o.get("on")], key=lambda o: -(o.get("since") or now))
+    if len(ua) > 3:                                      # wiele obwodów naraz → jedna pozycja (dotknięcie pokazuje całą Ukrainę)
+        ev.append({"id": "ua", "k": "ua", "t": ua[0].get("since") or now, "sev": 3,
+                   "title": i18n.L(f"Alarmy w {len(ua)} obwodach", f"Alerts in {len(ua)} oblasts"), "sub": ", ".join(o.get("name", "") for o in ua[:8])})
+    else:
+        for o in ua:
+            ev.append({"id": "ua:" + o["id"], "k": "ua", "t": o.get("since") or now, "sev": 3, "title": i18n.L("Alarm – ", "Alert – ") + o.get("name", ""), "sub": ""})
+    for x in ((TZEVA.data or {}).get("active") or []):
+        ev.append({"id": "il:" + x["c"], "k": "il", "t": x.get("t") or now, "sev": 4,
+                   "title": i18n.L("Izrael – alarm: ", "Israel – alert: ") + x["c"], "sub": ((TZEVA.data or {}).get("types") or {}).get(x.get("thr"), "")})
+    for r in (MARSEC.view(3).get("items") or []):
+        if r.get("warn") or (r.get("sev") or 1) < 3:
+            continue
+        ev.append({"id": "mi:" + r["id"], "k": "marsec", "t": r.get("t") or 0, "sev": r.get("sev"), "title": r.get("title") or "", "sub": r.get("region") or ""})
+    for e in list(AIR.events)[-6:]:
+        ev.append({"id": e.get("go") or "ah:" + str(e.get("hex")), "k": "air", "t": e.get("at") or now, "sev": 4 if e.get("kind") == "squawk" else 2, "title": e.get("msg", ""), "sub": ""})
+    for e in list(SEA.events)[-6:]:
+        ev.append({"id": "vs:" + str(e.get("mmsi")), "k": "sea", "t": e.get("at") or now, "sev": 2, "title": e.get("msg", ""), "sub": ""})
+    ev.sort(key=lambda x: -(x["t"] or 0))
+    d = deck_state()
+    with STATE_LOCK:
+        items = list(STATE.get("items") or [])[:12]
+    news = [{"id": "n:" + i["id"], "h": i.get("h"), "src": i.get("src"), "rel": i.get("rel"), "info": i.get("info")} for i in items if i.get("h")]
+    return {"now": now, "lang": "en" if en else "pl", "ver": "3.23", "events": ev[:30],
+            "air": d["air"], "sea": d["sea"], "inc": {k: v for k, v in (d.get("inc") or {}).items() if k != "ev"}, "ua_n": (d.get("ua") or {}).get("n", 0),
+            "il_n": len((TZEVA.data or {}).get("active") or []), "news": news, "src": test_summary(), "job": d["job"], "threat": d["threat"]}
+
+
 def pin_token(pin):
     import hashlib
     return hashlib.sha256(("kronos7:" + pin + ":" + str(DATA.resolve())).encode()).hexdigest()[:24]
@@ -1274,9 +1313,11 @@ class H(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
-    def _json(self, obj, code=200):
+    def _json(self, obj, code=200, cors=False):
         b = json.dumps(obj, ensure_ascii=False, separators=(",", ":")).encode()
         self.send_response(code)
+        if cors:                                   # widżet iCUE (XENEON EDGE) działa z lokalnego pliku – inny „origin”
+            self.send_header("Access-Control-Allow-Origin", "*")
         if len(b) > 4096 and "gzip" in (self.headers.get("Accept-Encoding") or ""):
             b = gzip.compress(b, 4)
             self.send_header("Content-Encoding", "gzip")
@@ -1457,6 +1498,16 @@ class H(BaseHTTPRequestHandler):
             if "rescan" in self.path:
                 ENGINE.refresh()
             return self._json(ENGINE.models_view())
+        if p == "/api/edge":
+            return self._json(edge_state(), cors=True)
+        if p == "/api/edge/go":                      # dotknięcie pozycji na XENEON EDGE → pokaż ją w KRONOS-ie
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            a = (q.get("id") or [""])[0][:120]
+            if a == "refresh":
+                r = push_cmd("refresh", "")
+            else:
+                r = push_cmd("event", a) if a in ("ua", "inc", "air", "sea") or re.match(r"^[a-z]{1,4}:[\w\-.:|% ]+$", a) else {"ok": False}
+            return self._json(r, cors=True)
         if p == "/api/deck":
             return self._json(deck_state())
         if p == "/api/intg":
@@ -1955,7 +2006,7 @@ class H(BaseHTTPRequestHandler):
 def main():
     port = int(os.environ.get("KRONOS_PORT", CFG.get("port", 7707)))
     st = ENGINE.status()
-    log("KRONOS-7 v3.22.3 · start")
+    log("KRONOS-7 v3.23 · start")
     log(f"Sprzęt: {st['hardware']['gpu_name']} · VRAM {st['hardware']['vram_gb']} GB · RAM {st['hardware']['ram_gb']} GB")
     log(f"AI: {st['backend'] or 'brak (zainstaluj Ollamę)'} · model: {st['model'] or '—'} · zalecany: {st['recommended']}")
     log(st["reason"])

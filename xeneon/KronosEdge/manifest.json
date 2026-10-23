@@ -1,0 +1,33 @@
+{
+  "author": "vipersq",
+  "id": "com.vipersq.kronos7.edge",
+  "name": "KRONOS-7",
+  "description": "KRONOS-7 on your XENEON EDGE: alerts and compound events, live military aircraft and ship contacts, news and source status from the KRONOS-7 terminal running on this PC. Tap an item to show it on the KRONOS-7 map.",
+  "version": "1.0.0",
+  "preview_icon": "resources/icon.png",
+  "min_app_version": "5.52",
+  "min_framework_version": "1.9.0",
+  "os": [
+    {
+      "platform": "windows"
+    }
+  ],
+  "supported_devices": [
+    {
+      "type": "dashboard_lcd"
+    }
+  ],
+  "interactive": true,
+  "permissions": [
+    {
+      "type": "url",
+      "domain": "localhost",
+      "port": 7707
+    },
+    {
+      "type": "url",
+      "domain": "127.0.0.1",
+      "port": 7707
+    }
+  ]
+}

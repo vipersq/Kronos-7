@@ -1,4 +1,4 @@
-/* KRONOS-7 v3.22.3 — interfejs terminala. Dane: lokalny serwer (/api/*). */
+/* KRONOS-7 v3.23 — interfejs terminala. Dane: lokalny serwer (/api/*). */
 (function () {
 "use strict";
 const $ = s => document.querySelector(s);
@@ -2251,6 +2251,9 @@ function runCmd(c) {
     case "view": setView(a === "chain" ? "chain" : "map"); break;
     case "voice": voiceToggle(); break;
     case "event": {   // pokaż najnowszy kontakt: air, sea, inc (incydent morski) albo dowolny
+      if (/^[a-z]{1,4}:/.test(a)) {   // konkretny obiekt (np. z widżetu XENEON EDGE): cr:, ua:, il:, mi:, ah:, vs:, n:, tg:, gc:
+        const LY = { cr: "corr", ua: "uaal", il: "il", mi: "marsec", tg: "osint", gc: "gc", eq: "emsc", ah: "air", vs: "vessel" }[a.split(":")[0]];
+        if (LY) ensureLayer(LY); const z = AUTOZ; AUTOZ = true; setView("map"); try { go(a); } finally { AUTOZ = z; } break; }
       if (a === "ua") { ensureLayer("uaal"); setView("map"); const z = AUTOZ; AUTOZ = true; setTheater("ua", true); AUTOZ = z; break; }
       if (a === "inc") { const x = A(MS.d && MS.d.items).filter(y => !y.warn).sort((p, q) => (q.t || 0) - (p.t || 0))[0]; if (x) { const z = AUTOZ; AUTOZ = true; ensureLayer("marsec"); setView("map"); go("mi:" + x.id); AUTOZ = z; } break; }
       const ev = [].concat(a !== "sea" ? A(AIR.d && AIR.d.events).map(e => Object.assign({ id: e.go || "ah:" + e.hex }, e)) : [],
@@ -2962,7 +2965,7 @@ function boot(done) {
   let seen = false; try { seen = sessionStorage.getItem("k7-boot") === "1"; } catch (e) { seen = true; }
   if (!needSetup && (seen || reduce)) return done();
   const B = $("#boot"); B.hidden = false; const e = STATUS ? STATUS.engine : null, C = CURRENT || {};
-  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.22.3"), TX("TEST PAMIĘCI ........ OK"),
+  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.23"), TX("TEST PAMIĘCI ........ OK"),
     TX("PROCESOR GRAFICZNY ..") + " " + (e ? TX(e.hardware.gpu_name) + (e.hardware.vram_gb ? " / " + e.hardware.vram_gb + " " + TX("GB") : "") : "?"),
     TX("RDZEŃ ANALITYCZNY ...") + " " + (e && e.model ? e.model.toUpperCase() : TX("NIEAKTYWNY")),
     TX("BAZA KONFLIKTÓW .....") + " " + A(C.conflicts).length + " " + TX("WĘZŁÓW"), TX("FRONTY ..............") + " " + A(C.fronts).length + " " + TX("TEATRÓW"),

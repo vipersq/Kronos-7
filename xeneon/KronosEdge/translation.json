@@ -1,0 +1,53 @@
+{
+  "en": {
+    "translation": {
+      "KRONOS-7": "KRONOS-7",
+      "KRONOS-7 port": "KRONOS-7 port",
+      "Refresh every": "Refresh every",
+      "Live contacts": "Live contacts",
+      "News": "News",
+      "Source status": "Source status",
+      "Aircraft and ship events": "Aircraft and ship events",
+      "Widget Personalization": "Widget Personalization",
+      "Text Color": "Text Color",
+      "Accent Color": "Accent Color",
+      "Background Color": "Background Color",
+      "Background Transparency": "Background Transparency",
+      "Scanlines": "Scanlines"
+    }
+  },
+  "de": {
+    "translation": {
+      "KRONOS-7": "KRONOS-7",
+      "KRONOS-7 port": "KRONOS-7-Port",
+      "Refresh every": "Aktualisieren alle",
+      "Live contacts": "Live-Kontakte",
+      "News": "Meldungen",
+      "Source status": "Quellenstatus",
+      "Aircraft and ship events": "Flugzeug- und Schiffsereignisse",
+      "Widget Personalization": "Widget-Personalisierung",
+      "Text Color": "Textfarbe",
+      "Accent Color": "Akzentfarbe",
+      "Background Color": "Hintergrundfarbe",
+      "Background Transparency": "Hintergrundtransparenz",
+      "Scanlines": "Scanlinien"
+    }
+  },
+  "uk": {
+    "translation": {
+      "KRONOS-7": "KRONOS-7",
+      "KRONOS-7 port": "Порт KRONOS-7",
+      "Refresh every": "Оновлювати кожні",
+      "Live contacts": "Контакти наживо",
+      "News": "Новини",
+      "Source status": "Стан джерел",
+      "Aircraft and ship events": "Події літаків і суден",
+      "Widget Personalization": "Персоналізація віджета",
+      "Text Color": "Колір тексту",
+      "Accent Color": "Колір акценту",
+      "Background Color": "Колір фону",
+      "Background Transparency": "Прозорість фону",
+      "Scanlines": "Лінії розгортки"
+    }
+  }
+}

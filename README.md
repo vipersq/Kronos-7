@@ -21,6 +21,20 @@ Lokalny terminal w stylu komputerów pokładowych z filmów science fiction. Pok
 - **Polecenia głosowe** (przycisk GŁOS albo Alt+V), np. „sitrep Bałtyk”, „pokaż Ormuz”, „odśwież”, „briefing”, „odtwórz”, „na żywo”, „warstwa kable”, „pełny ekran”; wszystko inne trafia jako pytanie do AI. W Chrome i Edge rozpoznawanie mowy przetwarzają serwery Google/Microsoft.
 - Wydajność: mapa rysowana na płótnie, obliczenia orbit i przelotów w osobnym wątku, zapis historii w tle.
 
+## Widżet na CORSAIR XENEON EDGE (v3.23)
+Plik: **`xeneon/dist/KRONOS-7-XENEON.icuewidget`** (źródło: `xeneon/KronosEdge`). Wymaga iCUE 5.52 lub nowszego.
+- Instalacja: kliknij plik dwa razy (albo w iCUE: XENEON EDGE → Widgets → **+** → wybierz plik), zaakceptuj uprawnienie „localhost:7707”, przeciągnij widżet KRONOS-7 na ekran.
+- Rozmiary poziome S, M, L i XL – im większy, tym więcej treści:
+  - **S**: najważniejszy alarm/zdarzenie, kolejne pozycje, liczniki w nagłówku, pasek depesz;
+  - **M**: do tego lista zdarzeń i 12 liczników kontaktów;
+  - **L**: zdarzenia obok kontaktów i stanu źródeł;
+  - **XL**: zdarzenia, kontakty i osobna kolumna depesz.
+- Treść: alarmy w Ukrainie i Izraelu, zdarzenia złożone (waga 3+), incydenty morskie, zdarzenia lotnicze i morskie, kontakty na żywo (samoloty, rozpoznanie, tankowce, bombowce, krążące, statki, okręty, sankcje, „ciemne”, STS, nad kablem, incydenty 24 h), depesze, stan źródeł.
+- **Dotyk**: pozycja pokazuje się na mapie KRONOS-a (przybliżenie i karta); **▶ ANALIZA** uruchamia analizę po drugim dotknięciu (ochrona przed przypadkowym).
+- Ustawienia w iCUE: port KRONOS-a, odświeżanie (5–60 s), co pokazywać, kolory, przezroczystość, linie skanowania.
+- Bez KRONOS-a widżet pokazuje „BRAK POŁĄCZENIA”, a po zerwaniu połączenia ostatnie dane z oznaczeniem OFFLINE.
+- Dane idą tylko między widżetem a KRONOS-em na tym komputerze (`/api/edge`).
+
 ## GeoConfirmed z oryginałami, naprawiony łańcuch przyczyn (v3.22.2)
 - **Karta punktu GeoConfirmed**: opis, sprzęt, jednostki, rodzaj materiału, miejscowość oraz linki do oryginału (Telegram, X) i geolokalizacji – z ukrytego API szczegółów GeoConfirmed.
 - **POSTY I ZDJĘCIA przy punkcie GeoConfirmed**: na górze oryginalny post z Telegrama (zdjęcia/film) i treść posta z X (oficjalny oEmbed, bez klucza), niżej relacje z Telegrama, Bluesky itd. z tego miejsca i 2 dni od daty. Nazwy miejscowości po ukraińsku, rosyjsku i angielsku KRONOS bierze z OpenStreetMap (Nominatim, raz na miejsce).

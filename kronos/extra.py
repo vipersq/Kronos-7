@@ -11,7 +11,7 @@ from pathlib import Path
 from . import i18n
 from .intel import Source, _now_ms
 
-UA = "KRONOS-7/3.22.3 (personal OSINT dashboard)"
+UA = "KRONOS-7/3.23 (personal OSINT dashboard)"
 
 
 def _get(url, timeout=40, headers=None, data=None, method=None, raw=False):
