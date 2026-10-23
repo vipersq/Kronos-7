@@ -119,7 +119,7 @@
         <p class="sat-h">WIĘCEJ ŹRÓDEŁ W ZESTAWIENIACH (POSTY I ZDJĘCIA)</p>
         <label for="ig_ev_sources">Wyszukiwarki przy zdarzeniach <small>po przecinku: bluesky, reddit, gdelt, youtube, vk (Bluesky i GDELT bez klucza)</small></label>
         <input id="ig_ev_sources" autocomplete="off" spellcheck="false" placeholder="bluesky,reddit,gdelt,youtube,vk">
-        <p class="hint">Reddit: reddit.com/prefs/apps → create app → typ „script” → client id (pod nazwą) i secret. Bez klucza Reddit bywa blokowany.</p>
+        <p class="hint">Reddit: reddit.com/prefs/apps → create app → typ „script” → client id (pod nazwą) i secret. Od końca 2025 r. Reddit może wymagać zatwierdzenia nowej aplikacji (kilka dni). Bez klucza Reddit bywa blokowany.</p>
         <input id="ig_reddit_id" autocomplete="off" spellcheck="false" placeholder="Reddit client id">
         <input id="ig_reddit_secret" type="password" autocomplete="off" data-ph="Reddit secret" placeholder="Reddit secret">
         <input id="ig_reddit_subs" autocomplete="off" spellcheck="false" placeholder="subreddity, np. UkraineWarVideoReport,CombatFootage">
@@ -130,13 +130,13 @@
         <p class="sat-h">MAPY I DANE</p>
         <label for="ig_gc_conflicts">GeoConfirmed – konflikty <small>po przecinku; domyślnie ukraine, israel, sudan, syria, myanmar</small></label>
         <input id="ig_gc_conflicts" autocomplete="off" spellcheck="false">
-        <p class="hint">Copernicus (zdjęcia Sentinel-1/2 w kartach): dataspace.copernicus.eu → konto → User settings → OAuth clients → Create.</p>
+        <p class="hint">Copernicus (zdjęcia Sentinel-1/2 w kartach, darmowe): shapps.dataspace.copernicus.eu/dashboard → User Settings → OAuth clients → Create (bez opcji SPA, „Never expire”); sekret widać tylko raz.</p>
         <input id="ig_cdse_id" autocomplete="off" spellcheck="false" placeholder="Copernicus client_id">
         <input id="ig_cdse_secret" type="password" autocomplete="off" data-ph="Copernicus client_secret" placeholder="Copernicus client_secret">
         <p class="hint">OpenSky (ślad lotu w karcie samolotu): opensky-network.org → konto → Account → API client (client_id, client_secret). Bez konta działa z limitem.</p>
         <input id="ig_opensky_id" autocomplete="off" spellcheck="false" placeholder="OpenSky client_id">
         <input id="ig_opensky_secret" type="password" autocomplete="off" data-ph="OpenSky client_secret" placeholder="OpenSky client_secret">
-        <p class="hint">Cloudflare Radar (wyłączenia internetu): dash.cloudflare.com → My Profile → API Tokens → Create Token → szablon „Read Radar data”.</p>
+        <p class="hint">Cloudflare Radar (wyłączenia internetu): dash.cloudflare.com → My Profile → API Tokens → Create Token → Custom token → uprawnienie Account › Radar › Read.</p>
         <input id="ig_cf_token" type="password" autocomplete="off" data-ph="token Cloudflare Radar" placeholder="token Cloudflare Radar">
         <p class="hint">Bez klucza działają: alarmy w Izraelu (Tzeva Adom), EMSC, mapy ISW, GeoConfirmed, WarSpotting, Bluesky, GDELT, Oryx.</p>
         <p class="sat-h">TELEGRAM – KONTO (CAŁY TELEGRAM)</p>

@@ -247,6 +247,10 @@ Polecenia można też wysyłać z innych programów: `http://127.0.0.1:7707/api/
 
 Budowanie wtyczki ze źródeł: `cd streamdeck && npm install && npm run pack`.
 
+## Instrukcja obsługi (PDF)
+
+**[docs/KRONOS-7-Instrukcja.pdf](docs/KRONOS-7-Instrukcja.pdf)** – instalacja, wszystkie ustawienia i skąd wziąć każdy klucz API, krok po kroku. Źródło: `docs/manual/instrukcja.html`, składanie: `node docs/manual/build_pdf.mjs`.
+
 ## Szybki start
 
 ```

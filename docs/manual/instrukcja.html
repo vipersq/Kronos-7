@@ -1,0 +1,632 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<title>KRONOS-7 – instrukcja obsługi</title>
+<style>
+@page { size: A4; margin: 18mm 16mm 20mm 16mm; }
+:root { --ink:#16201b; --mute:#56645c; --acc:#0f7a4f; --acc2:#e8f4ee; --warn:#9a5a00; --warnbg:#fff5e3; --line:#cfdad3; }
+* { box-sizing: border-box; }
+body { font-family: Inter, "DejaVu Sans", sans-serif; color: var(--ink); font-size: 10.2pt; line-height: 1.5; margin: 0; }
+h1, h2, h3, h4 { font-family: Inter, sans-serif; line-height: 1.2; break-after: avoid; }
+h2 { font-size: 17pt; margin: 0 0 10pt; padding-bottom: 5pt; border-bottom: 2px solid var(--acc); color: var(--acc); break-before: page; }
+h2 .n { color: var(--mute); font-weight: 400; margin-right: 6pt; }
+h3 { font-size: 12.5pt; margin: 16pt 0 6pt; }
+h4 { font-size: 10.5pt; margin: 12pt 0 4pt; }
+p { margin: 0 0 7pt; }
+ul, ol { margin: 0 0 8pt; padding-left: 18pt; }
+li { margin-bottom: 2.5pt; }
+code, .k { font-family: "DejaVu Sans Mono", monospace; font-size: 8.8pt; background: #eef2ef; padding: 0 3pt; border-radius: 2pt; }
+.btn { font-family: "DejaVu Sans Mono", monospace; font-size: 8.6pt; border: 1px solid var(--acc); color: var(--acc); padding: 0 3pt; border-radius: 2pt; white-space: nowrap; }
+table { width: 100%; border-collapse: collapse; margin: 4pt 0 10pt; font-size: 9pt; break-inside: auto; }
+th, td { text-align: left; vertical-align: top; padding: 4pt 5pt; border-bottom: 1px solid var(--line); }
+th { background: var(--acc2); font-weight: 600; }
+tr { break-inside: avoid; }
+.note, .warn, .tip { padding: 7pt 9pt; border-radius: 3pt; margin: 6pt 0 10pt; break-inside: avoid; }
+.note { background: var(--acc2); border-left: 3px solid var(--acc); }
+.tip { background: #eef3fb; border-left: 3px solid #3a66b0; }
+.warn { background: var(--warnbg); border-left: 3px solid var(--warn); }
+.key { break-inside: avoid; border: 1px solid var(--line); border-radius: 4pt; padding: 8pt 10pt 4pt; margin: 0 0 10pt; }
+.key h4 { margin: 0 0 3pt; font-size: 11pt; }
+.key .meta { font-size: 8.6pt; color: var(--mute); margin-bottom: 5pt; }
+.key .meta b { color: var(--ink); }
+.free { color: var(--acc); font-weight: 600; }
+figure { margin: 6pt 0 12pt; break-inside: avoid; }
+figure img { width: 100%; border: 1px solid var(--line); border-radius: 3pt; }
+figcaption { font-size: 8.5pt; color: var(--mute); margin-top: 3pt; }
+.cover { height: 276mm; display: flex; flex-direction: column; justify-content: space-between; background: #07130d; color: #9df2c4; margin: -18mm -16mm 0; padding: 30mm 20mm 20mm; }
+.cover .t { font-family: "DejaVu Sans Mono", monospace; font-size: 40pt; letter-spacing: 6pt; color: #b8ffd8; margin: 0; }
+.cover .s { font-family: "DejaVu Sans Mono", monospace; letter-spacing: 3pt; font-size: 10pt; color: #5fbf8c; margin-top: 6pt; }
+.cover h1 { font-size: 26pt; color: #e9fff3; margin: 40pt 0 8pt; font-weight: 600; }
+.cover .d { color: #7fcfa3; font-size: 11pt; }
+.cover img { width: 100%; border: 1px solid #1f5a3b; border-radius: 3pt; opacity: .95; }
+.cover .f { font-size: 8.5pt; color: #5d9c7a; }
+.toc { columns: 2; column-gap: 18pt; font-size: 10pt; }
+.toc a { color: var(--ink); text-decoration: none; display: block; padding: 2pt 0; border-bottom: 1px dotted var(--line); break-inside: avoid; }
+.toc a span { color: var(--acc); font-weight: 600; display: inline-block; width: 18pt; }
+a { color: var(--acc); }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10pt; }
+.small { font-size: 8.8pt; color: var(--mute); }
+</style>
+</head>
+<body>
+
+<section class="cover">
+  <div>
+    <p class="t">KRONOS-7_</p>
+    <p class="s">PLANETARNY SYSTEM WYWIADOWCZY</p>
+    <h1>Instrukcja obsługi</h1>
+    <p class="d">Wersja programu <b>3.21</b> · instrukcja z dnia 23.10.2026</p>
+    <p class="d">Instalacja, konfiguracja krok po kroku, skąd wziąć każdy klucz API, rozwiązywanie problemów.</p>
+  </div>
+  <img src="img/main.jpg" alt="">
+  <p class="f">KRONOS-7 działa na Twoim komputerze. Dane pobiera z publicznych źródeł, a analizę robi lokalny model AI (Ollama / LM Studio) albo – jeśli tak ustawisz – model w chmurze. Oceny AI to hipotezy, nie oficjalne wskaźniki.</p>
+</section>
+
+<h2 style="break-before:page">Spis treści</h2>
+<nav class="toc">
+  <a href="#s1"><span>1</span>Co to jest i czego potrzebujesz</a>
+  <a href="#s2"><span>2</span>Instalacja krok po kroku</a>
+  <a href="#s3"><span>3</span>Pierwsze uruchomienie</a>
+  <a href="#s4"><span>4</span>Ekran główny – co gdzie jest</a>
+  <a href="#s5"><span>5</span>Okno OPERATOR – wszystkie ustawienia</a>
+  <a href="#s6"><span>6</span>Model AI na Twoim komputerze</a>
+  <a href="#s7"><span>7</span>AI w chmurze – klucze dostawców</a>
+  <a href="#s8"><span>8</span>Źródła i integracje – przegląd</a>
+  <a href="#s9"><span>9</span>Klucze API krok po kroku</a>
+  <a href="#s10"><span>10</span>Powiadomienia na telefon</a>
+  <a href="#s11"><span>11</span>Telegram – kanały i konto</a>
+  <a href="#s12"><span>12</span>Własne odbiorniki, poczta, Home Assistant</a>
+  <a href="#s13"><span>13</span>Mapy offline i obciążenie komputera</a>
+  <a href="#s14"><span>14</span>Telefon, widżet, Stream Deck, sterowanie</a>
+  <a href="#s15"><span>15</span>Pliki, kopia zapasowa, bezpieczeństwo</a>
+  <a href="#s16"><span>16</span>Rozwiązywanie problemów</a>
+  <a href="#s17"><span>17</span>Skróty klawiszowe i ściąga</a>
+</nav>
+<div class="note" style="margin-top:14pt">
+<b>Jak czytać tę instrukcję.</b> Rozdziały 1–5 wystarczą, żeby KRONOS działał. Wszystko z rozdziałów 7–12 jest <b>opcjonalne</b> – program działa bez żadnego klucza, a każdy klucz tylko dokłada kolejne dane. Nazwy przycisków są zapisane tak: <span class="btn">OPERATOR</span>. Ścieżki na stronach internetowych zapisane są ze strzałkami: <i>Settings → API Keys → Create</i>.
+</div>
+<div class="tip">
+<b>Wszystkie klucze wpisujesz w programie</b>, nie w plikach. Zapisują się w <code>data/settings.json</code> na Twoim komputerze. Nikomu nie wysyłaj tego pliku – są w nim Twoje klucze i hasła.
+</div>
+
+<!-- ============================================================ 1 -->
+<h2 id="s1"><span class="n">1</span>Co to jest i czego potrzebujesz</h2>
+<p>KRONOS-7 to lokalny terminal wywiadowczy w stylu komputerów pokładowych z filmów SF. Zbiera wiadomości i otwarte dane z całego świata – depesze, samoloty wojskowe, statki, alarmy, trzęsienia ziemi, satelity, rynki, kanały Telegrama – i pokazuje je na mapie. Lokalny model AI łączy wiadomości o tym samym zdarzeniu, ocenia wiarygodność, pisze briefing i odpowiada na pytania.</p>
+<h3>Wymagania</h3>
+<table>
+<tr><th style="width:28%">Element</th><th>Minimum</th><th>Zalecane</th></tr>
+<tr><td>System</td><td>Windows 10/11, Linux lub macOS</td><td>Windows 11</td></tr>
+<tr><td>Przeglądarka</td><td>Chrome, Edge, Firefox, Brave</td><td>Chrome lub Edge (polecenia głosowe, okna na drugim monitorze)</td></tr>
+<tr><td>Karta graficzna</td><td>niepotrzebna – AI ruszy na procesorze, ale wolno</td><td>NVIDIA z 12–16 GB VRAM (np. RTX 4070 Ti / 5080)</td></tr>
+<tr><td>Pamięć RAM</td><td>8 GB</td><td>32 GB</td></tr>
+<tr><td>Dysk</td><td>ok. 5 GB (program + mały model)</td><td>30 GB (model 14b, mapy offline, zdjęcia z Telegrama)</td></tr>
+<tr><td>Internet</td><td colspan="2">potrzebny do pobierania danych; AI lokalne działa bez internetu</td></tr>
+</table>
+<h3>Co jest za darmo, a co wymaga konta</h3>
+<p><b>Bez żadnego klucza</b> działa większość: depesze z ok. 80 serwisów RSS, samoloty wojskowe (adsb.fi / adsb.lol), statki na północnym Bałtyku i u wybrzeży Norwegii, alarmy w Ukrainie i Izraelu, mapa frontu DeepState, mapy ISW, GeoConfirmed, WarSpotting, trzęsienia ziemi, promieniowanie, satelity, pożary z satelitów NASA, bezpieczeństwo morskie, rynki, kanały Telegrama, Bluesky i GDELT.</p>
+<p><b>Darmowe klucze</b> (rejestracja na stronie dostawcy) dokładają m.in.: statki z całego świata (aisstream.io), zdjęcia satelitarne Sentinel (Copernicus), wyłączenia internetu (Cloudflare), ślad lotu (OpenSky), „ciemne” statki z radaru (Global Fishing Watch), wyszukiwanie w YouTube, VK i Reddit, powiadomienia na telefon, AI w chmurze. Szczegóły: rozdział 9.</p>
+
+<!-- ============================================================ 2 -->
+<h2 id="s2"><span class="n">2</span>Instalacja krok po kroku</h2>
+<h3>Windows</h3>
+<ol>
+<li><b>Pobierz program.</b> Wejdź na <code>github.com/vipersq/Kronos-7</code>, kliknij zielony przycisk <b>Code → Download ZIP</b> (albo użyj pliku ZIP, który dostałeś). Rozpakuj go do zwykłego folderu, np. <code>C:\KRONOS-7</code>. Nie uruchamiaj programu bezpośrednio z wnętrza ZIP-a.</li>
+<li><b>Uruchom <code>start.bat</code></b> (dwuklik). Otworzy się czarne okno – nie zamykaj go, to jest serwer KRONOS-a.</li>
+<li><b>Python.</b> Jeśli nie masz Pythona, skrypt zapyta: <i>„Zainstalować Pythona 3.12 automatycznie [T,N]?”</i> – naciśnij <b>T</b>. Gdyby automatyczna instalacja się nie udała, pobierz Pythona z <code>python.org/downloads</code> i przy instalacji <b>zaznacz „Add python.exe to PATH”</b>, potem uruchom <code>start.bat</code> jeszcze raz.</li>
+<li><b>Dodatki.</b> Skrypt sam doinstaluje biblioteki z <code>requirements.txt</code> (pycountry, h3, edge-tts, telethon). Robi to tylko raz.</li>
+<li><b>Ollama (silnik lokalnego AI).</b> Na pytanie <i>„Zainstalować Ollamę automatycznie?”</i> naciśnij <b>T</b>. Jeśli odpowiesz N, terminal działa bez analizy AI (możesz wtedy użyć AI w chmurze – rozdział 7). Żeby pytanie wróciło, usuń plik <code>data\.no_ollama</code>.</li>
+<li><b>Przeglądarka otworzy się sama</b> pod adresem <code>http://127.0.0.1:7707</code>. Jeśli nie – wpisz ten adres ręcznie.</li>
+<li><b>Model AI pobierze się sam</b> – dobrany do Twojej karty graficznej (np. na 16 GB: qwen3:14b, ok. 9 GB, jednorazowo). Postęp widać na pasku pod nagłówkiem. Po pobraniu od razu rusza pierwsza analiza.</li>
+</ol>
+<div class="note">Przy kolejnych uruchomieniach wystarczy dwuklik na <code>start.bat</code>. Żeby zamknąć KRONOS-a, zamknij czarne okno serwera.</div>
+<h3>Linux / macOS</h3>
+<ol>
+<li>Zainstaluj Pythona 3.10+ i Ollamę (<code>ollama.com/download</code>).</li>
+<li>W terminalu: <code>git clone https://github.com/vipersq/Kronos-7.git</code>, potem <code>cd Kronos-7</code> i <code>./start.sh</code>.</li>
+<li>Otwórz <code>http://127.0.0.1:7707</code>.</li>
+</ol>
+<h3>Aktualizacja do nowej wersji</h3>
+<ol>
+<li>Zamknij okno serwera.</li>
+<li>Rozpakuj nowy ZIP <b>na stary folder</b> (zastąp pliki) albo w folderze z git wpisz <code>git pull</code>.</li>
+<li>Folder <code>data</code> zostaje nietknięty – ustawienia, klucze, historia i pobrane mapy zostają.</li>
+<li>Uruchom <code>start.bat</code>. Jeśli nowa wersja wymaga nowych bibliotek, a coś nie działa, usuń plik <code>data\.deps_ok</code> i uruchom ponownie – dodatki zainstalują się od nowa.</li>
+</ol>
+<h3>LM Studio zamiast Ollamy</h3>
+<p>Jeśli wolisz LM Studio: uruchom w nim serwer lokalny (zakładka <i>Developer → Start server</i>, port 1234). KRONOS wykryje go sam. Modele pobierasz wtedy w oknie LM Studio, a w KRONOS-ie tylko je wybierasz.</p>
+
+<!-- ============================================================ 3 -->
+<h2 id="s3"><span class="n">3</span>Pierwsze uruchomienie</h2>
+<ol>
+<li><b>Język.</b> Na ekranie powitalnym wybierz POLSKI albo ENGLISH. Zmienia się cały interfejs, a AI pisze w tym języku (od następnej analizy).</li>
+<li><b>Identyfikator operatora.</b> Wpisz znak wywoławczy, pseudonim albo inicjały (1–20 znaków). Pojawia się w nagłówku i briefingu.</li>
+<li><b>Poczekaj na pierwszą analizę.</b> Przed nią terminal pokazuje dane startowe z repozytorium. Licznik <b>ANALIZA AI ZA</b> w prawym górnym rogu pokazuje, kiedy będzie następna. Ręcznie uruchomisz ją przyciskiem <span class="btn">ODŚWIEŻ ANALIZĘ</span>.</li>
+<li><b>Ustaw resztę w oknie <span class="btn">OPERATOR</span></b> (rozdział 5): godziny analiz, QTH, klucz aisstream.io, powiadomienia.</li>
+</ol>
+<div class="tip"><b>Minimalny zestaw na start (10 minut):</b> klucz aisstream.io (statki z całego świata, 9.1) + bot Telegram do powiadomień (10.1). Reszta – kiedy będziesz chciał.</div>
+
+<!-- ============================================================ 4 -->
+<h2 id="s4"><span class="n">4</span>Ekran główny – co gdzie jest</h2>
+<figure><img src="img/main.jpg" alt=""><figcaption>Ekran główny: nagłówek z przyciskami, kafelki stanu, „Co nowego”, pole pytań, mapa z warstwami i panel szczegółów.</figcaption></figure>
+<h3>Nagłówek</h3>
+<table>
+<tr><th style="width:26%">Przycisk</th><th>Co robi</th></tr>
+<tr><td><span class="btn">ODŚWIEŻ ANALIZĘ</span></td><td>Uruchamia analizę AI teraz (karta graficzna będzie zajęta kilka minut).</td></tr>
+<tr><td><span class="btn">ODCZYTAJ BRIEFING</span></td><td>Czyta briefing na głos (głos ustawisz w OPERATOR → DŹWIĘKI I GŁOS LEKTORA).</td></tr>
+<tr><td><span class="btn">PRIORYTET JEDEN</span></td><td>Najważniejsze zdarzenia krytyczne w jednym oknie.</td></tr>
+<tr><td><span class="btn">AUDIO</span></td><td>Włącza dźwięki terminala.</td></tr>
+<tr><td><span class="btn">TRYB EKRANU</span> / <span class="btn">KOMPAKT</span> / <span class="btn">EKRAN</span> / <span class="btn">PEŁNY EKRAN</span></td><td>Pokaz slajdów na pełnym ekranie; widok zwarty; szerokość, wielkość tekstu, wysokość mapy, tryb XENEON EDGE; pełny ekran przeglądarki.</td></tr>
+<tr><td><span class="btn">SATELITY</span></td><td>Wybór grup satelitów na mapie i przypinanie pojedynczych.</td></tr>
+<tr><td><span class="btn">OPERATOR</span></td><td>Wszystkie ustawienia (rozdział 5).</td></tr>
+<tr><td><span class="btn">GŁOS</span></td><td>Polecenia głosowe (Alt+V), np. „pokaż Ormuz”, „sitrep Bałtyk”.</td></tr>
+<tr><td>ARCHIWUM</td><td>Powrót do dowolnego wcześniejszego odczytu.</td></tr>
+</table>
+<h3>Mapa</h3>
+<ul>
+<li><b>Teatry działań</b> (ŚWIAT, UKRAINA, M. CZARNE, …) – przybliżają region. Kółko myszy powiększa, ◎ wraca do świata.</li>
+<li><b>Podkład</b> (lista obok przycisków ±): WEKTOR, CIEMNA SZCZEGÓŁOWA, CIEMNA SZARA, SATELITA, OSM NOCNA. Przycisk <b>⬇</b> – mapy offline (rozdział 13).</li>
+<li><b>Wyszukiwarka</b> (klawisz <code>/</code>): MMSI, IMO, nazwa statku, ICAO, znak, rejestracja samolotu, znaki APRS.</li>
+<li><span class="btn">FILTRY</span> – które typy statków i samolotów pokazywać. <span class="btn">AUTO-ZOOM</span> – przybliżanie po kliknięciu. <span class="btn">ODTWÓRZ</span> – cofnięcie mapy do 48 h wstecz.</li>
+<li><b>Warstwy</b> – przyciski pod mapą włączają/wyłączają: KONFLIKTY, FRONTY, STATKI, LOTNICTWO, ALARMY UA, ALARMY IL, DEEPSTATE, ISW, GEOCONFIRMED, EMSC, KORELACJE, PROMIENIOWANIE, POŻARY, SIEĆ i inne. Podświetlona = włączona.</li>
+<li><b>Kliknięcie obiektu</b> otwiera kartę po prawej: szczegóły, zdjęcie satelitarne, sekcja <b>POSTY I ZDJĘCIA</b> (relacje z Telegrama i innych źródeł o tym zdarzeniu), przycisk <span class="btn">PODSUMUJ (AI)</span>.</li>
+</ul>
+<h3>Panele pod mapą</h3>
+<p>Strumień depesz, barometr rynkowy, żegluga, trend napięcia, kalendarz, rejestr konfliktów, fronty, noc nad Ukrainą, uderzenia dalekiego zasięgu, ruchy sił, flanka NATO, niebo, statki, alarmy UA · NOTAM · SAR (tu też Izrael, trzęsienia ziemi, wyłączenia internetu), OSINT · Telegram, straty sprzętu · WarSpotting, zdarzenia złożone, bezpieczeństwo morskie, prognozy, obiekty jądrowe, sankcje, humanitarne, cyber, sieć, ostrzeżenia podróżne, zagrożenia naturalne, starty rakiet, SITREP, historia, przeloty nad QTH, orbity, status systemu, źródła.</p>
+<p>Każdy panel ma przycisk <b>⧉</b> – otwiera go w osobnym oknie, które przeciągniesz na inny monitor.</p>
+<h3>Pytania do systemu</h3>
+<p>W polu <b>ZAPYTAJ SYSTEM…</b> wpisz pytanie po polsku, np. <i>„Co się zmieniło na froncie w Ukrainie?”</i> albo <i>„Co działo się w Ormuzie w zeszłym tygodniu?”</i> – AI odpowiada na podstawie bieżących danych i archiwum.</p>
+
+<!-- ============================================================ 5 -->
+<h2 id="s5"><span class="n">5</span>Okno OPERATOR – wszystkie ustawienia</h2>
+<figure><img src="img/operator.jpg" alt=""><figcaption>Okno OPERATOR. Na dole przyciski do okien: DŹWIĘKI I GŁOS LEKTORA, AI W CHMURZE, ŹRÓDŁA I INTEGRACJE.</figcaption></figure>
+<table>
+<tr><th style="width:30%">Pole</th><th>Co wpisać / zaznaczyć</th></tr>
+<tr><td>Język interfejsu i AI</td><td>POLSKI albo ENGLISH.</td></tr>
+<tr><td>Identyfikator operatora</td><td>Znak wywoławczy lub pseudonim (1–20 znaków).</td></tr>
+<tr><td>Jak system ma się zwracać</td><td>Opcjonalnie imię – używane w powitaniu i briefingu.</td></tr>
+<tr><td>Godziny automatycznej analizy</td><td>Do 3 godzin (domyślnie 05:50 i 17:50). W tych godzinach karta graficzna będzie zajęta.</td></tr>
+<tr><td>Model AI · <span class="btn">MODELE…</span></td><td>AUTOMATYCZNIE (najlepszy pasujący) albo wybrany model. Rozdział 6.</td></tr>
+<tr><td>Automatycznie pobieraj zalecany model</td><td>Zostaw zaznaczone, chyba że sam wybierasz modele.</td></tr>
+<tr><td>AI w tle</td><td><b>TYLKO RAZEM Z GŁÓWNĄ ANALIZĄ</b> (karta pracuje tylko w godzinach analiz) albo <b>NA BIEŻĄCO</b> (posty z Telegrama i alerty morskie streszczane co ok. 10 min).</td></tr>
+<tr><td>Zwalniaj model z karty po analizie</td><td>Zaznacz, jeśli grasz – pamięć karty zwolni się od razu po analizie.</td></tr>
+<tr><td>Tryb oszczędny</td><td>Bez poświaty i animacji, mapa rzadziej. Klawisz <code>E</code>.</td></tr>
+<tr><td>Gdy okno nie jest aktywne</td><td>Zatrzymuje animacje, gdy KRONOS jest w tle.</td></tr>
+<tr><td>Klucz aisstream.io</td><td>Statki z całego świata – rozdział 9.1.</td></tr>
+<tr><td>QTH</td><td>Twoja lokalizacja: lokator Maidenhead (np. <code>IO91</code>) albo współrzędne <code>51.07, -1.79</code>. Potrzebne do przelotów satelitów i APRS.</td></tr>
+<tr><td>Zasięg statków</td><td>CAŁY ŚWIAT albo TYLKO OBSERWOWANE REJONY (mniej danych).</td></tr>
+<tr><td>Powiadomienia na telefon</td><td>Telegram (token bota + ID czatu) i/lub Discord (webhook) – rozdział 10. Pod spodem wybierasz rodzaje zdarzeń. <span class="btn">WYŚLIJ TEST</span> sprawdza połączenie.</td></tr>
+<tr><td>Telefon i tablet w sieci domowej</td><td>Udostępnia terminal w sieci lokalnej, wymaga PIN-u (4–8 cyfr) i ponownego uruchomienia – rozdział 14.</td></tr>
+<tr><td>Dźwięk</td><td>Głośność, szum tła, terkot drukowanego tekstu.</td></tr>
+</table>
+<p>Po zmianach kliknij <span class="btn">ZAPISZ</span>.</p>
+
+<!-- ============================================================ 6 -->
+<h2 id="s6"><span class="n">6</span>Model AI na Twoim komputerze</h2>
+<p>Otwórz <span class="btn">OPERATOR</span> → <span class="btn">MODELE…</span>.</p>
+<figure><img src="img/models.jpg" alt=""><figcaption>Okno MODEL AI (LOKALNY).</figcaption></figure>
+<ul>
+<li><b>ZAINSTALOWANE</b> – Twoje modele. <span class="btn">UŻYJ</span> ustawia aktywny, <b>✕</b> usuwa z dysku.</li>
+<li><b>POLECANE DLA TWOJEGO SPRZĘTU</b> – kolory: <b>zielony</b> mieści się w całości na karcie (szybko), <b>bursztynowy</b> to model MoE częściowo w RAM (nadal szybki), <b>szary</b> wolny, <b>czerwony</b> za duży.</li>
+<li><b>INNY MODEL</b> – wpisz nazwę z <code>ollama.com/library</code> (np. <code>qwen3:30b</code>, <code>gemma3:12b</code>) albo wklej link z Hugging Face i kliknij <span class="btn">POBIERZ</span>.</li>
+</ul>
+<table>
+<tr><th>Pamięć karty (VRAM)</th><th>Model wybierany automatycznie</th><th>Rozmiar</th></tr>
+<tr><td>24 GB i więcej</td><td>qwen3:32b</td><td>20 GB</td></tr>
+<tr><td>14–23 GB</td><td>qwen3:14b</td><td>9,3 GB</td></tr>
+<tr><td>8–13 GB</td><td>qwen3:8b</td><td>5,2 GB</td></tr>
+<tr><td>5–7 GB</td><td>qwen3:4b</td><td>2,6 GB</td></tr>
+<tr><td>bez karty</td><td>według RAM: 8b / 4b / 1.7b</td><td>–</td></tr>
+</table>
+<h3>Modele z Hugging Face</h3>
+<ol>
+<li>W sekcji <b>HUGGING FACE · MODELE GGUF</b> wpisz nazwę, np. <code>bielik</code>, i kliknij <span class="btn">SZUKAJ</span>. Widać tylko modele GGUF – tylko takie Ollama potrafi pobrać.</li>
+<li>Kliknij <span class="btn">WARIANTY</span> przy repozytorium i wybierz wariant oznaczony <b>★</b> (zwykle Q4_K_M).</li>
+</ol>
+<div class="key">
+<h4>Modele z ograniczonym dostępem (Llama, Gemma i inne)</h4>
+<div class="meta">Hugging Face <b>nie używa</b> przy pobieraniu loginu i hasła – Ollama loguje się swoim kluczem.</div>
+<ol>
+<li>Załóż konto na <code>huggingface.co</code> i zaloguj się.</li>
+<li>Na stronie modelu kliknij <b>„Agree and access repository”</b> (akceptacja licencji).</li>
+<li>W KRONOS-ie, w oknie MODELE…, rozwiń <i>„Modele z ograniczonym dostępem”</i> i kliknij <span class="btn">KOPIUJ</span> przy kluczu Ollamy.</li>
+<li>Na huggingface.co: <i>avatar → Settings → SSH and GPG Keys → Add SSH Key</i>, wklej klucz, zapisz.</li>
+<li>Pobierz model jeszcze raz.</li>
+</ol>
+<p class="small">Token Hugging Face (Settings → Access Tokens → typ „Read”) jest opcjonalny – służy tylko do przeglądania prywatnych repozytoriów w wyszukiwarce.</p>
+</div>
+
+<!-- ============================================================ 7 -->
+<h2 id="s7"><span class="n">7</span>AI w chmurze – klucze dostawców</h2>
+<p>Jeśli Twój komputer jest słaby, analizę może robić mocniejszy model w chmurze. Do chmury idą tylko publiczne depesze, posty i dane z mapy. Gdy skończy się limit albo zniknie internet, KRONOS sam wraca na model lokalny.</p>
+<h3>Jak włączyć</h3>
+<ol>
+<li><span class="btn">OPERATOR</span> → <span class="btn">AI W CHMURZE…</span></li>
+<li>Wybierz <b>Dostawcę</b>, wklej <b>Klucz API</b>, kliknij <span class="btn">LISTA MODELI</span> i wybierz model (albo zostaw domyślny).</li>
+<li>Zaznacz, co ma iść do chmury. <b>Zalecane:</b> „Główna analiza i briefing” ✓, „Pytania do systemu” ✓, „AI w tle” ✗ (dużo małych zapytań szybko zjada darmowe limity), „Gdy chmura nie odpowiada – użyj lokalnego” ✓.</li>
+<li><span class="btn">ZAPISZ</span>, potem <span class="btn">TEST</span>. Na dole widać dzisiejszą liczbę zapytań i błędów.</li>
+</ol>
+<table>
+<tr><th style="width:18%">Dostawca</th><th style="width:15%">Koszt</th><th>Skąd wziąć klucz</th><th style="width:22%">Model domyślny</th></tr>
+<tr><td>Google Gemini</td><td class="free">darmowy limit</td><td><code>aistudio.google.com</code> → zaloguj kontem Google → <b>Get API key</b> → Create API key.</td><td>gemini-2.5-flash</td></tr>
+<tr><td>GitHub Models</td><td class="free">darmowy limit</td><td><code>github.com</code> → avatar → Settings → Developer settings → Personal access tokens → <b>Fine-grained tokens</b> → Generate new token → w „Permissions” ustaw <b>Models: Read-only</b>.</td><td>openai/gpt-4.1-mini</td></tr>
+<tr><td>Groq</td><td class="free">darmowy limit</td><td><code>console.groq.com</code> → zaloguj → <b>API Keys</b> → Create API Key.</td><td>llama-3.3-70b-versatile</td></tr>
+<tr><td>OpenRouter</td><td class="free">modele „:free”</td><td><code>openrouter.ai</code> → zaloguj → <b>Keys</b> → Create Key. Modele z końcówką <code>:free</code> są bezpłatne (z limitem).</td><td>meta-llama/llama-3.3-70b-instruct:free</td></tr>
+<tr><td>OpenAI</td><td>płatny</td><td><code>platform.openai.com</code> → API keys → Create new secret key (wymaga doładowania konta).</td><td>gpt-4.1-mini</td></tr>
+<tr><td>Anthropic Claude</td><td>płatny</td><td><code>console.anthropic.com</code> → API Keys → Create Key (wymaga doładowania konta).</td><td>claude-sonnet-4-5</td></tr>
+<tr><td>Własny</td><td>–</td><td>Dowolny serwer zgodny z OpenAI: adres bazowy kończący się zwykle na <code>/v1</code>.</td><td>–</td></tr>
+</table>
+<div class="warn">Klucz API jest jak hasło – ktoś, kto go ma, może korzystać z Twojego limitu (albo pieniędzy). Nie wklejaj go nigdzie poza KRONOS-em. Przy płatnych dostawcach ustaw limit wydatków na ich stronie. Copilot (Microsoft) nie ma publicznego API, więc nie da się go podłączyć.</div>
+<p class="small">Co się dzieje przy błędach: przekroczony limit (429) → 10 min na modelu lokalnym; odrzucony klucz (401/403) → 1 godzina; brak sieci → 3 minuty. Potem KRONOS próbuje chmury znowu.</p>
+
+<!-- ============================================================ 8 -->
+<h2 id="s8"><span class="n">8</span>Źródła i integracje – przegląd</h2>
+<p>Klucze do źródeł danych wpisujesz w <span class="btn">OPERATOR</span> → <span class="btn">ŹRÓDŁA I INTEGRACJE…</span>. Na dole tego okna jest <b>STAN ŹRÓDEŁ</b> – przy każdym źródle widać „OK” z liczbą danych, „wyłączone” (brak klucza) albo opis błędu.</p>
+<figure><img src="img/intg.jpg" alt=""><figcaption>Okno ŹRÓDŁA I INTEGRACJE. Przy każdym polu jest krótka podpowiedź, skąd wziąć klucz. Po zmianach kliknij ZAPISZ (prawy dolny róg).</figcaption></figure>
+<table>
+<tr><th style="width:24%">Źródło</th><th>Co daje</th><th style="width:16%">Klucz</th><th style="width:9%">Rozdz.</th></tr>
+<tr><td>aisstream.io</td><td>Statki AIS z całego świata na żywo</td><td class="free">darmowy</td><td>9.1</td></tr>
+<tr><td>alerts.in.ua</td><td>Rodzaj zagrożenia przy alarmach w Ukrainie</td><td>darmowy, opcjonalny</td><td>9.2</td></tr>
+<tr><td>Copernicus</td><td>Zdjęcia Sentinel-2 / radar Sentinel-1 / SWIR w kartach</td><td class="free">darmowy</td><td>9.3</td></tr>
+<tr><td>Cloudflare Radar</td><td>Wyłączenia i anomalie internetu na świecie</td><td class="free">darmowy</td><td>9.4</td></tr>
+<tr><td>OpenSky</td><td>Ślad lotu w karcie samolotu</td><td>darmowy, opcjonalny</td><td>9.5</td></tr>
+<tr><td>Global Fishing Watch</td><td>„Ciemne” statki wykryte radarem SAR</td><td class="free">darmowy</td><td>9.6</td></tr>
+<tr><td>YouTube</td><td>Filmy w zestawieniach POSTY I ZDJĘCIA</td><td class="free">darmowy</td><td>9.7</td></tr>
+<tr><td>VK</td><td>Posty z VK w zestawieniach</td><td class="free">darmowy</td><td>9.8</td></tr>
+<tr><td>Reddit</td><td>Posty z Reddita w zestawieniach</td><td>darmowy, wymaga zatwierdzenia</td><td>9.9</td></tr>
+<tr><td>Stadia Maps</td><td>Mapa szczegółowa na telefonie</td><td>darmowy, opcjonalny</td><td>9.10</td></tr>
+<tr><td>FAA NOTAM</td><td>NOTAM-y (zamknięte przestrzenie, strzelania)</td><td>darmowy*</td><td>9.11</td></tr>
+<tr><td>ACLED</td><td>Zdarzenia konfliktowe z ofiarami</td><td>tylko konta instytucji*</td><td>9.12</td></tr>
+<tr><td>Telegram (konto)</td><td>Wyszukiwanie w całym Telegramie</td><td class="free">darmowy</td><td>11.2</td></tr>
+<tr><td>Bot Telegram / Discord</td><td>Powiadomienia na telefon</td><td class="free">darmowy</td><td>10</td></tr>
+<tr><td>AISHub, SDR, poczta, HA</td><td>Twoje odbiorniki, alerty e-mail, dom</td><td>–</td><td>12</td></tr>
+</table>
+<p class="small">* FAA i ACLED mają ograniczenia opisane w ich punktach.</p>
+<h3>Działa bez klucza</h3>
+<p>Alarmy w Ukrainie (ubilling.net.ua), alarmy w Izraelu (Tzeva Adom), DeepStateMap, mapy ISW, GeoConfirmed (konflikty ustawiasz w polu „GeoConfirmed – konflikty”, domyślnie ukraine, israel, sudan, syria, myanmar), WarSpotting, EMSC (trzęsienia ziemi), Safecast (promieniowanie), OpenSanctions (graf powiązań statków), Oryx, Bluesky, GDELT, adsb.fi / adsb.lol, Digitraffic, Kystverket, NASA (zdjęcia i pożary), CelesTrak, źródła morskie (NGA, UKHO, IMB, ReCAAP), kanały Telegrama, ok. 80 kanałów RSS.</p>
+<h3>Wyszukiwarki przy zdarzeniach</h3>
+<p>Pole <b>„Wyszukiwarki przy zdarzeniach”</b> – lista po przecinku, które serwisy przeszukiwać w sekcji POSTY I ZDJĘCIA: <code>bluesky,reddit,gdelt,youtube,vk</code>. Bluesky i GDELT nie potrzebują klucza; YouTube i VK działają dopiero po wpisaniu klucza. Pole „subreddity” ogranicza Reddita do wybranych, np. <code>UkraineWarVideoReport,CombatFootage</code>.</p>
+
+<!-- ============================================================ 9 -->
+<h2 id="s9"><span class="n">9</span>Klucze API krok po kroku</h2>
+<p>Po wpisaniu każdego klucza kliknij <span class="btn">ZAPISZ</span> i po minucie sprawdź <b>STAN ŹRÓDEŁ</b>.</p>
+
+<div class="key" id="k-ais">
+<h4>9.1 aisstream.io – statki z całego świata</h4>
+<div class="meta">Koszt: <b class="free">darmowy</b> · Gdzie wpisać: <b>OPERATOR → Klucz aisstream.io</b></div>
+<ol>
+<li>Wejdź na <code>aisstream.io</code> i kliknij <b>Sign in</b> – logowanie przez konto <b>GitHub</b> (jeśli nie masz, załóż na github.com, to darmowe).</li>
+<li>Po zalogowaniu wybierz <b>API Keys</b> → <b>Create New API Key</b>.</li>
+<li>Skopiuj klucz i wklej w OPERATOR → „Klucz aisstream.io”, <span class="btn">ZAPISZ</span>.</li>
+<li>Opcjonalnie w „Zasięg statków” wybierz TYLKO OBSERWOWANE REJONY, żeby zmniejszyć ilość danych.</li>
+</ol>
+</div>
+
+<div class="key">
+<h4>9.2 alerts.in.ua – rodzaj zagrożenia przy alarmach UA</h4>
+<div class="meta">Koszt: <b class="free">darmowy</b> · opcjonalny (alarmy działają bez niego) · Gdzie: <b>ŹRÓDŁA I INTEGRACJE → token alerts.in.ua</b></div>
+<ol>
+<li>Wejdź na <code>alerts.in.ua/api-request</code> i wypełnij formularz prośby o token (cel: prywatny, niekomercyjny; nazwa projektu np. „KRONOS-7”).</li>
+<li>Token przyjdzie e-mailem – wklej go w pole „token alerts.in.ua”.</li>
+<li>W polu pod spodem wpisz obwody, o których chcesz powiadomienia, np. <code>Lwów, Kijów, Odessa</code>. Pusta lista = bez powiadomień.</li>
+</ol>
+</div>
+
+<div class="key">
+<h4>9.3 Copernicus Data Space – zdjęcia satelitarne Sentinel</h4>
+<div class="meta">Koszt: <b class="free">darmowy</b> (10 000 jednostek obliczeniowych miesięcznie ≈ 2 500 zdjęć) · Gdzie: <b>ŹRÓDŁA I INTEGRACJE → MAPY I DANE → Copernicus client_id / client_secret</b></div>
+<ol>
+<li>Załóż konto: <code>dataspace.copernicus.eu</code> → <b>Register</b>, potwierdź e-mail. Karta płatnicza nie jest potrzebna.</li>
+<li>Wejdź na <code>shapps.dataspace.copernicus.eu/dashboard</code> (osobny panel – na głównej stronie kluczy nie ma) i zaloguj się tym samym kontem.</li>
+<li>W menu po lewej: <b>User Settings</b> → sekcja <b>OAuth clients</b> → <b>Create</b>.</li>
+<li>Nazwa: <code>KRONOS-7</code>. Ważność: <b>Never expire</b> (potwierdź ostrzeżenie). Opcji <b>SPA nie zaznaczaj</b>.</li>
+<li>Kliknij <b>Create</b>. W okienku pojawią się <b>Client ID</b> i <b>Client secret</b> – skopiuj <b>oba od razu</b>, sekretu nie da się później podejrzeć (w razie zgubienia: usuń klienta i utwórz nowego).</li>
+<li>Wklej w pola Copernicus client_id i client_secret, <span class="btn">ZAPISZ</span>.</li>
+<li>Test: otwórz kartę dowolnego zdarzenia → podgląd satelitarny → <span class="btn">SENTINEL-2</span>. RADAR S-1 widzi przez chmury i w nocy, SWIR pokazuje pożary i świeże wypalenia.</li>
+</ol>
+<p class="small">„Credits” na stronie Copernicusa dotyczą dokupienia większego limitu lub płatnych usług chmurowych – do KRONOS-a niepotrzebne. Zdjęcie pobiera się tylko po kliknięciu przycisku.</p>
+</div>
+
+<div class="key">
+<h4>9.4 Cloudflare Radar – wyłączenia internetu</h4>
+<div class="meta">Koszt: <b class="free">darmowy</b> · Gdzie: <b>ŹRÓDŁA I INTEGRACJE → token Cloudflare Radar</b></div>
+<ol>
+<li>Załóż darmowe konto na <code>dash.cloudflare.com/sign-up</code> (nie musisz mieć żadnej strony ani domeny).</li>
+<li>Kliknij avatar w prawym górnym rogu → <b>My Profile</b> → <b>API Tokens</b> → <b>Create Token</b>.</li>
+<li>Na dole wybierz <b>Create Custom Token → Get started</b>.</li>
+<li>Nazwa: <code>KRONOS-7</code>. W <b>Permissions</b> ustaw: <b>Account</b> · <b>Radar</b> · <b>Read</b>.</li>
+<li><b>Continue to summary → Create Token</b>. Skopiuj token (pokazuje się tylko raz) i wklej w KRONOS-ie.</li>
+</ol>
+</div>
+
+<div class="key">
+<h4>9.5 OpenSky Network – ślad lotu samolotu</h4>
+<div class="meta">Koszt: <b class="free">darmowy</b> · opcjonalny (bez konta działa z mniejszym limitem) · Gdzie: <b>ŹRÓDŁA I INTEGRACJE → OpenSky client_id / client_secret</b></div>
+<ol>
+<li>Załóż konto na <code>opensky-network.org</code> (<b>Register</b>) i zaloguj się.</li>
+<li>Wejdź na stronę konta: <code>opensky-network.org/my-opensky/account</code>.</li>
+<li>W sekcji <b>API Client</b> utwórz nowego klienta. Pobierze się plik <code>credentials.json</code> – otwórz go w Notatniku.</li>
+<li>Skopiuj wartości <code>clientId</code> i <code>clientSecret</code> do pól OpenSky client_id i client_secret.</li>
+<li>Test: kliknij samolot na mapie → <span class="btn">ŚLAD LOTU (OpenSky)</span>.</li>
+</ol>
+</div>
+
+<div class="key">
+<h4>9.6 Global Fishing Watch – „ciemne” statki z radaru</h4>
+<div class="meta">Koszt: <b class="free">darmowy do użytku niekomercyjnego</b> · Gdzie: <b>ŹRÓDŁA I INTEGRACJE → token GFW</b></div>
+<ol>
+<li>Wejdź na <code>globalfishingwatch.org/our-apis</code> → <b>API Portal</b>, zarejestruj się / zaloguj.</li>
+<li>Kliknij <b>Create token</b> i wypełnij formularz. W polu <i>„What problem are you trying to solve?”</i> wpisz np.: <i>„Personal, non-commercial maritime awareness dashboard. I want to see SAR vessel detections of ships not broadcasting AIS in a few sea areas (Baltic, Black Sea, Strait of Hormuz, Red Sea) on a map for my own situational awareness.”</i></li>
+<li>Skopiuj token i wklej w pole „token GFW”.</li>
+</ol>
+<p class="small">Dane radarowe mają kilka dni opóźnienia – to cecha źródła, nie błąd.</p>
+</div>
+
+<div class="key">
+<h4>9.7 YouTube Data API – filmy przy zdarzeniach</h4>
+<div class="meta">Koszt: <b class="free">darmowy dzienny limit</b> · Gdzie: <b>ŹRÓDŁA I INTEGRACJE → klucz YouTube Data API</b></div>
+<ol>
+<li>Wejdź na <code>console.cloud.google.com</code> i zaloguj się kontem Google.</li>
+<li>U góry: wybór projektu → <b>New Project</b> → nazwa <code>KRONOS-7</code> → Create.</li>
+<li>Menu ☰ → <b>APIs &amp; Services</b> → <b>Library</b> → wyszukaj <b>YouTube Data API v3</b> → <b>Enable</b>.</li>
+<li><b>APIs &amp; Services → Credentials → Create credentials → API key</b>. Skopiuj klucz.</li>
+<li>Zalecane: kliknij klucz → <b>API restrictions</b> → ogranicz do „YouTube Data API v3” → Save.</li>
+<li>Wklej klucz w KRONOS-ie i dopisz <code>youtube</code> w polu „Wyszukiwarki przy zdarzeniach”.</li>
+</ol>
+</div>
+
+<div class="key">
+<h4>9.8 VK – posty z VKontakte</h4>
+<div class="meta">Koszt: <b class="free">darmowy</b> · Gdzie: <b>ŹRÓDŁA I INTEGRACJE → token usługowy VK</b></div>
+<ol>
+<li>Załóż konto na <code>vk.com</code> (wymaga numeru telefonu) i zaloguj się.</li>
+<li>Wejdź na <code>vk.com/apps?act=manage</code> (albo <code>dev.vk.com</code> → Moje aplikacje) → <b>utwórz aplikację</b> (typ: strona / Web, dowolna nazwa).</li>
+<li>W ustawieniach aplikacji znajdź <b>„Klucz usługowy” (Service token)</b> i skopiuj go.</li>
+<li>Wklej w KRONOS-ie i dopisz <code>vk</code> w polu „Wyszukiwarki przy zdarzeniach”.</li>
+</ol>
+</div>
+
+<div class="key">
+<h4>9.9 Reddit</h4>
+<div class="meta">Koszt: <b class="free">darmowy</b> · od końca 2025 r. nowe aplikacje mogą wymagać zatwierdzenia przez Reddit (kilka dni) · Gdzie: <b>ŹRÓDŁA I INTEGRACJE → Reddit client id / secret</b></div>
+<ol>
+<li>Zaloguj się na <code>reddit.com</code> i wejdź na <code>reddit.com/prefs/apps</code>.</li>
+<li>Kliknij <b>create another app…</b>, nazwa <code>KRONOS-7</code>, typ <b>script</b>, „redirect uri”: <code>http://localhost</code> → <b>create app</b>.</li>
+<li><b>client id</b> to krótki ciąg pod nazwą aplikacji, <b>secret</b> – pole „secret”. Wklej oba w KRONOS-ie.</li>
+<li>Jeśli Reddit poprosi o zgłoszenie zgodnie z <i>Responsible Builder Policy</i>, wypełnij je (użytek prywatny, tylko odczyt).</li>
+</ol>
+<p class="small">Bez klucza KRONOS też próbuje czytać Reddita, ale Reddit często takie zapytania blokuje.</p>
+</div>
+
+<div class="key">
+<h4>9.10 Stadia Maps – mapa szczegółowa na telefonie</h4>
+<div class="meta">Koszt: <b class="free">darmowy do użytku prywatnego</b> · opcjonalny (na komputerze działa bez klucza) · Gdzie: <b>ŹRÓDŁA I INTEGRACJE → Klucz Stadia Maps</b></div>
+<ol>
+<li><code>stadiamaps.com</code> → <b>Sign up</b> (darmowy plan).</li>
+<li>W panelu: <b>Manage Properties &amp; Authentication</b> → utwórz „property” → <b>Add API key</b>.</li>
+<li>Skopiuj klucz i wklej w KRONOS-ie.</li>
+</ol>
+</div>
+
+<div class="key">
+<h4>9.11 FAA NOTAM API</h4>
+<div class="meta">Koszt: <b>darmowy</b> · <b>uwaga:</b> rejestracja na api.faa.gov bywa niedostępna dla osób spoza USA · Gdzie: <b>ŹRÓDŁA I INTEGRACJE → NOTAM client_id / client_secret</b></div>
+<ol>
+<li><code>api.faa.gov</code> → zarejestruj się → <b>Register an application</b> → wybierz <b>NOTAM API</b>.</li>
+<li>Po zatwierdzeniu dostaniesz <b>client_id</b> i <b>client_secret</b> – wklej je w KRONOS-ie.</li>
+<li>W polu „Rejony informacji lotniczej (FIR)” możesz wpisać kody ICAO, np. <code>UKBV, EPWW, LLLL</code>.</li>
+</ol>
+<p class="small">Jeśli nie możesz się zarejestrować, zostaw puste – reszta programu działa normalnie.</p>
+</div>
+
+<div class="key">
+<h4>9.12 ACLED – zdarzenia konfliktowe</h4>
+<div class="meta">Koszt: darmowy, ale <b>API tylko dla kont instytucjonalnych</b> · Gdzie: <b>ŹRÓDŁA I INTEGRACJE → e-mail i hasło myACLED</b></div>
+<p>Konto założone na prywatny adres (Gmail, Outlook, Windows Live itp.) dostaje poziom <b>„Open”</b>, który <b>nie ma dostępu do API</b>. API mają poziomy Research, Partner i Enterprise, przydzielane po domenie e-maila instytucji (uczelnia, organizacja, firma z licencją). Z kontem Open KRONOS pokaże w stanie źródeł błąd 403 – wtedy zostaw pola puste.</p>
+<ol>
+<li>Jeśli masz e-mail instytucji: <code>acleddata.com</code> → <b>Register</b> tym adresem.</li>
+<li>Wpisz e-mail i hasło konta myACLED w KRONOS-ie. „Ile dni wstecz” – domyślnie 14.</li>
+</ol>
+</div>
+
+<!-- ============================================================ 10 -->
+<h2 id="s10"><span class="n">10</span>Powiadomienia na telefon</h2>
+<p>KRONOS może wysyłać na telefon: wzrost napięcia, briefing, krążące samoloty, kody alarmowe, sankcje, STS, kable, „ciemne” statki, incydenty morskie, zdarzenia złożone, alarmy UA i IL, promieniowanie, przeloty satelitów. Rodzaje zaznaczasz w OPERATOR pod polami powiadomień. Limit: 1 wiadomość na 5 s i 40 na godzinę.</p>
+<div class="key">
+<h4>10.1 Telegram – własny bot</h4>
+<div class="meta">Koszt: <b class="free">darmowy</b> · Gdzie: <b>OPERATOR → token bota Telegram + ID czatu</b></div>
+<ol>
+<li>W Telegramie znajdź <b>@BotFather</b> (z niebieskim znaczkiem weryfikacji) i napisz <code>/newbot</code>.</li>
+<li>Podaj nazwę (np. <i>KRONOS-7 Kriss</i>) i nazwę użytkownika kończącą się na <code>bot</code> (np. <code>kronos7_kriss_bot</code>).</li>
+<li>BotFather odeśle <b>token</b> w postaci <code>123456789:AA…</code> – skopiuj go do pola „token bota Telegram”.</li>
+<li>Otwórz czat ze swoim nowym botem i napisz do niego cokolwiek (np. „start”) – bez tego bot nie może do Ciebie pisać.</li>
+<li>Swoje <b>ID czatu</b> sprawdzisz u <b>@userinfobot</b> (napisz cokolwiek – odpowie liczbą „Id”). Wpisz ją w pole „ID czatu”.</li>
+<li><span class="btn">ZAPISZ</span> → <span class="btn">WYŚLIJ TEST</span>.</li>
+</ol>
+</div>
+<div class="key">
+<h4>10.2 Discord – webhook</h4>
+<div class="meta">Koszt: <b class="free">darmowy</b> · Gdzie: <b>OPERATOR → adres webhooka Discord</b></div>
+<ol>
+<li>Na swoim serwerze Discord: ustawienia kanału (⚙) → <b>Integracje</b> → <b>Webhooki</b> → <b>Nowy webhook</b>.</li>
+<li>Nadaj nazwę „KRONOS-7” → <b>Kopiuj adres URL webhooka</b>.</li>
+<li>Wklej w KRONOS-ie, <span class="btn">ZAPISZ</span> → <span class="btn">WYŚLIJ TEST</span>.</li>
+</ol>
+</div>
+
+<!-- ============================================================ 11 -->
+<h2 id="s11"><span class="n">11</span>Telegram – kanały i konto</h2>
+<h3>11.1 Kanały OSINT (bez logowania)</h3>
+<p>W <b>ŹRÓDŁA I INTEGRACJE → TELEGRAM OSINT</b> zaznaczasz kanały do śledzenia z katalogu ponad 100 sprawdzonych kanałów (oficjalne ukraińskie i rosyjskie, media, milblogerzy, OSINT, Bliski Wschód, cyber). Przyciski: DOMYŚLNE / WSZYSTKIE / ŻADNE. Własne kanały dopisz w polu „Inne kanały” – nazwa z adresu <code>t.me/NAZWA</code>, kanał musi mieć publiczny podgląd.</p>
+<p>Więcej kanałów = więcej pracy dla AI przy analizie. Każdy kanał ma oznaczony rodzaj (oficjalny, media, milbloger, propaganda), który AI bierze pod uwagę przy ocenie wiarygodności.</p>
+<div class="key">
+<h4>11.2 Konto Telegram – przeszukiwanie całego Telegrama</h4>
+<div class="meta">Koszt: <b class="free">darmowy</b> · tylko odczyt – KRONOS niczego nie wysyła, nie dołącza do kanałów, nie płaci gwiazdkami · Gdzie: <b>ŹRÓDŁA I INTEGRACJE → TELEGRAM – KONTO</b></div>
+<ol>
+<li>Jeśli widzisz przycisk <span class="btn">ZAINSTALUJ OBSŁUGĘ KONTA</span>, kliknij go (biblioteka Telethon, ok. 2 MB).</li>
+<li>Wejdź na <code>my.telegram.org</code>, podaj numer telefonu (z kierunkowym, np. <code>+44…</code>) i kod, który przyjdzie w aplikacji Telegram.</li>
+<li>Wybierz <b>API development tools</b>. Wypełnij formularz: App title np. <code>KRONOS-7</code>, Short name np. <code>kronos7</code>, Platform: <i>Desktop</i>. Zapisz.</li>
+<li>Skopiuj <b>api_id</b> (liczba) i <b>api_hash</b> (długi ciąg) do pól w KRONOS-ie, wpisz numer telefonu, kliknij <span class="btn">WYŚLIJ KOD</span>.</li>
+<li>Wpisz kod, który przyjdzie w aplikacji Telegram (czat „Telegram”), → <span class="btn">ZALOGUJ</span>. Jeśli masz hasło dwuetapowe, KRONOS o nie zapyta.</li>
+</ol>
+<div class="warn">Sesja zapisuje się w pliku <code>data/tg_account.session</code> – daje <b>pełny dostęp do Twojego konta</b>. Nigdy go nikomu nie wysyłaj. <span class="btn">WYLOGUJ</span> usuwa sesję. api_hash też traktuj jak hasło.</div>
+<p>Po zalogowaniu zestawienia POSTY I ZDJĘCIA przeszukują dodatkowo wszystkie Twoje kanały i grupy oraz publiczne posty z całego Telegrama (hashtagi bez limitu, pełny tekst w darmowej dziennej puli).</p>
+</div>
+
+<!-- ============================================================ 12 -->
+<h2 id="s12"><span class="n">12</span>Własne odbiorniki, poczta, Home Assistant</h2>
+<h3>SDR – własne odbiorniki</h3>
+<table>
+<tr><th style="width:18%">Co</th><th>Jak podłączyć</th></tr>
+<tr><td>ADS-B</td><td>Pole „ADS-B”: adres pliku <code>aircraft.json</code> z readsb / dump1090 / tar1090, np. <code>http://192.168.1.50/tar1090/data/aircraft.json</code>. Samoloty pojawią się w warstwie MOJE ADS-B.</td></tr>
+<tr><td>AIS (UDP)</td><td>Pole „AIS” – port UDP (domyślnie <code>10110</code>). W AIS-catcher dodaj <code>-u IP_KOMPUTERA 10110</code>, w rtl_ais <code>-h IP -P 10110</code>.</td></tr>
+<tr><td>AIS (TCP)</td><td>„Inne strumienie NMEA po TCP”: <code>host:port</code>, np. serwer TCP z AIS-catcher (<code>-S 5012</code>).</td></tr>
+<tr><td>Kystverket</td><td>Zaznacz – publiczny strumień AIS Norwegii, bez klucza.</td></tr>
+<tr><td>AISHub</td><td>Darmowa wymiana: udostępniasz dane ze swojego odbiornika AIS i dostajesz statki z całej sieci. Rejestracja <code>aishub.net → Join</code>, potem wpisz nazwę użytkownika.</td></tr>
+<tr><td>APRS-IS</td><td>Zaznacz i ustaw promień w km – stacje APRS wokół QTH (tylko odbiór, znak z okna OPERATOR).</td></tr>
+</table>
+<div class="key">
+<h4>Poczta – alerty UKMTO, MDAT-GoG, IFC-IOR</h4>
+<div class="meta">KRONOS tylko czyta pocztę i niczego nie usuwa. Najlepiej osobna skrzynka.</div>
+<ol>
+<li>Załóż osobne konto Gmail i zapisz je na listy alertów (UKMTO, MDAT-GoG, IFC-IOR) na ich stronach.</li>
+<li>Na tym koncie Google: <b>Zarządzaj kontem Google → Bezpieczeństwo → Weryfikacja dwuetapowa</b> (musi być włączona) → <b>Hasła do aplikacji</b> → utwórz hasło „KRONOS”. Dostaniesz 16 znaków.</li>
+<li>W KRONOS-ie: serwer <code>imap.gmail.com</code>, port <code>993</code>, adres e-mail, <b>hasło aplikacji</b> (nie zwykłe hasło), folder <code>INBOX</code>.</li>
+<li><span class="btn">SPRAWDŹ POCZTĘ</span>. Alerty trafią do panelu BEZPIECZEŃSTWO MORSKIE.</li>
+</ol>
+</div>
+<div class="key">
+<h4>Home Assistant</h4>
+<ol>
+<li>W HA: <b>Ustawienia → Automatyzacje → Utwórz</b> → wyzwalacz <b>Webhook</b>, ID np. <code>kronos7</code>.</li>
+<li>Wklej adres w KRONOS-ie, np. <code>http://homeassistant.local:8123/api/webhook/kronos7</code> → <span class="btn">TEST</span>.</li>
+<li>KRONOS wysyła pola <code>kind</code>, <code>text</code>, <code>level</code>. Przykład: warunek <code>{{ trigger.json.kind == 'priority' }}</code> → czerwone światło.</li>
+</ol>
+</div>
+
+<!-- ============================================================ 13 -->
+<h2 id="s13"><span class="n">13</span>Mapy offline i obciążenie komputera</h2>
+<h3>Mapy offline</h3>
+<p>Każdy obejrzany kafelek mapy zostaje na dysku (<code>data/tiles</code>) i drugi raz ładuje się natychmiast, bez internetu. Żeby pobrać mapę z góry:</p>
+<ol>
+<li>Kliknij <b>⬇</b> obok wyboru podkładu.</li>
+<li>Wybierz podkład (CIEMNA SZCZEGÓŁOWA, CIEMNA SZARA, SATELITA) i obszar: CAŁY ŚWIAT albo TO, CO WIDAĆ TERAZ NA MAPIE.</li>
+<li>Szczegółowość: świat do poziomu 5–6 (ok. 120 MB), wybrany obszar do 10–12 (ulice w miastach).</li>
+<li><span class="btn">POBIERZ</span>. Pobieranie idzie w tle, ok. 8 kafelków/s. Okno możesz zamknąć.</li>
+</ol>
+<p class="small">OSM NOCNA nie pozwala na pobieranie hurtowe – zapamiętuje tylko obejrzane miejsca.</p>
+<h3>Karta graficzna i płynność</h3>
+<ul>
+<li><b>AI w tle tylko z analizą</b> (OPERATOR) – karta pracuje tylko w godzinach analiz.</li>
+<li><b>Zwalniaj model po analizie</b> – pamięć karty wolna np. do gier.</li>
+<li><b>Tryb oszczędny</b> – klawisz <code>E</code>: bez poświaty i animacji, do 10 klatek/s.</li>
+<li><b>Okno w tle</b> – animacje stoją, mapa rysuje się najwyżej 2 razy/s.</li>
+<li>Mapa rysuje się najwyżej 30 razy/s i tylko gdy coś się zmienia. Przy oddaleniu statki łączą się w kratki z liczbą.</li>
+</ul>
+
+<!-- ============================================================ 14 -->
+<h2 id="s14"><span class="n">14</span>Telefon, widżet, Stream Deck, sterowanie</h2>
+<h3>Telefon i tablet w sieci domowej</h3>
+<ol>
+<li>OPERATOR → zaznacz „Udostępnij terminal w sieci lokalnej”, wpisz PIN (4–8 cyfr), <span class="btn">ZAPISZ</span>.</li>
+<li>Zamknij okno serwera i uruchom <code>start.bat</code> ponownie. Przy pierwszym starcie Windows może zapytać o zaporę – zezwól w sieci prywatnej.</li>
+<li>OPERATOR pokaże adres, np. <code>http://192.168.1.20:7707</code> – otwórz go na telefonie (ta sama sieć Wi-Fi), podaj PIN.</li>
+<li>W przeglądarce telefonu „Dodaj do ekranu głównego” – ikona jak aplikacja. Ustawienia zmienia się tylko na komputerze.</li>
+</ol>
+<h3>Widżet</h3>
+<p><code>http://127.0.0.1:7707/widget</code> (po angielsku <code>?lang=en</code>) – poziom napięcia, odliczanie analizy, liczniki, przelot satelity. Do iCUE (XENEON EDGE), tabletu albo drugiego monitora.</p>
+<h3>Stream Deck</h3>
+<p>Dwuklik na <code>streamdeck/dist/com.vipersq.kronos7.streamDeckPlugin</code> (Stream Deck 6.4+). Akcje w kategorii KRONOS-7: poziom napięcia, analiza AI, teatr działań, warstwa mapy, licznik kontaktów, przelot satelity.</p>
+<h3>Polecenia z innych programów</h3>
+<p><code>http://127.0.0.1:7707/api/cmd?do=…&amp;arg=…</code>, np. <code>do=theater&amp;arg=hz</code> (Ormuz), <code>do=eco&amp;arg=toggle</code>. Dostępne: theater, layer, zoom, replay, briefing, sitrep, ask, stop, globe, autozoom, alert, audio, view, event, sat, voice, eco.</p>
+<h3>Głos lektora</h3>
+<p>OPERATOR → <span class="btn">DŹWIĘKI I GŁOS LEKTORA…</span>: <b>Microsoft</b> (Marek, Zofia – najbardziej naturalne, wymagają internetu; kliknij ZAINSTALUJ), <b>Piper</b> (offline, na procesorze; kliknij POBIERZ przy głosie) albo głos przeglądarki. Tam też własne dźwięki (MP3/WAV/OGG/M4A/FLAC do 15 MB).</p>
+
+<!-- ============================================================ 15 -->
+<h2 id="s15"><span class="n">15</span>Pliki, kopia zapasowa, bezpieczeństwo</h2>
+<table>
+<tr><th style="width:34%">Plik / folder</th><th>Co zawiera</th></tr>
+<tr><td><code>data/settings.json</code></td><td><b>Twoje ustawienia i wszystkie klucze</b> – nie udostępniaj.</td></tr>
+<tr><td><code>data/tg_account.session</code></td><td><b>Sesja konta Telegram</b> – pełny dostęp do konta, nie udostępniaj.</td></tr>
+<tr><td><code>data/state.json</code>, <code>data/archive/</code></td><td>Bieżący odczyt i 120 poprzednich.</td></tr>
+<tr><td><code>data/history.db</code></td><td>Historia: pozycje (48 h), wskaźniki (rok), zdarzenia (90 dni).</td></tr>
+<tr><td><code>data/tiles/</code></td><td>Mapy offline (może być duży – można usunąć).</td></tr>
+<tr><td><code>data/media/</code></td><td>Zdjęcia i filmy z Telegrama (10 dni, max 1,5 GB).</td></tr>
+<tr><td><code>data/sounds/</code>, <code>data/tts/</code></td><td>Twoje dźwięki, głosy Piper.</td></tr>
+<tr><td><code>config.json</code></td><td>Ustawienia domyślne (port, kanały RSS, katalog modeli). Ustawienia z okna OPERATOR mają pierwszeństwo.</td></tr>
+</table>
+<h3>Kopia zapasowa</h3>
+<p>Wystarczy skopiować folder <code>data</code> (bez <code>tiles</code> i <code>media</code>, jeśli zależy Ci na miejscu). Przy przenoszeniu na nowy komputer: zainstaluj KRONOS-a i wklej folder <code>data</code>.</p>
+<h3>Bezpieczeństwo</h3>
+<ul>
+<li>Serwer domyślnie słucha tylko na Twoim komputerze (127.0.0.1). Dostęp z sieci domowej – tylko po włączeniu i z PIN-em.</li>
+<li>Nie wystawiaj KRONOS-a do internetu (przekierowanie portów na routerze).</li>
+<li>Gdy dajesz program komuś innemu – daj ZIP z GitHuba albo folder <b>bez</b> <code>data</code>.</li>
+<li>Dane z OpenSanctions (graf powiązań statków) mają licencję CC BY-NC 4.0 – tylko do użytku niekomercyjnego.</li>
+</ul>
+
+<!-- ============================================================ 16 -->
+<h2 id="s16"><span class="n">16</span>Rozwiązywanie problemów</h2>
+<p>Pierwsze miejsce do sprawdzenia: <b>OPERATOR → ŹRÓDŁA I INTEGRACJE → STAN ŹRÓDEŁ</b> oraz komunikaty w czarnym oknie serwera.</p>
+<table>
+<tr><th style="width:32%">Objaw</th><th>Co zrobić</th></tr>
+<tr><td>Strona się nie otwiera</td><td>Sprawdź, czy czarne okno serwera jest otwarte. Wpisz ręcznie <code>http://127.0.0.1:7707</code>. Jeśli port jest zajęty, zmień <code>"port"</code> w <code>config.json</code>.</td></tr>
+<tr><td>Brak analizy AI</td><td>Czy Ollama działa (ikona lamy w zasobniku)? OPERATOR → MODELE… – czy jest zainstalowany model? Usuń <code>data\.no_ollama</code>, jeśli wcześniej odmówiłeś instalacji.</td></tr>
+<tr><td>Model nie chce się pobrać z Hugging Face</td><td>Tylko modele GGUF. Dla Llamy/Gemmy: akceptacja licencji + klucz Ollamy w HF (rozdział 6). Warianty podzielone na części nie działają.</td></tr>
+<tr><td>Karta graficzna ciągle pracuje / głośna</td><td>OPERATOR: „AI w tle – tylko razem z główną analizą”, „Zwalniaj model po analizie”, tryb oszczędny (E), „Gdy okno nie jest aktywne”.</td></tr>
+<tr><td>Mapa się tnie</td><td>Tryb oszczędny (E); podkład WEKTOR zamiast SATELITA; pobierz mapy offline; w FILTRACH wyłącz zbędne typy statków.</td></tr>
+<tr><td>Widać statki tylko na Bałtyku</td><td>Brak klucza aisstream.io (9.1).</td></tr>
+<tr><td>ACLED: „odmowa dostępu (HTTP 403)”</td><td>Konto „Open” bez API – patrz 9.12. Zostaw pola puste.</td></tr>
+<tr><td>Copernicus: czerwony napis zamiast zdjęcia</td><td>Sprawdź client_id/secret (9.3). Możliwy też brak bezchmurnego zdjęcia z ostatnich dni – spróbuj RADAR S-1.</td></tr>
+<tr><td>Reddit / GDELT: błąd 403 / 429</td><td>Serwis ogranicza zapytania. GDELT – poczekaj; Reddit – klucz (9.9).</td></tr>
+<tr><td>Powiadomienia nie przychodzą</td><td>Czy napisałeś do bota „start”? Czy ID czatu jest liczbą od @userinfobot? Kliknij WYŚLIJ TEST. Czy zaznaczone są rodzaje powiadomień?</td></tr>
+<tr><td>Brak głosu briefingu</td><td>DŹWIĘKI I GŁOS LEKTORA → zainstaluj głosy Microsoft albo pobierz Pipera; albo dodaj polski głos w Windows (Ustawienia → Czas i język → Mowa).</td></tr>
+<tr><td>Telegram konto: błąd logowania</td><td>Numer z kierunkowym (+44…). Kod przychodzi w aplikacji Telegram, nie SMS-em. api_id to liczba, api_hash – 32 znaki.</td></tr>
+<tr><td>Po aktualizacji coś nie działa</td><td>Usuń <code>data\.deps_ok</code> i uruchom <code>start.bat</code> ponownie. W przeglądarce Ctrl+F5.</td></tr>
+</table>
+
+<!-- ============================================================ 17 -->
+<h2 id="s17"><span class="n">17</span>Skróty klawiszowe i ściąga</h2>
+<div class="two">
+<table>
+<tr><th>Klawisz</th><th>Działanie</th></tr>
+<tr><td><code>E</code></td><td>Tryb oszczędny wł./wył.</td></tr>
+<tr><td><code>/</code></td><td>Wyszukiwarka na mapie</td></tr>
+<tr><td><code>Alt</code>+<code>V</code></td><td>Polecenia głosowe</td></tr>
+<tr><td><code>Esc</code></td><td>Zamknij okno / wyjdź z trybu ekranu</td></tr>
+<tr><td><code>F11</code></td><td>Pełny ekran przeglądarki</td></tr>
+<tr><td><code>←</code> <code>→</code></td><td>Poprzednie/następne zdjęcie w podglądzie</td></tr>
+<tr><td><code>Enter</code></td><td>Wyślij pytanie / SITREP</td></tr>
+</table>
+<table>
+<tr><th>Adres</th><th>Co to</th></tr>
+<tr><td><code>127.0.0.1:7707</code></td><td>Terminal</td></tr>
+<tr><td><code>…/widget</code></td><td>Widżet</td></tr>
+<tr><td><code>…/api/cmd?do=…</code></td><td>Sterowanie</td></tr>
+<tr><td><code>…/api/deck</code></td><td>Stan dla Stream Decka</td></tr>
+</table>
+</div>
+<h3>Ściąga: gdzie są klucze</h3>
+<table>
+<tr><th style="width:30%">Usługa</th><th>Adres</th><th style="width:30%">Wpisz w KRONOS-ie</th></tr>
+<tr><td>aisstream.io</td><td>aisstream.io → API Keys</td><td>OPERATOR</td></tr>
+<tr><td>Bot Telegram</td><td>@BotFather, @userinfobot</td><td>OPERATOR</td></tr>
+<tr><td>Discord</td><td>kanał → Integracje → Webhooki</td><td>OPERATOR</td></tr>
+<tr><td>AI w chmurze</td><td>aistudio.google.com · console.groq.com · openrouter.ai · github.com</td><td>OPERATOR → AI W CHMURZE</td></tr>
+<tr><td>Copernicus</td><td>shapps.dataspace.copernicus.eu/dashboard → User Settings</td><td>ŹRÓDŁA I INTEGRACJE</td></tr>
+<tr><td>Cloudflare Radar</td><td>dash.cloudflare.com → My Profile → API Tokens</td><td>ŹRÓDŁA I INTEGRACJE</td></tr>
+<tr><td>OpenSky</td><td>opensky-network.org/my-opensky/account</td><td>ŹRÓDŁA I INTEGRACJE</td></tr>
+<tr><td>Global Fishing Watch</td><td>globalfishingwatch.org/our-apis</td><td>ŹRÓDŁA I INTEGRACJE</td></tr>
+<tr><td>YouTube</td><td>console.cloud.google.com</td><td>ŹRÓDŁA I INTEGRACJE</td></tr>
+<tr><td>VK</td><td>vk.com/apps?act=manage</td><td>ŹRÓDŁA I INTEGRACJE</td></tr>
+<tr><td>Reddit</td><td>reddit.com/prefs/apps</td><td>ŹRÓDŁA I INTEGRACJE</td></tr>
+<tr><td>alerts.in.ua</td><td>alerts.in.ua/api-request</td><td>ŹRÓDŁA I INTEGRACJE</td></tr>
+<tr><td>Stadia Maps</td><td>stadiamaps.com</td><td>ŹRÓDŁA I INTEGRACJE</td></tr>
+<tr><td>Telegram (konto)</td><td>my.telegram.org → API development tools</td><td>ŹRÓDŁA I INTEGRACJE</td></tr>
+<tr><td>Gmail (IMAP)</td><td>Konto Google → Bezpieczeństwo → Hasła do aplikacji</td><td>ŹRÓDŁA I INTEGRACJE</td></tr>
+<tr><td>Hugging Face</td><td>huggingface.co → Settings → SSH and GPG Keys</td><td>OPERATOR → MODELE…</td></tr>
+</table>
+<p class="small" style="margin-top:14pt">Strony dostawców czasem zmieniają wygląd i nazwy menu – jeśli coś wygląda inaczej, szukaj na ich stronie słów „API”, „API key”, „Token” albo „Developer”. Instrukcja dotyczy KRONOS-7 v3.21.</p>
+
+</body>
+</html>
