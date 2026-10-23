@@ -94,6 +94,7 @@
 <div class="modal" id="intgModal" hidden role="dialog" aria-modal="true" aria-labelledby="intgTitle">
   <div class="modal-in sit-modal frame snd-modal">
     <div class="frame-h"><span id="intgTitle">&gt; ŹRÓDŁA I INTEGRACJE</span><button type="button" class="btn" id="intgClose" aria-label="Zamknij">✕</button></div>
+    <div class="testbar"><span id="igSum">—</span><button type="button" class="btn" id="igTestAll">TESTUJ WSZYSTKO</button><button type="button" class="btn" id="igToStatus">LISTA ↓</button></div>
     <div class="sat-body intg">
       <div class="sat-col">
         <p class="sat-h">UKRAINA · ALARMY PRZECIWLOTNICZE</p>
@@ -180,7 +181,8 @@
         <input id="ig_imap_senders" autocomplete="off" placeholder="inni nadawcy po przecinku (opcjonalnie)">
         <input id="ig_imap_days" inputmode="numeric" autocomplete="off" placeholder="ile dni wstecz przy pierwszym odczycie (14)">
         <div class="set-row"><button type="button" class="btn" id="igMailTest">SPRAWDŹ POCZTĘ</button><span class="hint" id="igMailMsg"></span></div>
-        <p class="sat-h">STAN ŹRÓDEŁ</p>
+        <p class="sat-h" id="igStatusH">STAN ŹRÓDEŁ</p>
+        <p class="hint">TEST przy źródle sprawdza połączenie od razu; TESTUJ WSZYSTKO – wszystkie naraz (do ok. minuty). KRONOS sam sprawdza wszystko co godzinę. AI w chmurze testuje się tylko ręcznie, bo test zużywa zapytanie z limitu.</p>
         <div class="tts-voices" id="igStatus"></div>
       </div>
     </div>

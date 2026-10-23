@@ -1,4 +1,4 @@
-/* KRONOS-7 v3.21 — interfejs terminala. Dane: lokalny serwer (/api/*). */
+/* KRONOS-7 v3.22 — interfejs terminala. Dane: lokalny serwer (/api/*). */
 (function () {
 "use strict";
 const $ = s => document.querySelector(s);
@@ -1949,10 +1949,12 @@ function renderSys() {
     <dt>${TX("MODEL")}</dt><dd>${e.model ? esc(e.model) : '<span class="red">brak</span>'}</dd>
     ${e.cloud ? `<dt>${TX("CHMURA")}</dt><dd>${esc(e.cloud)} · <span class="${e.cloud_ok ? "" : "red"}">${e.cloud_ok ? TX("gotowa") : TX("przerwa – lokalny model")}</span><br><span class="dim">${[["main", TX("analiza")], ["ask", TX("pytania")], ["bg", TX("AI w tle")]].filter(x => (e.cloud_use || {})[x[0]]).map(x => x[1]).join(", ") || TX("nic nie wysyła")}</span></dd>` : ""}
     <dt>${TX("ZALECANY")}</dt><dd>${esc(e.recommended)}${e.recommended_size_gb ? ` (${e.recommended_size_gb} ${TX("GB)")}` : ""}<br><span class="dim">${esc(e.reason)}</span></dd>
+    ${STATUS.srctest && STATUS.srctest.at ? `<dt>${TX("ŹRÓDŁA")}</dt><dd><span class="srcsum" id="srcSum" title="${TX("Otwórz ŹRÓDŁA I INTEGRACJE")}">${STATUS.srctest.ok} OK · <span class="${STATUS.srctest.err ? "red" : ""}">${STATUS.srctest.err} ${TX("z błędem")}</span></span> <span class="dim">· ${TX("test")} ${hm(STATUS.srctest.at)}</span></dd>` : ""}
     <dt>${TX("NASTĘPNY")}</dt><dd>${STATUS.next ? new Date(STATUS.next).toLocaleString(LOC, { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "—"}</dd></dl>
     ${e.suggest_pull ? `<div class="dbtns"><button class="btn" id="pullBtn" ${pull.active ? "disabled" : ""}>${pull.active ? `${TX("POBIERANIE")} ${pull.pct}%` : `${TX("POBIERZ")} ${esc(e.recommended)}`}</button></div>` : ""}
     ${pull.status && pull.status !== "gotowe" ? `<span class="dim">${esc(pull.status)}</span>` : ""}
     <details><summary>${TX("DZIENNIK")}</summary><pre>${esc(A(STATUS.log).slice(-50).join("\n"))}</pre></details>`;
+  const ss = $("#srcSum"); if (ss) ss.addEventListener("click", () => $("#intgOpen").click());
   const pb = $("#pullBtn"); if (pb) pb.addEventListener("click", async () => { beep(1000); await api("/api/model/pull", {}); pollStatus(); });
   $("#jobbar").hidden = !j.running; $("#jobfill").style.width = j.pct + "%"; $("#jobtext").textContent = `${TX("ANALIZA:")} ${j.step} · ${j.pct}%`;
   $("#refreshBtn").disabled = j.running; $("#refreshBtn").textContent = j.running ? TX("ANALIZA TRWA…") : TX("ODŚWIEŻ ANALIZĘ");
@@ -2835,15 +2837,51 @@ function tgValue() { return [...$("#tgCat").querySelectorAll("[data-tg]:checked"
 $("#tgDef").addEventListener("click", () => { $("#tgCat").querySelectorAll("[data-tg]").forEach(b => b.checked = !!A(INTG.tg_catalog).find(c => c.ch === b.dataset.tg && c.on)); tgCount(); });
 $("#tgAll").addEventListener("click", () => { $("#tgCat").querySelectorAll("[data-tg]").forEach(b => b.checked = true); tgCount(); });
 $("#tgNone").addEventListener("click", () => { $("#tgCat").querySelectorAll("[data-tg]").forEach(b => b.checked = false); tgCount(); });
+const SRC_EXTRA = () => ({ ai_local: TX("AI lokalne (Ollama / LM Studio)"), ai_cloud: TX("AI w chmurze"), air: TX("Samoloty (adsb.fi / adsb.lol)"), sea_dt: "Digitraffic (AIS)", sea_ais: "aisstream.io",
+  copernicus: "Copernicus", opensky: "OpenSky", stadia: "Stadia Maps", notify_tg: TX("Powiadomienia – bot Telegram"), notify_dc: TX("Powiadomienia – Discord") });
+let TESTING = new Set();
 function renderIntgStatus() {
-  const st = (INTG && INTG.status) || {}, N = { ua_alerts: TX("Alarmy UA"), deepstate: "DeepStateMap", notam: "NOTAM (FAA)", gfw: "Global Fishing Watch", telegram: "Telegram OSINT",
+  const st = (INTG && INTG.status) || {}, T = (INTG && INTG.tests) || {}, N = Object.assign(SRC_EXTRA(), { ua_alerts: TX("Alarmy UA"), deepstate: "DeepStateMap", notam: "NOTAM (FAA)", gfw: "Global Fishing Watch", telegram: "Telegram OSINT",
     adsb: "ADS-B", ais: "AIS (UDP)", aprs: "APRS-IS", aishub: "AISHub", mail: TX("Poczta (IMAP)"), ha: "Home Assistant",
     radiation: TX("Promieniowanie (Safecast)"), acled: "ACLED", tgacct: TX("Telegram – konto"), geoconfirmed: "GeoConfirmed", warspotting: "WarSpotting",
-    tzevaadom: TX("Alarmy w Izraelu (Tzeva Adom)"), emsc: "EMSC", isw: TX("Mapy ISW / CTP"), cfradar: "Cloudflare Radar", sx_bluesky: "Bluesky", sx_reddit: "Reddit", sx_gdelt: "GDELT", sx_youtube: "YouTube", sx_vk: "VK", corr: TX("Zdarzenia złożone (AI)"), vgraph: TX("Graf powiązań statków (OpenSanctions)") };
+    tzevaadom: TX("Alarmy w Izraelu (Tzeva Adom)"), emsc: "EMSC", isw: TX("Mapy ISW / CTP"), cfradar: "Cloudflare Radar", sx_bluesky: "Bluesky", sx_reddit: "Reddit", sx_gdelt: "GDELT", sx_youtube: "YouTube", sx_vk: "VK", corr: TX("Zdarzenia złożone (AI)"), vgraph: TX("Graf powiązań statków (OpenSanctions)") });
   Object.entries(st).forEach(([k, v]) => { if (k.startsWith("tcp:")) N[k] = "AIS · " + (v.name || k.slice(4)); });
-  $("#igStatus").innerHTML = Object.entries(N).map(([k, n]) => { const s = st[k] || {};
-    return `<div class="tts-row"><span class="nm">${n}</span><span class="st ${s.ok ? "" : s.ok === false ? "red" : ""}">${s.off ? TX("wyłączone") : s.ok ? "OK" + (s.n != null ? " · " + s.n : "") : s.ok === false ? TX("BŁĄD") : "—"}</span><span class="bt"></span></div>${s.err ? `<p class="hint red">${esc0(s.err)}</p>` : ""}`; }).join("");
+  const testable = new Set(Object.keys((INTG && INTG.test_names) || {}));
+  $("#igStatus").innerHTML = Object.entries(N).map(([k, n]) => {
+    const s = st[k] || {}, t = T[k], busy = TESTING.has(k);
+    // wynik testu jest świeższy niż stan pętli → pokaż go jako główny
+    const useT = t && (!s.at || t.at >= s.at || t.off);
+    const ok = useT ? t.ok : s.ok, off = useT ? t.off : s.off, cnt = useT ? t.n : s.n, err = useT ? t.err : s.err;
+    const lab = busy ? TX("TESTUJĘ…") : off ? TX("wyłączone") : ok ? "OK" + (cnt != null && cnt !== "" ? " · " + cnt : "") : ok === false ? TX("BŁĄD") : "—";
+    const tl = t ? `${TX("test")} ${hm(t.at)} · ${t.ms} ms${t.note ? " · " + esc0(t.note) : ""}` : "";
+    return `<div class="tts-row" data-src="${esc0(k)}"><span class="nm">${n}</span><span class="st ${busy ? "amb" : ok === false && !off ? "red" : ""}">${lab}</span><span class="bt">${testable.has(k) ? `<button type="button" class="btn" data-test="${esc0(k)}" ${busy ? "disabled" : ""}>${TX("TEST")}</button>` : ""}</span>${tl ? `<span class="tr">${tl}</span>` : ""}</div>${err && !off ? `<p class="hint red">${esc0(err)}</p>` : ""}`; }).join("");
+  $("#igStatus").querySelectorAll("[data-test]").forEach(b => b.addEventListener("click", () => srcTest([b.dataset.test])));
+  renderTestSum();
 }
+function srcCounts() {
+  const st = (INTG && INTG.status) || {}, T = (INTG && INTG.tests) || {}, c = { ok: 0, err: 0, off: 0 };
+  (Object.keys(T).length ? Object.keys(T) : Object.keys(st)).forEach(k => { const s = st[k] || {}, t = T[k], useT = t && (!s.at || t.at >= s.at || t.off);
+    const ok = useT ? t.ok : s.ok, off = useT ? t.off : s.off; if (off) c.off++; else if (ok) c.ok++; else if (ok === false) c.err++; });
+  return c;
+}
+function renderTestSum() {
+  const c = srcCounts(), T = (INTG && INTG.tests) || {}, last = Math.max(0, ...Object.values(T).map(t => t.at || 0));
+  $("#igSum").innerHTML = TESTING.size ? `<span class="amb">${TX("Testuję połączenia…")} (${TESTING.size})</span>`
+    : `${TX("STAN:")} ${c.ok} OK · <span class="${c.err ? "red" : ""}">${c.err} ${TX("z błędem")}</span> · ${c.off} ${TX("wyłączonych")}${last ? " · " + TX("ostatni test") + " " + hm(last) : ""}`;
+  $("#igTestAll").disabled = TESTING.size > 0;
+}
+async function srcTest(keys) {
+  const all = !keys;
+  (keys || Object.keys((INTG && INTG.test_names) || {})).forEach(k => TESTING.add(k));
+  renderIntgStatus(); if (all) beep(900, .05);
+  try { const r = await api("/api/intg/test", all ? {} : { key: keys[0] }); INTG.status = r.status; INTG.tests = Object.assign(INTG.tests || {}, r.res); }
+  catch (e) { $("#igSum").textContent = TX("Test nie powiódł się – serwer nie odpowiada."); }
+  TESTING.clear(); renderIntgStatus(); pollStatus();
+  const c = srcCounts(); if (all) beep(c.err ? 300 : 1400, .1);
+}
+$("#igTestAll").addEventListener("click", () => srcTest());
+$("#igToStatus").addEventListener("click", () => $("#igStatusH").scrollIntoView({ behavior: "smooth", block: "start" }));
+setInterval(async () => { if ($("#intgModal").hidden || TESTING.size) return; try { const r = await api("/api/intg"); INTG.status = r.status; INTG.tests = r.tests; renderIntgStatus(); } catch (e) {} }, 20000);
 async function saveIntg() {
   const body = {}; INTG_FIELDS.forEach(k => { const el = $("#ig_" + k); if (!el) return; body[k] = el.type === "checkbox" ? el.checked : el.value; });
   if ($("#tgCat").children.length) body.tg_channels = tgValue();
@@ -2909,7 +2947,7 @@ function boot(done) {
   let seen = false; try { seen = sessionStorage.getItem("k7-boot") === "1"; } catch (e) { seen = true; }
   if (!needSetup && (seen || reduce)) return done();
   const B = $("#boot"); B.hidden = false; const e = STATUS ? STATUS.engine : null, C = CURRENT || {};
-  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.21"), TX("TEST PAMIĘCI ........ OK"),
+  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.22"), TX("TEST PAMIĘCI ........ OK"),
     TX("PROCESOR GRAFICZNY ..") + " " + (e ? TX(e.hardware.gpu_name) + (e.hardware.vram_gb ? " / " + e.hardware.vram_gb + " " + TX("GB") : "") : "?"),
     TX("RDZEŃ ANALITYCZNY ...") + " " + (e && e.model ? e.model.toUpperCase() : TX("NIEAKTYWNY")),
     TX("BAZA KONFLIKTÓW .....") + " " + A(C.conflicts).length + " " + TX("WĘZŁÓW"), TX("FRONTY ..............") + " " + A(C.fronts).length + " " + TX("TEATRÓW"),

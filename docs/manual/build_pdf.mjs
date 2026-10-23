@@ -13,7 +13,7 @@ await p.pdf({
   path: out, format: 'A4', printBackground: true, preferCSSPageSize: true,
   displayHeaderFooter: true,
   headerTemplate: '<span></span>',
-  footerTemplate: '<div style="width:100%;font-size:7.5pt;color:#7a877f;font-family:Inter,sans-serif;padding:0 16mm;display:flex;justify-content:space-between"><span>KRONOS-7 · instrukcja obsługi · v3.21</span><span><span class="pageNumber"></span> / <span class="totalPages"></span></span></div>',
+  footerTemplate: '<div style="width:100%;font-size:7.5pt;color:#7a877f;font-family:Inter,sans-serif;padding:0 16mm;display:flex;justify-content:space-between"><span>KRONOS-7 · instrukcja obsługi · v3.22</span><span><span class="pageNumber"></span> / <span class="totalPages"></span></span></div>',
 });
 await b.close();
 console.log('OK', out);

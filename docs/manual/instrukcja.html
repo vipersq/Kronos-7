@@ -56,7 +56,7 @@ a { color: var(--acc); }
     <p class="t">KRONOS-7_</p>
     <p class="s">PLANETARNY SYSTEM WYWIADOWCZY</p>
     <h1>Instrukcja obsługi</h1>
-    <p class="d">Wersja programu <b>3.21</b> · instrukcja z dnia 23.10.2026</p>
+    <p class="d">Wersja programu <b>3.22</b> · instrukcja z dnia 23.10.2026</p>
     <p class="d">Instalacja, konfiguracja krok po kroku, skąd wziąć każdy klucz API, rozwiązywanie problemów.</p>
   </div>
   <img src="img/main.jpg" alt="">
@@ -282,6 +282,16 @@ a { color: var(--acc); }
 <tr><td>AISHub, SDR, poczta, HA</td><td>Twoje odbiorniki, alerty e-mail, dom</td><td>–</td><td>12</td></tr>
 </table>
 <p class="small">* FAA i ACLED mają ograniczenia opisane w ich punktach.</p>
+<h3>Test połączenia – czy wszystko działa</h3>
+<figure><img src="img/intg-test.jpg" alt=""><figcaption>Pasek na górze okna: podsumowanie, TESTUJ WSZYSTKO i LISTA ↓. Na liście STAN ŹRÓDEŁ każde źródło ma własny przycisk TEST.</figcaption></figure>
+<ol>
+<li>Otwórz <span class="btn">OPERATOR</span> → <span class="btn">ŹRÓDŁA I INTEGRACJE…</span>. Na samej górze okna jest pasek: <i>„STAN: 16 OK · 2 z błędem · 15 wyłączonych · ostatni test 15:32”</i>.</li>
+<li>Kliknij <span class="btn">TESTUJ WSZYSTKO</span> – KRONOS od razu łączy się ze wszystkimi źródłami naraz (trwa do ok. minuty). Przycisk <span class="btn">LISTA ↓</span> przewija do szczegółów.</li>
+<li>Przy każdym źródle widać wynik: <b>OK · liczba danych</b>, <b>BŁĄD</b> z opisem po polsku (np. „odmowa dostępu – sprawdź klucz/token”, „za dużo zapytań”) albo <b>wyłączone</b> (brak klucza / nie skonfigurowane). Pod spodem: godzina testu, czas odpowiedzi w ms i uwaga (np. „bez konta (limit)”).</li>
+<li>Po poprawieniu klucza kliknij <span class="btn">ZAPISZ</span>, a potem <span class="btn">TEST</span> tylko przy tym jednym źródle.</li>
+</ol>
+<p>Co sprawdza test: AI lokalne (czy Ollama / LM Studio odpowiada i ma model), AI w chmurze, samoloty, statki (Digitraffic, aisstream.io), wszystkie źródła wywiadowcze, kanały Telegrama i konto Telegram, wyszukiwarki (Bluesky, Reddit, GDELT, YouTube, VK), Copernicus (logowanie), OpenSky, Stadia Maps, bot Telegram (czy widzi Twój czat – <b>bez wysyłania wiadomości</b>), Discord (bez wysyłania), pocztę, odbiorniki SDR, Home Assistant.</p>
+<div class="note"><b>Na bieżąco:</b> KRONOS sam testuje wszystkie źródła <b>co godzinę</b> w tle. Wynik widać w panelu <b>STATUS SYSTEMU</b> w wierszu <b>ŹRÓDŁA</b> (np. „17 OK · 1 z błędem”) – kliknięcie otwiera okno ze szczegółami. Lista w otwartym oknie odświeża się co 20 s. AI w chmurze jest testowane tylko ręcznie, bo każdy test zużywa jedno zapytanie z limitu.</div>
 <h3>Działa bez klucza</h3>
 <p>Alarmy w Ukrainie (ubilling.net.ua), alarmy w Izraelu (Tzeva Adom), DeepStateMap, mapy ISW, GeoConfirmed (konflikty ustawiasz w polu „GeoConfirmed – konflikty”, domyślnie ukraine, israel, sudan, syria, myanmar), WarSpotting, EMSC (trzęsienia ziemi), Safecast (promieniowanie), OpenSanctions (graf powiązań statków), Oryx, Bluesky, GDELT, adsb.fi / adsb.lol, Digitraffic, Kystverket, NASA (zdjęcia i pożary), CelesTrak, źródła morskie (NGA, UKHO, IMB, ReCAAP), kanały Telegrama, ok. 80 kanałów RSS.</p>
 <h3>Wyszukiwarki przy zdarzeniach</h3>
@@ -567,7 +577,7 @@ a { color: var(--acc); }
 
 <!-- ============================================================ 16 -->
 <h2 id="s16"><span class="n">16</span>Rozwiązywanie problemów</h2>
-<p>Pierwsze miejsce do sprawdzenia: <b>OPERATOR → ŹRÓDŁA I INTEGRACJE → STAN ŹRÓDEŁ</b> oraz komunikaty w czarnym oknie serwera.</p>
+<p>Pierwsze miejsce do sprawdzenia: <b>OPERATOR → ŹRÓDŁA I INTEGRACJE → <span class="btn">TESTUJ WSZYSTKO</span></b> (rozdział 8) oraz komunikaty w czarnym oknie serwera.</p>
 <table>
 <tr><th style="width:32%">Objaw</th><th>Co zrobić</th></tr>
 <tr><td>Strona się nie otwiera</td><td>Sprawdź, czy czarne okno serwera jest otwarte. Wpisz ręcznie <code>http://127.0.0.1:7707</code>. Jeśli port jest zajęty, zmień <code>"port"</code> w <code>config.json</code>.</td></tr>
@@ -578,6 +588,8 @@ a { color: var(--acc); }
 <tr><td>Widać statki tylko na Bałtyku</td><td>Brak klucza aisstream.io (9.1).</td></tr>
 <tr><td>ACLED: „odmowa dostępu (HTTP 403)”</td><td>Konto „Open” bez API – patrz 9.12. Zostaw pola puste.</td></tr>
 <tr><td>Copernicus: czerwony napis zamiast zdjęcia</td><td>Sprawdź client_id/secret (9.3). Możliwy też brak bezchmurnego zdjęcia z ostatnich dni – spróbuj RADAR S-1.</td></tr>
+<tr><td>Test: „wyłączone”</td><td>Źródło nie ma klucza albo nie jest włączone – to nie błąd. Wpisz klucz (rozdział 9), ZAPISZ, TEST.</td></tr>
+<tr><td>Test: „czeka na pierwsze dane”</td><td>Strumień (AIS, APRS) dopiero się łączy albo terminal był zamknięty – sprawdź ponownie za minutę.</td></tr>
 <tr><td>Reddit / GDELT: błąd 403 / 429</td><td>Serwis ogranicza zapytania. GDELT – poczekaj; Reddit – klucz (9.9).</td></tr>
 <tr><td>Powiadomienia nie przychodzą</td><td>Czy napisałeś do bota „start”? Czy ID czatu jest liczbą od @userinfobot? Kliknij WYŚLIJ TEST. Czy zaznaczone są rodzaje powiadomień?</td></tr>
 <tr><td>Brak głosu briefingu</td><td>DŹWIĘKI I GŁOS LEKTORA → zainstaluj głosy Microsoft albo pobierz Pipera; albo dodaj polski głos w Windows (Ustawienia → Czas i język → Mowa).</td></tr>
@@ -626,7 +638,7 @@ a { color: var(--acc); }
 <tr><td>Gmail (IMAP)</td><td>Konto Google → Bezpieczeństwo → Hasła do aplikacji</td><td>ŹRÓDŁA I INTEGRACJE</td></tr>
 <tr><td>Hugging Face</td><td>huggingface.co → Settings → SSH and GPG Keys</td><td>OPERATOR → MODELE…</td></tr>
 </table>
-<p class="small" style="margin-top:14pt">Strony dostawców czasem zmieniają wygląd i nazwy menu – jeśli coś wygląda inaczej, szukaj na ich stronie słów „API”, „API key”, „Token” albo „Developer”. Instrukcja dotyczy KRONOS-7 v3.21.</p>
+<p class="small" style="margin-top:14pt">Strony dostawców czasem zmieniają wygląd i nazwy menu – jeśli coś wygląda inaczej, szukaj na ich stronie słów „API”, „API key”, „Token” albo „Developer”. Instrukcja dotyczy KRONOS-7 v3.22.</p>
 
 </body>
 </html>

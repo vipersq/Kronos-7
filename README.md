@@ -21,6 +21,12 @@ Lokalny terminal w stylu komputerów pokładowych z filmów science fiction. Pok
 - **Polecenia głosowe** (przycisk GŁOS albo Alt+V), np. „sitrep Bałtyk”, „pokaż Ormuz”, „odśwież”, „briefing”, „odtwórz”, „na żywo”, „warstwa kable”, „pełny ekran”; wszystko inne trafia jako pytanie do AI. W Chrome i Edge rozpoznawanie mowy przetwarzają serwery Google/Microsoft.
 - Wydajność: mapa rysowana na płótnie, obliczenia orbit i przelotów w osobnym wątku, zapis historii w tle.
 
+## Test połączenia źródeł (v3.22)
+- **ŹRÓDŁA I INTEGRACJE**: na górze okna pasek z podsumowaniem („STAN: 16 OK · 2 z błędem · 15 wyłączonych”) i przyciskiem **TESTUJ WSZYSTKO** – KRONOS od razu łączy się ze wszystkimi źródłami naraz (do ok. minuty). Na liście STAN ŹRÓDEŁ każde źródło ma własny przycisk **TEST**.
+- Wynik przy źródle: OK z liczbą danych, BŁĄD z opisem (odmowa dostępu, za dużo zapytań, brak połączenia…) albo „wyłączone”; do tego godzina testu, czas odpowiedzi i uwaga.
+- Testowane są: AI lokalne i w chmurze, samoloty, statki (Digitraffic, aisstream.io), wszystkie źródła wywiadowcze, Telegram (kanały i konto), wyszukiwarki, Copernicus, OpenSky, Stadia, bot Telegram i Discord (bez wysyłania wiadomości), poczta, odbiorniki SDR, Home Assistant.
+- **Na bieżąco:** KRONOS sam testuje wszystko co godzinę w tle (bez AI w chmurze, bo test zużywa zapytanie z limitu). Wynik w panelu STATUS SYSTEMU, wiersz ŹRÓDŁA – kliknięcie otwiera szczegóły.
+
 ## Więcej źródeł: Izrael, mapy ISW, GeoConfirmed, WarSpotting, Copernicus (v3.21)
 Bez klucza (działa od razu):
 - **Alarmy w Izraelu (Tzeva Adom / Pikud HaOref)** – warstwa ALARMY IL, sekcja w panelu alarmów, powiadomienia, zestawienie postów i zdjęć dla miejsca alarmu, wejście do zdarzeń złożonych.

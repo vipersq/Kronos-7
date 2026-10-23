@@ -576,3 +576,12 @@ body.bgp *:not(.ticker-in){animation-play-state:paused!important}
 .lb-in{max-width:min(1200px,96vw);max-height:94vh;display:flex;flex-direction:column;gap:8px}
 .lb-in img,.lb-in video{max-width:100%;max-height:78vh;object-fit:contain;background:#000;border:1px solid var(--phos-faint)}
 .lb-cap{display:flex;flex-direction:column;gap:4px;color:var(--text);font-size:calc(12.5*var(--u))}.lb-cap .seg{flex-wrap:wrap;gap:6px}
+
+/* v3.22: test połączenia źródeł */
+.testbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:6px 12px;border-bottom:1px solid var(--phos-faint);font-size:calc(12*var(--u))}
+.testbar #igSum{flex:1;min-width:0}
+.testbar .red,.tts-row .tr.red{color:var(--red)}
+.tts-row .tr{grid-column:1/-1;font-size:calc(10.5*var(--u));color:var(--phos-dim);white-space:normal;overflow-wrap:anywhere}
+.tts-row .bt .btn{padding:0 6px;font-size:calc(10.5*var(--u))}
+.tts-row .st.amb{color:var(--amber,#e0a030)}
+.sys .srcsum{cursor:pointer;text-decoration:underline dotted}

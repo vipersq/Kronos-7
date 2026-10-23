@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """KRONOS-7 — lokalny serwer planetarnego systemu wywiadowczego.
 Uruchom:  python server.py   (potem przeglądarka: http://127.0.0.1:7707)"""
+import concurrent.futures
 import atexit, gzip, json, mimetypes, os, re, sys, threading, time, traceback, urllib.error, urllib.parse, webbrowser
 mimetypes.add_type("application/manifest+json", ".webmanifest"); mimetypes.add_type("image/svg+xml", ".svg"); mimetypes.add_type("text/javascript", ".js")
 from collections import deque
@@ -161,6 +162,9 @@ def intg_view():
     out["tg_catalog"] = [{"ch": c[0], "name": c[1], "type": c[2], "g": c[3], "on": bool(c[4])} for c in intel.TG_CATALOG]
     out["tg_groups"] = intel.TG_GROUPS
     out["status"] = intg_status()
+    with TEST_LOCK:
+        out["tests"] = dict(TEST_RES)
+    out["test_names"] = {k: v[0] for k, v in test_plan().items()}
     return out
 
 
@@ -173,6 +177,250 @@ def intg_status():
             "tgacct": {"ok": True if TGACCT.ready() else (False if TGACCT.state.get("err") else None), "err": TGACCT.state.get("err"), "off": not TGACCT.configured(),
                        "n": (TGACCT.state.get("me") or {}).get("username")},
             "vgraph": {"ok": bool(VGRAPH.meta.get("n_v")) if VGRAPH.meta.get("n_v") or VGRAPH.meta.get("err") else None, "err": VGRAPH.meta.get("err"), "n": VGRAPH.meta.get("n_v")}, "ha": {"ok": None if not NOTIFY.cfg.get("ha") else NOTIFY.ha_err is None, "err": NOTIFY.ha_err}}
+
+
+# ------------------------------------------------ v3.22: test połączenia źródeł (pojedynczo albo wszystkie naraz)
+TEST_RES = {}            # klucz → {"ok", "err", "ms", "n", "note", "at"}
+TEST_LOCK = threading.Lock()
+TEST_RUN = {"running": False, "at": 0}
+
+
+def _probe_http(url, headers=None, timeout=15):
+    req = urllib.request.Request(url, headers=dict({"User-Agent": "KRONOS-7/3.22 (connection test)"}, **(headers or {})))
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        b = r.read(200000)
+    return r.status, b
+
+
+def _rerun(src, wait=60):
+    """Źródło z własną pętlą: obudź ją i poczekaj na świeży wynik (bez równoległego drugiego pobierania)."""
+    if not src.enabled():
+        return {"off": True}
+    t0 = src.status.get("at") or 0
+    src.wake.set()
+    end = time.time() + wait
+    while time.time() < end:
+        a = src.status.get("at") or 0
+        if a != t0 and a >= int((end - wait) * 1000) - 1000:
+            break
+        time.sleep(0.4)
+    else:
+        return {"ok": None, "note": i18n.L("pobieranie trwa dłużej niż minutę – wynik pojawi się w stanie źródła", "fetch takes over a minute – the result will appear in the source status")}
+    st = src.status
+    return {"ok": st.get("ok"), "err": st.get("err"), "n": st.get("n")}
+
+
+def _passive(st, max_age=None, off_note=None):
+    """Źródło strumieniowe (gniazdo, UDP): pokaż bieżący stan zamiast nowego połączenia."""
+    if not st or st.get("off"):
+        return {"off": True, "note": off_note}
+    age = (time.time() * 1000 - (st.get("at") or 0)) / 1000 if st.get("at") else None
+    if st.get("ok") and max_age and age is not None and age > max_age:
+        return {"ok": False, "err": i18n.L(f"brak nowych danych od {int(age // 60)} min", f"no new data for {int(age // 60)} min"), "n": st.get("n")}
+    note = (i18n.L(f"ostatnie dane {int(age)} s temu", f"last data {int(age)} s ago") if age is not None and age < 3600 else None)
+    if st.get("ok") is None and not st.get("err"):
+        note = i18n.L("czeka na pierwsze dane (łączy się albo terminal był zamknięty)", "waiting for first data (connecting, or the terminal was closed)")
+    return {"ok": st.get("ok"), "err": st.get("err"), "n": st.get("n"), "note": note}
+
+
+def _t_tg_osint():
+    ch = TGOSINT.channels()
+    if not ch:
+        return {"off": True}
+    code, b = _probe_http(f"https://t.me/s/{ch[0]}")
+    if b"tgme_widget_message" not in b:
+        raise RuntimeError(i18n.L(f"t.me/s/{ch[0]} nie zwrócił postów", f"t.me/s/{ch[0]} returned no posts"))
+    return {"ok": True, "n": len(ch), "note": i18n.L(f"kanałów: {len(ch)} · sprawdzony @{ch[0]}", f"channels: {len(ch)} · checked @{ch[0]}")}
+
+
+def _t_searcher(k):
+    if not SEARCHERS.on(k):
+        return {"off": True, "note": i18n.L("nie ma na liście „Wyszukiwarki przy zdarzeniach”", "not in the “Event search providers” list")}
+    c = SEARCHERS.cfg()
+    if k == "youtube" and not c.get("yt_key") or k == "vk" and not c.get("vk_token"):
+        return {"off": True, "note": i18n.L("brak klucza", "no key")}
+    f = {x.label: x for x in SEARCHERS.all()}[k]
+    now = time.time() * 1000
+    r = f(["Kyiv", "Київ", "Ukraine"], None, now - 48 * 3600e3, now)
+    return {"ok": True, "n": len(r), "note": i18n.L(f"wyników dla „Kyiv”: {len(r)}", f"results for “Kyiv”: {len(r)}")}
+
+
+def _t_ai_local():
+    a = CFG["ai"]
+    if ENGINE.backend == "lmstudio":
+        _, b = _probe_http(a["lmstudio_url"] + "/v1/models", timeout=6)
+        n = len(json.loads(b).get("data") or [])
+        return {"ok": True, "n": n, "note": f"LM Studio · {ENGINE.model or '—'}"}
+    try:
+        _, b = _probe_http(a["ollama_url"] + "/api/tags", timeout=6)
+    except Exception:
+        raise RuntimeError(i18n.L("Ollama nie odpowiada – uruchom Ollamę (ikona lamy w zasobniku)", "Ollama is not responding – start Ollama (llama icon in the tray)"))
+    ms = json.loads(b).get("models") or []
+    if not ms:
+        return {"ok": False, "err": i18n.L("Ollama działa, ale nie ma żadnego modelu", "Ollama runs but has no model"), "n": 0}
+    return {"ok": True, "n": len(ms), "note": f"Ollama · {ENGINE.model or '—'}"}
+
+
+def _t_cloud():
+    if not CLOUD.configured():
+        return {"off": True}
+    r = CLOUD.test()
+    return {"ok": bool(r.get("ok")), "err": None if r.get("ok") else (CLOUD.last_err or "?"), "note": CLOUD.label()}
+
+
+def _t_telegram_bot():
+    tok, chat = NOTIFY.cfg.get("tg_token"), NOTIFY.cfg.get("tg_chat")
+    if not tok:
+        return {"off": True}
+    _, b = _probe_http(f"https://api.telegram.org/bot{tok}/getMe")
+    me = json.loads(b).get("result") or {}
+    if not chat:
+        return {"ok": False, "err": i18n.L("brak ID czatu", "no chat ID")}
+    try:
+        _probe_http(f"https://api.telegram.org/bot{tok}/getChat?chat_id={urllib.parse.quote(chat)}")
+    except urllib.error.HTTPError:
+        return {"ok": False, "err": i18n.L(f"bot @{me.get('username')} działa, ale nie widzi czatu {chat} – napisz do bota „start” i sprawdź ID u @userinfobot",
+                                          f"bot @{me.get('username')} works but cannot see chat {chat} – send the bot “start” and check the ID with @userinfobot")}
+    return {"ok": True, "note": "@" + str(me.get("username"))}
+
+
+def _t_discord():
+    u = NOTIFY.cfg.get("discord")
+    if not u:
+        return {"off": True}
+    _, b = _probe_http(u)
+    return {"ok": True, "note": json.loads(b).get("name")}
+
+
+def _t_tgacct():
+    if not TGACCT.configured():
+        return {"off": True}
+    if not TGACCT.ready():
+        return {"ok": False, "err": TGACCT.state.get("err") or i18n.L("nie zalogowano", "not signed in")}
+    me = TGACCT.call(TGACCT.client.get_me(), 20)
+    return {"ok": True, "note": "@" + str(getattr(me, "username", "") or getattr(me, "first_name", ""))}
+
+
+def _t_copernicus():
+    c = intg_cfg()
+    if not (c.get("cdse_id") and c.get("cdse_secret")):
+        return {"off": True}
+    COPERNICUS.tok = (None, 0)
+    COPERNICUS.token()
+    return {"ok": True, "note": i18n.L("logowanie OAuth OK", "OAuth sign-in OK")}
+
+
+def _t_opensky():
+    h = OPENSKY._h()
+    _, b = _probe_http("https://opensky-network.org/api/states/all?lamin=51&lomin=-1&lamax=52&lomax=0", h, 25)
+    n = len(json.loads(b).get("states") or [])
+    return {"ok": True, "n": n, "note": i18n.L("z kontem" if h else "bez konta (limit)", "with account" if h else "anonymous (limited)")}
+
+
+def _t_stadia():
+    k = (intg_cfg().get("stadia_key") or "").strip()
+    u = "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/1/0/0.png" + ("?api_key=" + urllib.parse.quote(k) if k else "")
+    _probe_http(u, {"Referer": "http://localhost/"})
+    return {"ok": True, "note": i18n.L("z kluczem" if k else "bez klucza (tylko ten komputer)", "with key" if k else "no key (this computer only)")}
+
+
+def _t_local_adsb():
+    u = LADSB.url()
+    if not u:
+        return {"off": True}
+    _, b = _probe_http(u if re.match(r"^https?://", u) else "http://" + u, timeout=8)
+    return {"ok": True, "n": len(json.loads(b).get("aircraft") or [])}
+
+
+def _t_mail():
+    if not (intg_cfg().get("imap_host") and intg_cfg().get("imap_user")):
+        return {"off": True}
+    return {"ok": True, "n": MAILIN.test()}
+
+
+def test_plan():
+    """klucz → (nazwa, funkcja). Kolejność = kolejność na liście."""
+    P = {
+        "ai_local": (i18n.L("AI lokalne (Ollama / LM Studio)", "Local AI (Ollama / LM Studio)"), _t_ai_local),
+        "ai_cloud": (i18n.L("AI w chmurze", "Cloud AI"), _t_cloud),
+        "air": (i18n.L("Samoloty (adsb.fi / adsb.lol)", "Aircraft (adsb.fi / adsb.lol)"), lambda: _passive(AIR.status, 120)),
+        "sea_dt": ("Digitraffic (AIS)", lambda: _passive(SEA.status.get("digitraffic"), 900)),
+        "sea_ais": ("aisstream.io", lambda: _passive(SEA.status.get("aisstream"), 300, i18n.L("brak klucza", "no key")) if SEA.key else {"off": True, "note": i18n.L("brak klucza", "no key")}),
+    }
+    for k, src in (("ua_alerts", UAALERT), ("deepstate", DEEPST), ("notam", NOTAMS), ("gfw", DARKSAR), ("radiation", RADIATION), ("acled", ACLED),
+                   ("geoconfirmed", GEOCONF), ("warspotting", WARSPOT), ("tzevaadom", TZEVA), ("emsc", EMSC), ("isw", ISW), ("cfradar", CFRADAR)):
+        P[k] = (k, lambda s=src: _rerun(s))
+    P["telegram"] = ("Telegram OSINT", _t_tg_osint)
+    P["tgacct"] = (i18n.L("Telegram – konto", "Telegram – account"), _t_tgacct)
+    for k in ("bluesky", "reddit", "gdelt", "youtube", "vk"):
+        P["sx_" + k] = (k, lambda k=k: _t_searcher(k))
+    P["copernicus"] = ("Copernicus", _t_copernicus)
+    P["opensky"] = ("OpenSky", _t_opensky)
+    P["stadia"] = ("Stadia Maps", _t_stadia)
+    P["notify_tg"] = (i18n.L("Powiadomienia – bot Telegram", "Notifications – Telegram bot"), _t_telegram_bot)
+    P["notify_dc"] = (i18n.L("Powiadomienia – Discord", "Notifications – Discord"), _t_discord)
+    P["mail"] = (i18n.L("Poczta (IMAP)", "Mail (IMAP)"), _t_mail)
+    P["adsb"] = ("ADS-B", _t_local_adsb)
+    P["ais"] = ("AIS (UDP)", lambda: _passive(LAIS.status))
+    P["aprs"] = ("APRS-IS", lambda: _passive(APRSIS.status))
+    P["aishub"] = ("AISHub", lambda: _passive(AISHUB.status))
+    for k, v in list(AISTCP.status.items()):
+        P["tcp:" + k] = ("AIS · " + str(v.get("name") or k), lambda v=v: _passive(v))
+    P["ha"] = ("Home Assistant", lambda: {"off": True} if not NOTIFY.cfg.get("ha") else {"ok": NOTIFY.ha_err is None, "err": NOTIFY.ha_err,
+                                                                                     "note": i18n.L("przycisk TEST przy Home Assistant wysyła zdarzenie próbne", "the TEST button next to Home Assistant sends a test event")})
+    P["vgraph"] = ("OpenSanctions", lambda: {"ok": bool(VGRAPH.meta.get("n_v")) or None, "err": VGRAPH.meta.get("err"), "n": VGRAPH.meta.get("n_v")})
+    return P
+
+
+def run_test(k, fn):
+    t = time.time()
+    try:
+        r = fn() or {}
+    except urllib.error.HTTPError as e:
+        msg = f"HTTP {e.code}"
+        if e.code in (401, 403):
+            msg = i18n.L("odmowa dostępu – sprawdź klucz/token", "access denied – check the key/token") + f" ({msg})"
+        elif e.code == 429:
+            msg = i18n.L("za dużo zapytań – serwis chwilowo ogranicza (spróbuj później)", "too many requests – the service is rate-limiting (try later)") + f" ({msg})"
+        r = {"ok": False, "err": msg}
+    except Exception as e:
+        r = {"ok": False, "err": str(e)[:240]}
+    r["ms"] = int((time.time() - t) * 1000); r["at"] = int(time.time() * 1000)
+    with TEST_LOCK:
+        TEST_RES[k] = r
+    return r
+
+
+def test_sources(keys=None):
+    P = test_plan()
+    keys = [k for k in (keys or P) if k in P]
+    TEST_RUN.update(running=True, at=int(time.time() * 1000))
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=12) as ex:
+            futs = {ex.submit(run_test, k, P[k][1]): k for k in keys}
+            concurrent.futures.wait(futs, timeout=90)
+    finally:
+        TEST_RUN["running"] = False
+    with TEST_LOCK:
+        return {k: TEST_RES.get(k) for k in keys}
+
+
+def test_loop():
+    """Co godzinę sprawdź wszystkie źródła w tle (bez AI w chmurze – to kosztuje zapytanie z limitu)."""
+    time.sleep(240)
+    while True:
+        try:
+            test_sources([k for k in test_plan() if k != "ai_cloud"])
+        except Exception as e:
+            log(f"Test źródeł: {e}")
+        time.sleep(3600)
+
+
+def test_summary():
+    with TEST_LOCK:
+        v = list(TEST_RES.values())
+    return {"ok": sum(1 for x in v if x.get("ok")), "err": sum(1 for x in v if x.get("ok") is False), "off": sum(1 for x in v if x.get("off")),
+            "at": max((x.get("at") or 0 for x in v), default=0), "running": TEST_RUN["running"]}
 
 
 def save_intg(body):
@@ -1257,7 +1505,7 @@ class H(BaseHTTPRequestHandler):
             return self._json({"engine": dict(ENGINE.status(), cloud=CLOUD.label() if CLOUD.configured() else None, cloud_ok=CLOUD.available(),
                                          cloud_use=(SETTINGS.get("cloud") or {}).get("use") or {"main": True, "ask": True, "bg": False}), "job": JOB, "log": list(LOG)[-60:], "operator": CFG.get("operator"),
                                "stamp": STATE.get("stamp"), "next": ns.isoformat() if ns else None,
-                               "sources": STATE.get("sources_report", [])})
+                               "sources": STATE.get("sources_report", []), "srctest": test_summary()})
         if p == "/api/settings":
             return self._json(settings_view())
         if p == "/api/air":
@@ -1626,6 +1874,12 @@ class H(BaseHTTPRequestHandler):
                 return self._json({"ok": True, "n": n})
             except Exception as e:
                 return self._json({"ok": False, "error": str(e)[:200]})
+        if p == "/api/intg/test":
+            if not self._local():
+                return self._json({"error": "local only"}, 403)
+            k = self._body().get("key")
+            res = test_sources([k] if k else None)
+            return self._json({"res": res, "status": intg_status(), "sum": test_summary()})
         if p == "/api/intg/test-ha":
             ok = NOTIFY.ha("test", i18n.L("Test połączenia KRONOS-7 → Home Assistant", "KRONOS-7 → Home Assistant connection test"), {"level": (STATE.get("threat") or {}).get("level")})
             time.sleep(2)
@@ -1645,7 +1899,7 @@ class H(BaseHTTPRequestHandler):
 def main():
     port = int(os.environ.get("KRONOS_PORT", CFG.get("port", 7707)))
     st = ENGINE.status()
-    log("KRONOS-7 v3.21 · start")
+    log("KRONOS-7 v3.22 · start")
     log(f"Sprzęt: {st['hardware']['gpu_name']} · VRAM {st['hardware']['vram_gb']} GB · RAM {st['hardware']['ram_gb']} GB")
     log(f"AI: {st['backend'] or 'brak (zainstaluj Ollamę)'} · model: {st['model'] or '—'} · zalecany: {st['recommended']}")
     log(st["reason"])
@@ -1654,6 +1908,7 @@ def main():
     if host != "127.0.0.1":
         log(i18n.L("Dostęp z sieci lokalnej (PIN): ", "LAN access (PIN): ") + ", ".join(lan_urls()))
     threading.Thread(target=scheduler, daemon=True).start()
+    threading.Thread(target=test_loop, daemon=True, name="src-test").start()
     if CFG.get("live_air", {}).get("enabled", True) and os.environ.get("KRONOS_NO_LIVE") != "1":
         AIR.start(); log(f"Samoloty wojskowe na żywo: co {AIR.interval} s, gdy terminal jest otwarty.")
     if CFG.get("live_sea", {}).get("enabled", True) and os.environ.get("KRONOS_NO_LIVE") != "1":
