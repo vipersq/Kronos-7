@@ -21,6 +21,12 @@ Lokalny terminal w stylu komputerów pokładowych z filmów science fiction. Pok
 - **Polecenia głosowe** (przycisk GŁOS albo Alt+V), np. „sitrep Bałtyk”, „pokaż Ormuz”, „odśwież”, „briefing”, „odtwórz”, „na żywo”, „warstwa kable”, „pełny ekran”; wszystko inne trafia jako pytanie do AI. W Chrome i Edge rozpoznawanie mowy przetwarzają serwery Google/Microsoft.
 - Wydajność: mapa rysowana na płótnie, obliczenia orbit i przelotów w osobnym wątku, zapis historii w tle.
 
+## GeoConfirmed z oryginałami, naprawiony łańcuch przyczyn (v3.22.2)
+- **Karta punktu GeoConfirmed**: opis, sprzęt, jednostki, rodzaj materiału, miejscowość oraz linki do oryginału (Telegram, X) i geolokalizacji – z ukrytego API szczegółów GeoConfirmed.
+- **POSTY I ZDJĘCIA przy punkcie GeoConfirmed**: na górze oryginalny post z Telegrama (zdjęcia/film) i treść posta z X (oficjalny oEmbed, bez klucza), niżej relacje z Telegrama, Bluesky itd. z tego miejsca i 2 dni od daty. Nazwy miejscowości po ukraińsku, rosyjsku i angielsku KRONOS bierze z OpenStreetMap (Nominatim, raz na miejsce).
+- **PODSUMUJ (AI)** dostaje opis GeoConfirmed i ocenia, które relacje dotyczą tego samego zdarzenia.
+- **Łańcuch przyczyn**: przy podkładach kafelkowych (CIEMNA SZCZEGÓŁOWA, SATELITA, OSM) mapa zasłaniała graf – naprawione.
+
 ## Test połączenia źródeł (v3.22)
 - **ŹRÓDŁA I INTEGRACJE**: na górze okna pasek z podsumowaniem („STAN: 16 OK · 2 z błędem · 15 wyłączonych”) i przyciskiem **TESTUJ WSZYSTKO** – KRONOS od razu łączy się ze wszystkimi źródłami naraz (do ok. minuty). Na liście STAN ŹRÓDEŁ każde źródło ma własny przycisk **TEST**.
 - Wynik przy źródle: OK z liczbą danych, BŁĄD z opisem (odmowa dostępu, za dużo zapytań, brak połączenia…) albo „wyłączone”; do tego godzina testu, czas odpowiedzi i uwaga.

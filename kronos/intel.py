@@ -451,6 +451,27 @@ class TgOsint(Source):
                         "h": hashlib.sha1(f"{pid}#{n}".encode()).hexdigest()[:16]})
         return out[:8]
 
+    def fetch_post(self, ch, mid):
+        """Jeden konkretny post (np. oryginał podany przez GeoConfirmed) – także z kanałów spoza listy; bez filtrów."""
+        s = _get(f"https://t.me/s/{ch}?before={int(mid) + 1}", 30).decode("utf-8", "replace")
+        for blk in s.split('data-post="')[1:]:
+            pid = blk.split('"', 1)[0]
+            if pid.lower() != f"{ch}/{mid}".lower():
+                continue
+            m = re.search(r'class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>', blk, re.S)
+            t = re.search(r'<time datetime="([^"]+)"', blk)
+            nm = re.search(r'class="tgme_widget_message_owner_name"[^>]*>(?:<span[^>]*>)?(.*?)<', blk, re.S)
+            try:
+                ms = int(datetime.fromisoformat(t.group(1)).timestamp() * 1000) if t else _now_ms()
+            except Exception:
+                ms = _now_ms()
+            p = {"id": pid, "ch": ch, "chn": html.unescape(nm.group(1)).strip() if nm else ch, "t": ms, "text": (_txt(m.group(1)) if m else "")[:2500],
+                 "url": "https://t.me/" + pid, "media": self._media(blk, pid)}
+            if p["media"] and self.on_media:
+                self.on_media(p)
+            return p
+        return None
+
     def fetch(self, ch):
         s = _get(f"https://t.me/s/{ch}", 30).decode("utf-8", "replace")
         out = []

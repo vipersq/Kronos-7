@@ -188,7 +188,7 @@ TEST_RUN = {"running": False, "at": 0}
 
 
 def _probe_http(url, headers=None, timeout=15):
-    req = urllib.request.Request(url, headers=dict({"User-Agent": "KRONOS-7/3.22.1 (connection test)"}, **(headers or {})))
+    req = urllib.request.Request(url, headers=dict({"User-Agent": "KRONOS-7/3.22.2 (connection test)"}, **(headers or {})))
     with urllib.request.urlopen(req, timeout=timeout) as r:
         b = r.read(200000)
     return r.status, b
@@ -732,6 +732,18 @@ def ev_query(typ, iid, q):
             return None
         return {"names": [a["place"]] if a.get("place") and len(a["place"]) < 40 else [], "pos": tuple(a["pos"][:2]) if a.get("pos") else None, "r": 80,
                 "t0": p["t"] - 6 * 3600e3, "t1": p["t"] + 6 * 3600e3, "title": a.get("title") or p.get("text", "")[:80], "self": iid}
+    if typ == "gc":
+        try:
+            d = GEOCONF.detail(iid)
+        except Exception:
+            return None
+        la, lo = float(d.get("latitude")), float(d.get("longitude"))
+        t = extra._iso_ms(d.get("date")) or now
+        pc = re.sub(r"^\S+\s+", "", d.get("plusCode") or "").split(",")[0].strip() or None
+        names = extra.place_names(la, lo, pc)
+        # data w GeoConfirmed to sam dzień (często dodany po 1–3 dniach) → okno od początku dnia do 2 dni później
+        return {"names": names, "pos": (la, lo), "r": 40, "t0": t - 6 * 3600e3, "t1": min(now, t + 54 * 3600e3),
+                "title": (d.get("description") or d.get("name") or "GeoConfirmed")[:200], "gc": d}
     if typ == "geo":
         try:
             la, lo, h = float(q.get("lat")), float(q.get("lon")), float(q.get("h") or 6)
@@ -762,7 +774,7 @@ def ev_media(typ, iid, q):
         posts = list(TGOSINT.posts.values())
     hits = evsearch.search_posts(posts, eq["names"], eq["pos"], eq["r"], eq["t0"], eq["t1"], 40)
     out = [post_out(p, sc, why) for sc, p, why in hits if p["id"] != eq.get("self")]
-    extra, errs = [], {}
+    xrows, errs = [], {}
     provs = EV_SEARCH + SEARCHERS.all()
     if provs:
         from concurrent.futures import ThreadPoolExecutor, wait
@@ -788,15 +800,43 @@ def ev_media(typ, iid, q):
             done, _ = wait(futs, timeout=25)
             for fu in done:
                 try:
-                    extra += fu.result() or []
+                    xrows += fu.result() or []
                 except Exception as e:
                     errs[futs[fu]] = str(e)[:160]
             for fu in set(futs) - done:
                 errs[futs[fu]] = "timeout"
     seen = {x["url"] for x in out}
-    out += [x for x in extra if x.get("url") not in seen]
+    out += [x for x in xrows if x.get("url") not in seen]
+    gc = eq.get("gc")
+    if gc:                                             # GeoConfirmed: oryginały (Telegram, X) zawsze na górze
+        orig = []
+        links = [("src", u) for u in re.split(r"[\s,]+", gc.get("originalSource") or "") if u.startswith("http")] + \
+                [("geo", u) for u in re.split(r"[\s,]+", gc.get("geolocation") or "") if u.startswith("http")]
+        for kind, u in links[:6]:
+            lab = i18n.L("ORYGINAŁ", "ORIGINAL") if kind == "src" else i18n.L("GEOLOKALIZACJA", "GEOLOCATION")
+            row = {"id": u, "src": "GeoConfirmed", "ch": "", "chn": lab, "type": lab, "t": extra._iso_ms(gc.get("date")) or 0, "title": None, "summary": None,
+                   "text": "", "url": u, "cred": None, "media": [], "score": 99 if kind == "src" else 98, "why": ["geoconfirmed"], "also": []}
+            try:
+                m = re.match(r"https?://t\.me/(?:s/)?([A-Za-z0-9_]{4,})/(\d+)", u)
+                mx = re.match(r"https?://(?:www\.)?(?:x|twitter)\.com/([A-Za-z0-9_]+)/status/(\d+)", u)
+                if m:
+                    p = TGOSINT.fetch_post(m.group(1), m.group(2))
+                    if p:
+                        row.update(ch=p["ch"], chn=f"{lab} · {p['chn']}", t=p["t"], text=p["text"][:600],
+                                   media=[{"k": x["k"], "h": x["h"], "o": x.get("u")} for x in p.get("media", [])][:8])
+                elif mx:
+                    x = extra.x_oembed(u)
+                    row.update(ch=mx.group(1), chn=f"{lab} · X @{mx.group(1)}", text=x["text"][:600])
+            except Exception as e:
+                row["text"] = i18n.L("(nie udało się pobrać treści – otwórz link)", "(could not fetch the content – open the link)")
+            if not row["text"]:
+                row["text"] = u
+            orig.append(row)
+        ou = {x["url"] for x in orig}
+        out = orig + [x for x in out if x.get("url") not in ou]
     out.sort(key=lambda x: (-x.get("score", 0), -x["t"]))
     res = {"title": eq["title"], "names": eq["names"][:12], "t0": eq["t0"], "t1": eq["t1"], "r": eq["r"], "posts": out[:60],
+           "gc": {k: gc.get(k) for k in ("description", "gear", "units", "faction", "origin", "conflictName", "plusCode", "date")} if gc else None,
            "n_media": sum(len(x["media"]) for x in out[:60]), "errors": errs, "at": int(time.time() * 1000)}
     EV_CACHE[key] = (time.time(), res)
     if len(EV_CACHE) > 200:
@@ -1429,6 +1469,11 @@ class H(BaseHTTPRequestHandler):
                                "ua_watch": [x.strip() for x in str((SETTINGS.get("intg") or {}).get("ua_watch") or "").split(",") if x.strip()],
                                "rad": RADIATION.data, "corr": CORR.view(), "il": TZEVA.data, "emsc": (EMSC.data or {}).get("items"), "net": (CFRADAR.data or {}).get("items"),
                                "gc_n": len((GEOCONF.data or {}).get("pts") or []), "ws_n": len((WARSPOT.data or {}).get("items") or []), "sx": SEARCHERS.status, "acled_n": len((ACLED.data or {}).get("ev") or []), "acled_at": (ACLED.data or {}).get("at")})
+        if p.startswith("/api/intel/gc/"):
+            try:
+                return self._json(GEOCONF.detail(urllib.parse.unquote(p[14:])[:60]))
+            except Exception as e:
+                return self._json({"error": str(e)[:200]}, 502)
         if p == "/api/intel/gc":
             return self._json(GEOCONF.data or {"pts": []})
         if p == "/api/intel/isw":
@@ -1805,7 +1850,11 @@ class H(BaseHTTPRequestHandler):
             sysm = ("Jesteś analitykiem OSINT systemu KRONOS-7. Na podstawie relacji z kanałów napisz zwięzłe zestawienie zdarzenia: co się stało, gdzie, kiedy, "
                     "co potwierdza kilka niezależnych źródeł, a co podaje tylko jedna strona (zaznacz to), liczby (ofiary, zniszczenia, zestrzelenia) z podaniem źródła [nr]. "
                     "Komunikaty stron wojny traktuj jako twierdzenia. Bez wstępów, krótkie akapity.")
-            return self._stream(AI_ASK.chat_stream(sysm, f"ZDARZENIE: {res.get('title')}\nRELACJE:\n{lines}", 0.2))
+            g = res.get("gc")
+            gtxt = (f"\nZGEOLOKALIZOWANE PRZEZ WOLONTARIUSZY GEOCONFIRMED: {g.get('description')} · sprzęt: {g.get('gear') or '—'} · jednostki: {g.get('units') or '—'} · "
+                    f"strona oznaczona: {g.get('faction')} · rodzaj materiału: {g.get('origin')} · miejsce: {g.get('plusCode')} · data: {g.get('date')}\n"
+                    "Relacje [nr] oznaczone ORYGINAŁ to źródło nagrania wskazane przez GeoConfirmed. Oceń, czy pozostałe relacje dotyczą tego samego zdarzenia.") if g else ""
+            return self._stream(AI_ASK.chat_stream(sysm, f"ZDARZENIE: {res.get('title')}{gtxt}\nRELACJE:\n{lines}", 0.2))
         if p == "/api/hf/token":
             t = str(self._body().get("token") or "").strip()
             if t and not re.match(r"^hf_[A-Za-z0-9]{20,}$", t):
@@ -1903,7 +1952,7 @@ class H(BaseHTTPRequestHandler):
 def main():
     port = int(os.environ.get("KRONOS_PORT", CFG.get("port", 7707)))
     st = ENGINE.status()
-    log("KRONOS-7 v3.22.1 · start")
+    log("KRONOS-7 v3.22.2 · start")
     log(f"Sprzęt: {st['hardware']['gpu_name']} · VRAM {st['hardware']['vram_gb']} GB · RAM {st['hardware']['ram_gb']} GB")
     log(f"AI: {st['backend'] or 'brak (zainstaluj Ollamę)'} · model: {st['model'] or '—'} · zalecany: {st['recommended']}")
     log(st["reason"])

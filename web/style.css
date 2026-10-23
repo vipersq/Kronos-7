@@ -585,3 +585,7 @@ body.bgp *:not(.ticker-in){animation-play-state:paused!important}
 .tts-row .bt .btn{padding:0 6px;font-size:calc(10.5*var(--u))}
 .tts-row .st.amb{color:var(--amber,#e0a030)}
 .sys .srcsum{cursor:pointer;text-decoration:underline dotted}
+
+/* v3.22.2: łańcuch przyczyn nad płótnami mapy (kafelki, statki, samoloty) */
+.mapbox.chainview canvas,.mapbox.chainview .mapattr,.mapbox.chainview .maptip{display:none!important}
+.mapbox.chainview #chain{position:relative;z-index:5;background:var(--ocean)}

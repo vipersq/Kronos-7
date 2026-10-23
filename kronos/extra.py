@@ -3,6 +3,7 @@ Warstwy i dane: GeoConfirmed (zgeolokalizowane nagrania), WarSpotting (straty sp
 EMSC (trzęsienia ziemi), ISW/CTP (ocena postępów wojsk rosyjskich), Cloudflare Radar (wyłączenia internetu).
 Wyszukiwarki do zestawień przy zdarzeniach: Bluesky, Reddit, YouTube, VK, GDELT.
 Na żądanie: zdjęcie Sentinel-1/2 (Copernicus) i ślad lotu (OpenSky)."""
+import html
 import hashlib, json, re, threading, time, urllib.error, urllib.parse, urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -10,7 +11,7 @@ from pathlib import Path
 from . import i18n
 from .intel import Source, _now_ms
 
-UA = "KRONOS-7/3.22.1 (personal OSINT dashboard)"
+UA = "KRONOS-7/3.22.2 (personal OSINT dashboard)"
 
 
 def _get(url, timeout=40, headers=None, data=None, method=None, raw=False):
@@ -61,6 +62,64 @@ class GeoConfirmed(Source):
         pts.sort(key=lambda x: -x["t"])
         self.data = {"at": _now_ms(), "pts": pts[:6000]}
         return len(pts)
+
+
+    # v3.22.2: szczegóły punktu – opis, sprzęt, jednostki, linki do oryginału (Telegram, X) i do geolokalizacji
+    def detail(self, gid):
+        det = self.__dict__.setdefault("det", {})
+        if gid in det:
+            return det[gid]
+        d = _get("https://geoconfirmed.org/api/Placemark/Detail/" + urllib.parse.quote(gid), 30)
+        if len(det) > 500:
+            det.clear()
+        det[gid] = d
+        return d
+
+
+_PN = {}
+
+
+def place_names(lat, lon, hint=None):
+    """Nazwy miejscowości po ukraińsku, rosyjsku i angielsku (OpenStreetMap Nominatim, raz na miejsce) – do szukania postów."""
+    key = f"{lat:.2f},{lon:.2f}"
+    if key in _PN:
+        return _PN[key]
+    out = []
+    for lang in ("uk", "ru", "en"):
+        try:
+            d = _get(f"https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={lat}&lon={lon}&zoom=12&accept-language={lang}", 15)
+            a = d.get("address") or {}
+            for k in ("city", "town", "village", "hamlet", "municipality", "suburb"):
+                if a.get(k):
+                    out.append(a[k]); break
+        except Exception:
+            pass
+        time.sleep(1.1)                         # zasady Nominatim: najwyżej 1 zapytanie na sekundę
+    if hint:
+        out.append(hint)
+    names = []
+    for n in out:
+        n = re.sub(r"\s*\(.*?\)", "", n).strip()
+        if len(n) < 3 or n in names:
+            continue
+        names.append(n)
+        if len(n) > 5 and re.search(r"[аеєиіїоуюяьйaeiouy]$", n, re.I):
+            names.append(n[:-1])                # odmiana: Одеса → Одес(і), Буча → Буч(і)
+    _PN[key] = names
+    if len(_PN) > 2000:
+        _PN.clear()
+    return names
+
+
+def x_oembed(url):
+    """Treść posta z X przez oficjalny oEmbed (bez klucza, bez logowania): autor i tekst; zdjęć oEmbed nie daje."""
+    d = _get("https://publish.twitter.com/oembed?omit_script=1&dnt=true&url=" + urllib.parse.quote(url), 15)
+    h = d.get("html") or ""
+    m = re.search(r"<p[^>]*>(.*?)</p>", h, re.S)
+    txt = re.sub(r"<br\s*/?>", "\n", m.group(1)) if m else ""
+    txt = html.unescape(re.sub(r"<[^>]+>", "", txt)).strip()
+    dm = re.findall(r">([A-Z][a-z]+ \d{1,2}, \d{4})</a>", h)
+    return {"author": d.get("author_name"), "text": txt, "date": dm[-1] if dm else None}
 
 
 # ------------------------------------------------------------------ WarSpotting

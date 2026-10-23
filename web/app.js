@@ -1,4 +1,4 @@
-/* KRONOS-7 v3.22.1 — interfejs terminala. Dane: lokalny serwer (/api/*). */
+/* KRONOS-7 v3.22.2 — interfejs terminala. Dane: lokalny serwer (/api/*). */
 (function () {
 "use strict";
 const $ = s => document.querySelector(s);
@@ -964,6 +964,18 @@ setInterval(() => { if (!document.hidden) loadHist(); }, 600e3);
 
 /* --- zestawienie postów i zdjęć dla zdarzenia (v3.20) */
 const EVC = {}; let EVBLUR = store.get("evblur", true) !== false, LB = null;
+/* GeoConfirmed: opis, sprzęt, jednostki i linki do oryginału (v3.22.2) */
+const GCD = {};
+async function gcFill() {
+  const el = $("#gcDet"); if (!el) return; const id = el.dataset.gc;
+  let d = GCD[id]; if (!d) { try { d = GCD[id] = await api("/api/intel/gc/" + encodeURIComponent(id)); } catch (e) { el.innerHTML = `<p class="hint">${TX("Nie udało się pobrać szczegółów – otwórz stronę GeoConfirmed.")}</p>`; return; } }
+  const e2 = $("#gcDet"); if (!e2 || e2.dataset.gc !== id) return;
+  const links = s => String(s || "").split(/[\s,]+/).filter(u => /^https?:\/\//.test(u)).map(u => { const x = u.match(/(?:x|twitter)\.com\/([^/]+)\/status/); return L(u, x ? "X · @" + x[1] : u.replace(/^https?:\/\/(www\.)?/, "").slice(0, 34)); }).join("<br>");
+  const ORG = { VID: TX("nagranie"), IMG: TX("zdjęcie"), SAT: TX("zdjęcie satelitarne") };
+  e2.innerHTML = (d.description ? `<p>${esc(d.description)}</p>` : "") + dd([[TX("SPRZĘT"), d.gear || null], [TX("JEDNOSTKI"), d.units || null],
+    [TX("MATERIAŁ"), d.origin ? (ORG[d.origin] || d.origin) : null], [TX("MIEJSCE"), d.plusCode ? d.plusCode.replace(/^\S+\s+/, "") : null],
+    [TX("ORYGINAŁ"), links(d.originalSource) || null, 1], [TX("GEOLOKALIZACJA"), links(d.geolocation) || null, 1]]);
+}
 function evBox(type, id) { return `<div class="evbox" data-evt="${type}" data-evid="${esc0(String(id))}"><p class="sat-h">${TX("POSTY I ZDJĘCIA")}</p><div class="evbody"><p class="hint">${TX("Szukam relacji…")}</p></div></div>`; }
 const LBS = {};
 function evThumb(m, p, i, set) { return `<button class="evth${m.k === "video" ? " vid" : ""}" data-lb="${i}" data-lbs="${set || "ev"}" title="${esc(p ? (p.chn || p.ch || "") + " · " + hm(p.t) : "")}"><img loading="lazy" src="/media/${m.h}.jpg" alt="" class="${EVBLUR ? "blur" : ""}" onerror="this.parentNode.classList.add('gone')">${m.k === "video" ? "<i>▶</i>" : ""}</button>`; }
@@ -1501,6 +1513,8 @@ let view = "map";
 function setView(v) {
   view = v; $$("[data-view]").forEach(b => b.setAttribute("aria-pressed", b.dataset.view === v));
   $("#map").toggleAttribute("hidden", v !== "map"); $("#chain").toggleAttribute("hidden", v !== "chain");
+  $("#mapbox").classList.toggle("chainview", v === "chain");     // v3.22.2: podkłady kafelkowe (płótna) nie mogą zasłaniać łańcucha
+  if (v === "map") { try { redraw(); } catch (e) {} }
   $("#chainEmpty").hidden = v !== "chain" || !!(S.chain && A(S.chain.nodes).length);
   $("#maptools").hidden = v !== "map"; $("#projBtn").hidden = v !== "map";
   $("#legendMap").hidden = v !== "map"; $("#legendChain").hidden = v !== "chain";
@@ -1695,7 +1709,7 @@ function pick(id, silent) {
     h = chip(TX("ŹRÓDŁO") + (s.rel ? " " + TX("· WIARYGODNOŚĆ") + " " + s.rel : ""), "var(--phos)") + `<h2 class="glow">${esc(s.name)}</h2>` + dd([[TX("STAN"), s.state], [TX("UWAGI"), s.note], s.url ? [TX("ADRES"), L(s.url, s.url), 1] : null]);
   } else return;
   if (t === "c") { const c0 = A(S.conflicts).find(x => x.id === key); if (c0 && c0.lat != null) h += satBtn(c0.lat, c0.lon, 3); }
-  $("#detail").innerHTML = h; bindDetail(); bindSatImg(); vgFill(); evFill();
+  $("#detail").innerHTML = h; bindDetail(); bindSatImg(); vgFill(); evFill(); gcFill();
 }
 function idleDetail() {
   const hot = A(S.conflicts).filter(c => c.trend === "esc" || c.trend === "new");
@@ -2583,7 +2597,8 @@ function intelCard(t, key) {
       + `<p class="hint">${TX("Źródło: Pikud HaOref przez tzevaadom.co.il.")}</p>` + evBox("geo", `${x.lat},${x.lon},6,${x.c}`); }
   if (t === "gc") { const g = A(IN.gc).find(x => x.id === key); if (!g) return "";
     return chip("GEOCONFIRMED · " + esc(g.conf || ""), g.col || "var(--cyan)") + `<h2 class="glow">${esc(g.fac || "")} · ${new Date(g.t).toLocaleDateString(LOC)}</h2>` + (g.icon ? `<p><img src="${esc(g.icon)}" alt="" style="height:28px"></p>` : "")
-      + dd([[TX("POZYCJA"), fmtLL(g.lat, g.lon)], [TX("MATERIAŁ"), L(g.url, "geoconfirmed.org"), 1]]) + `<p class="hint">${TX("Nagranie lub zdjęcie zgeolokalizowane przez wolontariuszy GeoConfirmed – szczegóły, źródło i nagranie na stronie.")}</p>` + satBtn(g.lat, g.lon, .6); }
+      + `<div id="gcDet" data-gc="${esc0(g.id)}"><p class="hint">${TX("Pobieram szczegóły z GeoConfirmed…")}</p></div>`
+      + dd([[TX("POZYCJA"), fmtLL(g.lat, g.lon)], [TX("STRONA"), L(g.url, "geoconfirmed.org"), 1]]) + evBox("gc", g.id) + satBtn(g.lat, g.lon, .6); }
   if (t === "eq") { const e = A(d.emsc).find(x => String(x.id) === key); if (!e) return "";
     return chip("EMSC · " + TX("TRZĘSIENIE ZIEMI"), "#ffb347") + `<h2 class="glow">M${e.mag} · ${esc(e.where || "")}</h2>` + dd([[TX("CZAS"), new Date(e.t).toLocaleString(LOC)], [TX("GŁĘBOKOŚĆ"), e.depth != null ? Math.round(e.depth) + " km" : null], [TX("POZYCJA"), fmtLL(e.lat, e.lon)], [TX("SZCZEGÓŁY"), L(e.url, "seismicportal.eu"), 1]]); }
   if (t === "cr") { const c = A(d.corr).find(x => x.id === key); if (!c) return ""; const a = c.ai || {};
@@ -2947,7 +2962,7 @@ function boot(done) {
   let seen = false; try { seen = sessionStorage.getItem("k7-boot") === "1"; } catch (e) { seen = true; }
   if (!needSetup && (seen || reduce)) return done();
   const B = $("#boot"); B.hidden = false; const e = STATUS ? STATUS.engine : null, C = CURRENT || {};
-  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.22.1"), TX("TEST PAMIĘCI ........ OK"),
+  const lines = [TX("KRONOS-7 PLANETARY INTELLIGENCE · v3.22.2"), TX("TEST PAMIĘCI ........ OK"),
     TX("PROCESOR GRAFICZNY ..") + " " + (e ? TX(e.hardware.gpu_name) + (e.hardware.vram_gb ? " / " + e.hardware.vram_gb + " " + TX("GB") : "") : "?"),
     TX("RDZEŃ ANALITYCZNY ...") + " " + (e && e.model ? e.model.toUpperCase() : TX("NIEAKTYWNY")),
     TX("BAZA KONFLIKTÓW .....") + " " + A(C.conflicts).length + " " + TX("WĘZŁÓW"), TX("FRONTY ..............") + " " + A(C.fronts).length + " " + TX("TEATRÓW"),

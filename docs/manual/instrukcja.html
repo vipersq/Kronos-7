@@ -56,7 +56,7 @@ a { color: var(--acc); }
     <p class="t">KRONOS-7_</p>
     <p class="s">PLANETARNY SYSTEM WYWIADOWCZY</p>
     <h1>Instrukcja obsługi</h1>
-    <p class="d">Wersja programu <b>3.22.1</b> · instrukcja z dnia 23.10.2026</p>
+    <p class="d">Wersja programu <b>3.22.2</b> · instrukcja z dnia 23.10.2026</p>
     <p class="d">Instalacja, konfiguracja krok po kroku, skąd wziąć każdy klucz API, rozwiązywanie problemów.</p>
   </div>
   <img src="img/main.jpg" alt="">
@@ -170,6 +170,14 @@ a { color: var(--acc); }
 <li><span class="btn">FILTRY</span> – które typy statków i samolotów pokazywać. <span class="btn">AUTO-ZOOM</span> – przybliżanie po kliknięciu. <span class="btn">ODTWÓRZ</span> – cofnięcie mapy do 48 h wstecz.</li>
 <li><b>Warstwy</b> – przyciski pod mapą włączają/wyłączają: KONFLIKTY, FRONTY, STATKI, LOTNICTWO, ALARMY UA, ALARMY IL, DEEPSTATE, ISW, GEOCONFIRMED, EMSC, KORELACJE, PROMIENIOWANIE, POŻARY, SIEĆ i inne. Podświetlona = włączona.</li>
 <li><b>Kliknięcie obiektu</b> otwiera kartę po prawej: szczegóły, zdjęcie satelitarne, sekcja <b>POSTY I ZDJĘCIA</b> (relacje z Telegrama i innych źródeł o tym zdarzeniu), przycisk <span class="btn">PODSUMUJ (AI)</span>.</li>
+</ul>
+<h3>Punkty GeoConfirmed</h3>
+<p>Włącz warstwę <b>GEOCONFIRMED</b> i kliknij punkt. Karta od razu pokazuje:</p>
+<ul>
+<li>opis nagrania, sprzęt, jednostki, rodzaj materiału i miejscowość;</li>
+<li>linki do <b>oryginału</b> (Telegram, X) i do geolokalizacji;</li>
+<li>w sekcji POSTY I ZDJĘCIA na samej górze oryginalny post z Telegrama (ze zdjęciem lub filmem) i treść posta z X, a pod nimi relacje z Telegrama i innych źródeł z tego miejsca i czasu (nazwy miejscowości po ukraińsku, rosyjsku i angielsku KRONOS ustala sam);</li>
+<li><span class="btn">PODSUMUJ (AI)</span> – AI zestawia opis GeoConfirmed z relacjami i ocenia, które dotyczą tego samego zdarzenia.</li>
 </ul>
 <h3>Panele pod mapą</h3>
 <p>Strumień depesz, barometr rynkowy, żegluga, trend napięcia, kalendarz, rejestr konfliktów, fronty, noc nad Ukrainą, uderzenia dalekiego zasięgu, ruchy sił, flanka NATO, niebo, statki, alarmy UA · NOTAM · SAR (tu też Izrael, trzęsienia ziemi, wyłączenia internetu), OSINT · Telegram, straty sprzętu · WarSpotting, zdarzenia złożone, bezpieczeństwo morskie, prognozy, obiekty jądrowe, sankcje, humanitarne, cyber, sieć, ostrzeżenia podróżne, zagrożenia naturalne, starty rakiet, SITREP, historia, przeloty nad QTH, orbity, status systemu, źródła.</p>
@@ -596,6 +604,7 @@ a { color: var(--acc); }
 <tr><td>Brak głosu briefingu</td><td>DŹWIĘKI I GŁOS LEKTORA → zainstaluj głosy Microsoft albo pobierz Pipera; albo dodaj polski głos w Windows (Ustawienia → Czas i język → Mowa).</td></tr>
 <tr><td>Telegram konto: błąd logowania</td><td>Numer z kierunkowym (+44…). Kod przychodzi w aplikacji Telegram, nie SMS-em. api_id to liczba, api_hash – 32 znaki.</td></tr>
 <tr><td>W zestawieniu POSTY I ZDJĘCIA pojawiają się śmieci (reklamy, „randki”)</td><td>Od v3.22.1 filtrowane automatycznie. Jeśli coś się prześlizgnie – zdjęcia są rozmyte; daj znać, jakie słowa miał ten post, dopiszę je do filtra.</td></tr>
+<tr><td>Po kliknięciu ŁAŃCUCH PRZYCZYN widać nadal mapę</td><td>Naprawione w v3.22.2 – przy podkładach kafelkowych (CIEMNA SZCZEGÓŁOWA, SATELITA, OSM) mapa zasłaniała graf. Po aktualizacji odśwież stronę (Ctrl+F5).</td></tr>
 <tr><td>Po aktualizacji coś nie działa</td><td>Usuń <code>data\.deps_ok</code> i uruchom <code>start.bat</code> ponownie. W przeglądarce Ctrl+F5.</td></tr>
 </table>
 
@@ -640,7 +649,7 @@ a { color: var(--acc); }
 <tr><td>Gmail (IMAP)</td><td>Konto Google → Bezpieczeństwo → Hasła do aplikacji</td><td>ŹRÓDŁA I INTEGRACJE</td></tr>
 <tr><td>Hugging Face</td><td>huggingface.co → Settings → SSH and GPG Keys</td><td>OPERATOR → MODELE…</td></tr>
 </table>
-<p class="small" style="margin-top:14pt">Strony dostawców czasem zmieniają wygląd i nazwy menu – jeśli coś wygląda inaczej, szukaj na ich stronie słów „API”, „API key”, „Token” albo „Developer”. Instrukcja dotyczy KRONOS-7 v3.22.1.</p>
+<p class="small" style="margin-top:14pt">Strony dostawców czasem zmieniają wygląd i nazwy menu – jeśli coś wygląda inaczej, szukaj na ich stronie słów „API”, „API key”, „Token” albo „Developer”. Instrukcja dotyczy KRONOS-7 v3.22.2.</p>
 
 </body>
 </html>
